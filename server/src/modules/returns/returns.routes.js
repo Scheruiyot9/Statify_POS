@@ -1,0 +1,23 @@
+const { Router } = require('express');
+const { authenticate, attachTenant }      = require('../../middleware/auth.middleware');
+const { verifyTenant, scopeTenant,
+        requireTenantContext }             = require('../../middleware/tenant.middleware');
+const { requirePermission }               = require('../../middleware/rbac.middleware');
+const ctrl                                = require('./returns.controller');
+
+const router = Router();
+router.use(authenticate, attachTenant, verifyTenant, scopeTenant, requireTenantContext);
+
+// Return reasons catalogue
+router.get('/reasons', requirePermission('process_refund'), ctrl.listReasons);
+
+// Returns CRUD
+router.get('/',    requirePermission('process_refund'), ctrl.list);
+router.post('/',   requirePermission('process_refund'), ctrl.create);
+router.get('/:id', requirePermission('process_refund'), ctrl.getOne);
+
+// Approval workflow
+router.patch('/:id/approve', requirePermission('process_refund'), ctrl.approve);
+router.patch('/:id/reject',  requirePermission('process_refund'), ctrl.reject);
+
+module.exports = router;

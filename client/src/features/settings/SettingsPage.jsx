@@ -1,0 +1,1124 @@
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  CreditCard, Plus, Pencil, ToggleLeft, ToggleRight, Check,
+  Monitor, GitBranch, Package, Users, Star, Percent, Trash2,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import api from '@/services/api';
+import { useAuthStore } from '@/app/store';
+import Modal  from '@/components/ui/Modal';
+import Button from '@/components/ui/Button';
+import { PageSpinner } from '@/components/ui/Spinner';
+
+// ── Payment Methods Tab ───────────────────────────────────────────────────────
+
+function PayModeForm({ initial, onSave, onClose, isPending }) {
+  const [name,       setName]       = useState(initial?.method_name       ?? '');
+  const [requireRef, setRequireRef] = useState(initial?.requires_reference ?? false);
+
+  const valid = name.trim().length >= 2;
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">Method Name *</label>
+        <input
+          type="text" value={name} onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Cash, M-Pesa, Card, Cheque…"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        />
+      </div>
+      <label className="flex items-center gap-3 cursor-pointer">
+        <span className="text-sm text-gray-700">Requires reference number</span>
+        <button type="button" onClick={() => setRequireRef(!requireRef)}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${requireRef ? 'bg-primary-600' : 'bg-gray-300'}`}>
+          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${requireRef ? 'translate-x-4' : 'translate-x-1'}`} />
+        </button>
+        <span className="text-xs text-gray-400">{requireRef ? 'Yes (M-Pesa code, card approval #, etc.)' : 'No'}</span>
+      </label>
+      <div className="flex gap-3 pt-2">
+        <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+        <Button fullWidth disabled={!valid} loading={isPending}
+          onClick={() => onSave({ methodName: name.trim(), requiresReference: requireRef })}>
+          {initial ? 'Save Changes' : 'Add Pay Mode'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PayModesTab() {
+  const qc = useQueryClient();
+  const [addOpen,  setAddOpen]  = useState(false);
+  const [editMode, setEditMode] = useState(null);
+
+  const companyId = useAuthStore((s) => s.user?.companyId);
+  const { data: methods = [], isLoading } = useQuery({
+    queryKey: ['payment-methods-all', companyId],
+    queryFn:  () => api.get('/pos/payment-methods', { params: { all: 'true' } }).then((r) => r.data.data),
+  });
+
+  const createMut = useMutation({
+    mutationFn: (body) => api.post('/pos/payment-methods', body),
+    onSuccess: () => {
+      toast.success('Pay mode added');
+      qc.invalidateQueries(['payment-methods-all']);
+      qc.invalidateQueries(['payment-methods']);
+      setAddOpen(false);
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to add pay mode'),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, body }) => api.patch(`/pos/payment-methods/${id}`, body),
+    onSuccess: () => {
+      toast.success('Pay mode updated');
+      qc.invalidateQueries(['payment-methods-all']);
+      qc.invalidateQueries(['payment-methods']);
+      setEditMode(null);
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to update'),
+  });
+
+  const toggleMut = useMutation({
+    mutationFn: ({ id, isActive }) => api.patch(`/pos/payment-methods/${id}`, { isActive }),
+    onSuccess: () => {
+      toast.success('Pay mode updated');
+      qc.invalidateQueries(['payment-methods-all']);
+      qc.invalidateQueries(['payment-methods']);
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to update'),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Payment Methods</h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Configure payment modes available at your POS counters.
+          </p>
+        </div>
+        <Button icon={<Plus className="h-4 w-4" />} size="sm" onClick={() => setAddOpen(true)}>
+          Add Pay Mode
+        </Button>
+      </div>
+
+      {isLoading ? <PageSpinner /> : (
+        <div className="rounded-xl border border-gray-100 bg-white overflow-hidden shadow-sm">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Method Name</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600">Requires Ref #</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {methods.map((m) => (
+                <tr key={m.payment_method_id} className={`hover:bg-gray-50 transition-colors ${!m.is_active ? 'opacity-50' : ''}`}>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-100">
+                        <CreditCard className="h-4 w-4 text-primary-600" />
+                      </div>
+                      <span className="font-medium text-gray-900">{m.method_name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {m.requires_reference
+                      ? <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium"><Check className="h-3 w-3" /> Yes</span>
+                      : <span className="text-gray-400 text-xs">No</span>}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <button onClick={() => toggleMut.mutate({ id: m.payment_method_id, isActive: !m.is_active })}
+                      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors">
+                      {m.is_active
+                        ? <><ToggleRight className="h-4 w-4 text-green-500" /><span className="text-green-700">Active</span></>
+                        : <><ToggleLeft  className="h-4 w-4 text-gray-400" /><span className="text-gray-500">Inactive</span></>}
+                    </button>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => setEditMode(m)}
+                      className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {methods.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-12 text-center text-gray-400">
+                    <CreditCard className="mx-auto mb-2 h-8 w-8 opacity-30" />
+                    No payment methods yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Pay Mode" size="sm">
+        <PayModeForm onSave={(body) => createMut.mutate(body)} onClose={() => setAddOpen(false)} isPending={createMut.isPending} />
+      </Modal>
+      <Modal open={!!editMode} onClose={() => setEditMode(null)} title="Edit Pay Mode" size="sm">
+        <PayModeForm initial={editMode}
+          onSave={(body) => updateMut.mutate({ id: editMode?.payment_method_id, body })}
+          onClose={() => setEditMode(null)} isPending={updateMut.isPending} />
+      </Modal>
+    </div>
+  );
+}
+
+// ── Terminals Tab ─────────────────────────────────────────────────────────────
+
+function TerminalForm({ branches, initial, onSave, onClose, isPending }) {
+  const [name,     setName]     = useState(initial?.terminal_name ?? '');
+  const [code,     setCode]     = useState(initial?.terminal_code ?? '');
+  const [desc,     setDesc]     = useState(initial?.description   ?? '');
+  const [branchId, setBranchId] = useState(initial?.branch_id     ?? (branches[0]?.branch_id ?? ''));
+
+  const isEdit = !!initial;
+  const valid  = name.trim().length >= 2 && (isEdit || (code.trim().length >= 2 && branchId));
+
+  const autoCode = (rawName) => {
+    const slug = rawName.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+    setCode(slug ? `TILL-${slug}` : '');
+  };
+
+  return (
+    <div className="space-y-3">
+      {!isEdit && (
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Branch *</label>
+          <select value={branchId} onChange={(e) => setBranchId(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none">
+            <option value="">Select branch…</option>
+            {branches.map((b) => <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>)}
+          </select>
+        </div>
+      )}
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Terminal Name *</label>
+        <input value={name}
+          onChange={(e) => {
+            setName(e.target.value);
+            if (!isEdit && !code) autoCode(e.target.value);
+          }}
+          placeholder="e.g. Counter 1, Drive-through Till"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+        />
+      </div>
+      {!isEdit && (
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Terminal Code *</label>
+          <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
+            placeholder="e.g. TILL-01"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-primary-500 focus:outline-none"
+          />
+          <p className="mt-1 text-xs text-gray-400">Unique identifier per branch — used for session tracking</p>
+        </div>
+      )}
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Description</label>
+        <input value={desc} onChange={(e) => setDesc(e.target.value)}
+          placeholder="Optional notes about this terminal"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+        />
+      </div>
+      <div className="flex gap-3 pt-2">
+        <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+        <Button fullWidth disabled={!valid} loading={isPending}
+          onClick={() => onSave({ terminalName: name.trim(), terminalCode: code.trim(), description: desc.trim() || null, branchId })}>
+          {isEdit ? 'Save Changes' : 'Create Terminal'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function TerminalsTab() {
+  const qc = useQueryClient();
+  const [addOpen,  setAddOpen]  = useState(false);
+  const [editTerm, setEditTerm] = useState(null);
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ['branches'],
+    queryFn:  () => api.get('/branches').then((r) => r.data.data),
+  });
+
+  const { data: terminals = [], isLoading } = useQuery({
+    queryKey: ['terminals-all'],
+    queryFn:  () => api.get('/pos/terminals/all', { params: { includeInactive: 'true' } }).then((r) => r.data.data),
+  });
+
+  const createMut = useMutation({
+    mutationFn: (body) => api.post('/pos/terminals', body),
+    onSuccess: () => {
+      toast.success('Terminal created');
+      qc.invalidateQueries(['terminals-all']);
+      setAddOpen(false);
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Create failed'),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, body }) => api.patch(`/pos/terminals/${id}`, body),
+    onSuccess: () => {
+      toast.success('Terminal updated');
+      qc.invalidateQueries(['terminals-all']);
+      setEditTerm(null);
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Update failed'),
+  });
+
+  const toggleMut = useMutation({
+    mutationFn: ({ id, isActive }) => api.patch(`/pos/terminals/${id}`, { isActive }),
+    onSuccess: () => {
+      toast.success('Terminal updated');
+      qc.invalidateQueries(['terminals-all']);
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Update failed'),
+  });
+
+  // Group by branch for display
+  const byBranch = terminals.reduce((acc, t) => {
+    const key = t.branch_name;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(t);
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">POS Terminals</h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Terminals are the physical or virtual tills cashiers log into for each shift.
+          </p>
+        </div>
+        <Button icon={<Plus className="h-4 w-4" />} size="sm" onClick={() => setAddOpen(true)}>
+          Add Terminal
+        </Button>
+      </div>
+
+      {isLoading ? <PageSpinner /> : (
+        terminals.length === 0 ? (
+          <div className="rounded-xl border border-gray-100 bg-white py-14 text-center shadow-sm">
+            <Monitor className="mx-auto mb-2 h-8 w-8 text-gray-300" />
+            <p className="text-sm text-gray-400">No terminals configured. Add one to get started.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {Object.entries(byBranch).map(([branchName, terms]) => (
+              <div key={branchName} className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+                {/* Branch header */}
+                <div className="flex items-center gap-2 border-b border-gray-100 bg-gray-50 px-4 py-2.5">
+                  <GitBranch className="h-3.5 w-3.5 text-gray-400" />
+                  <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{branchName}</span>
+                  <span className="ml-auto text-xs text-gray-400">{terms.length} terminal{terms.length !== 1 ? 's' : ''}</span>
+                </div>
+
+                <table className="w-full text-sm">
+                  <thead className="border-b border-gray-50">
+                    <tr>
+                      <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Name</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Code</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Description</th>
+                      <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500">Sessions</th>
+                      <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500">Status</th>
+                      <th className="px-4 py-2.5" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {terms.map((t) => (
+                      <tr key={t.terminal_id} className={`hover:bg-gray-50 transition-colors ${!t.is_active ? 'opacity-50' : ''}`}>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-100">
+                              <Monitor className="h-3.5 w-3.5 text-primary-600" />
+                            </div>
+                            <span className="font-medium text-gray-900">{t.terminal_name}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-gray-500">{t.terminal_code}</td>
+                        <td className="px-4 py-3 text-gray-500">{t.description || <span className="text-gray-300">—</span>}</td>
+                        <td className="px-4 py-3 text-center text-gray-600">{t.session_count}</td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            onClick={() => toggleMut.mutate({ id: t.terminal_id, isActive: !t.is_active })}
+                            className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium transition-colors"
+                          >
+                            {t.is_active
+                              ? <><ToggleRight className="h-4 w-4 text-green-500" /><span className="text-green-700">Active</span></>
+                              : <><ToggleLeft  className="h-4 w-4 text-gray-400" /><span className="text-gray-500">Inactive</span></>}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => setEditTerm(t)}
+                            className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Terminal" size="sm">
+        <TerminalForm
+          branches={branches}
+          onSave={(body) => createMut.mutate(body)}
+          onClose={() => setAddOpen(false)}
+          isPending={createMut.isPending}
+        />
+      </Modal>
+      <Modal open={!!editTerm} onClose={() => setEditTerm(null)} title="Edit Terminal" size="sm">
+        <TerminalForm
+          branches={branches}
+          initial={editTerm}
+          onSave={(body) => updateMut.mutate({ id: editTerm?.terminal_id, body })}
+          onClose={() => setEditTerm(null)}
+          isPending={updateMut.isPending}
+        />
+      </Modal>
+    </div>
+  );
+}
+
+// ── Loyalty Settings Tab ──────────────────────────────────────────────────────
+
+function LoyaltyTab() {
+  const qc = useQueryClient();
+  const [earnRate,   setEarnRate]   = useState('');
+  const [redeemRate, setRedeemRate] = useState('');
+  const [dirty,      setDirty]      = useState(false);
+
+  const { isLoading } = useQuery({
+    queryKey: ['loyalty-settings'],
+    queryFn:  () => api.get('/companies/mine/loyalty').then((r) => r.data.data),
+    onSuccess: (d) => { setEarnRate(String(d.points_earn_rate)); setRedeemRate(String(d.points_redeem_rate)); },
+  });
+
+  const saveMut = useMutation({
+    mutationFn: (body) => api.patch('/companies/mine/loyalty', body),
+    onSuccess: (res) => {
+      const d = res.data.data;
+      setEarnRate(String(d.points_earn_rate));
+      setRedeemRate(String(d.points_redeem_rate));
+      setDirty(false);
+      toast.success('Loyalty settings saved');
+      qc.invalidateQueries({ queryKey: ['loyalty-settings'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Save failed'),
+  });
+
+  const handle = (setter) => (e) => { setter(e.target.value); setDirty(true); };
+  const valid  = parseFloat(earnRate) > 0 && parseFloat(redeemRate) > 0;
+
+  const earnNum   = parseFloat(earnRate)   || 0;
+  const redeemNum = parseFloat(redeemRate) || 0;
+
+  return (
+    <div className="space-y-6 max-w-lg">
+      <div>
+        <h2 className="text-base font-semibold text-gray-900">Loyalty Points</h2>
+        <p className="text-sm text-gray-500 mt-0.5">Configure how customers earn and redeem loyalty points.</p>
+      </div>
+
+      {isLoading ? <PageSpinner /> : (
+        <>
+          <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm space-y-5">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Earn Rate</label>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-500 whitespace-nowrap">Spend</span>
+                <input type="number" step="1" min="1" value={earnRate} onChange={handle(setEarnRate)}
+                  className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm text-center font-semibold focus:border-primary-500 focus:outline-none" />
+                <span className="text-sm text-gray-500 whitespace-nowrap">currency units to earn 1 point</span>
+              </div>
+              <p className="mt-1 text-xs text-gray-400">e.g. {earnNum} = a KES {earnNum} purchase earns 1 point</p>
+            </div>
+
+            <div className="border-t border-gray-50" />
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Redeem Rate</label>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-500 whitespace-nowrap">1 point =</span>
+                <input type="number" step="0.01" min="0.01" value={redeemRate} onChange={handle(setRedeemRate)}
+                  className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm text-center font-semibold focus:border-primary-500 focus:outline-none" />
+                <span className="text-sm text-gray-500 whitespace-nowrap">currency units on redemption</span>
+              </div>
+              <p className="mt-1 text-xs text-gray-400">e.g. {redeemNum} = 100 points redeems for {(100 * redeemNum).toFixed(2)} off</p>
+            </div>
+          </div>
+
+          {/* Live preview */}
+          {earnNum > 0 && redeemNum > 0 && (
+            <div className="rounded-xl bg-primary-50 border border-primary-100 p-4 text-sm text-primary-800 space-y-1">
+              <p className="font-semibold">Preview</p>
+              <p>A KES 1,000 sale earns <strong>{Math.floor(1000 / earnNum)} points</strong></p>
+              <p>100 points can be redeemed for <strong>KES {(100 * redeemNum).toFixed(2)} off</strong></p>
+            </div>
+          )}
+
+          {dirty && (
+            <Button loading={saveMut.isPending} disabled={!valid} onClick={() =>
+              saveMut.mutate({ points_earn_rate: parseFloat(earnRate), points_redeem_rate: parseFloat(redeemRate) })
+            }>
+              Save Loyalty Settings
+            </Button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Product Categories Tab ────────────────────────────────────────────────────
+
+function CategoriesTab() {
+  const qc = useQueryClient();
+  const [addOpen,  setAddOpen]  = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  const [name,     setName]     = useState('');
+
+  const { data: categories = [], isLoading } = useQuery({
+    queryKey: ['categories'],
+    queryFn:  () => api.get('/products/categories').then((r) => r.data.data),
+  });
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['categories'] });
+
+  const createMut = useMutation({
+    mutationFn: (body) => api.post('/products/categories', body),
+    onSuccess: () => { toast.success('Category created'); invalidate(); setAddOpen(false); setName(''); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Create failed'),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, body }) => api.put(`/products/categories/${id}`, body),
+    onSuccess: () => { toast.success('Category updated'); invalidate(); setEditItem(null); setName(''); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Update failed'),
+  });
+
+  const openEdit = (cat) => { setEditItem(cat); setName(cat.category_name); };
+  const openAdd  = ()    => { setEditItem(null); setName(''); setAddOpen(true); };
+
+  const CategoryForm = ({ onSave, isPending, onClose }) => (
+    <div className="space-y-3">
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Category Name *</label>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Beverages"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
+      </div>
+      <div className="flex gap-3 pt-2">
+        <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+        <Button fullWidth disabled={!name.trim()} loading={isPending} onClick={() => onSave({ category_name: name.trim() })}>
+          {editItem ? 'Save Changes' : 'Create Category'}
+        </Button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Product Categories</h2>
+          <p className="text-sm text-gray-500 mt-0.5">Organise products into categories for easier browsing.</p>
+        </div>
+        <Button icon={<Plus className="h-4 w-4" />} size="sm" onClick={openAdd}>Add Category</Button>
+      </div>
+      {isLoading ? <PageSpinner /> : (
+        <div className="rounded-xl border border-gray-100 bg-white overflow-hidden shadow-sm">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Category Name</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {categories.map((c) => (
+                <tr key={c.category_id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3 font-medium text-gray-900">{c.category_name}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => openEdit(c)}
+                      className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {categories.length === 0 && (
+                <tr><td colSpan={2} className="py-12 text-center text-gray-400">No categories yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Category" size="sm">
+        <CategoryForm onSave={(b) => createMut.mutate(b)} isPending={createMut.isPending} onClose={() => setAddOpen(false)} />
+      </Modal>
+      <Modal open={!!editItem} onClose={() => setEditItem(null)} title={`Edit — ${editItem?.category_name}`} size="sm">
+        <CategoryForm onSave={(b) => updateMut.mutate({ id: editItem.category_id, body: b })} isPending={updateMut.isPending} onClose={() => setEditItem(null)} />
+      </Modal>
+    </div>
+  );
+}
+
+// ── Customer Groups Tab ───────────────────────────────────────────────────────
+
+function CustomerGroupsTab() {
+  const qc = useQueryClient();
+  const [addOpen,  setAddOpen]  = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  const [name,     setName]     = useState('');
+  const [discount, setDiscount] = useState('');  // maps to default_discount_value
+
+  const { data: groups = [], isLoading } = useQuery({
+    queryKey: ['customer-groups'],
+    queryFn:  () => api.get('/customers/groups').then((r) => r.data.data),
+  });
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['customer-groups'] });
+
+  const createMut = useMutation({
+    mutationFn: (body) => api.post('/customers/groups', body),
+    onSuccess: () => { toast.success('Group created'); invalidate(); setAddOpen(false); setName(''); setDiscount(''); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Create failed'),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, body }) => api.put(`/customers/groups/${id}`, body),
+    onSuccess: () => { toast.success('Group updated'); invalidate(); setEditItem(null); setName(''); setDiscount(''); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Update failed'),
+  });
+
+  const openEdit = (g) => { setEditItem(g); setName(g.group_name); setDiscount(g.default_discount_value ?? ''); };
+  const openAdd  = ()   => { setEditItem(null); setName(''); setDiscount(''); setAddOpen(true); };
+
+  const GroupForm = ({ onSave, isPending, onClose }) => (
+    <div className="space-y-3">
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Group Name *</label>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. VIP, Wholesale"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Discount %</label>
+        <input type="number" step="0.01" min="0" max="100" value={discount} onChange={(e) => setDiscount(e.target.value)}
+          placeholder="0"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
+      </div>
+      <div className="flex gap-3 pt-2">
+        <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+        <Button fullWidth disabled={!name.trim()} loading={isPending}
+          onClick={() => onSave({ group_name: name.trim(), default_discount_value: parseFloat(discount) || 0 })}>
+          {editItem ? 'Save Changes' : 'Create Group'}
+        </Button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Customer Groups</h2>
+          <p className="text-sm text-gray-500 mt-0.5">Segment customers and assign group discounts.</p>
+        </div>
+        <Button icon={<Plus className="h-4 w-4" />} size="sm" onClick={openAdd}>Add Group</Button>
+      </div>
+      {isLoading ? <PageSpinner /> : (
+        <div className="rounded-xl border border-gray-100 bg-white overflow-hidden shadow-sm">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Group Name</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600">Discount</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {groups.map((g) => (
+                <tr key={g.group_id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3 font-medium text-gray-900">{g.group_name}</td>
+                  <td className="px-4 py-3 text-center text-gray-600">
+                    {g.default_discount_value > 0
+                      ? <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">{g.default_discount_value}%</span>
+                      : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => openEdit(g)}
+                      className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {groups.length === 0 && (
+                <tr><td colSpan={3} className="py-12 text-center text-gray-400">No customer groups yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Customer Group" size="sm">
+        <GroupForm onSave={(b) => createMut.mutate(b)} isPending={createMut.isPending} onClose={() => setAddOpen(false)} />
+      </Modal>
+      <Modal open={!!editItem} onClose={() => setEditItem(null)} title={`Edit — ${editItem?.group_name}`} size="sm">
+        <GroupForm onSave={(b) => updateMut.mutate({ id: editItem.group_id, body: b })} isPending={updateMut.isPending} onClose={() => setEditItem(null)} />
+      </Modal>
+    </div>
+  );
+}
+
+// ── Branches Tab ──────────────────────────────────────────────────────────────
+
+function BranchForm({ initial, onSave, onClose, isPending }) {
+  const isEdit = !!initial;
+  const [name,     setName]     = useState(initial?.branch_name ?? '');
+  const [code,     setCode]     = useState(initial?.branch_code ?? '');
+  const [address,  setAddress]  = useState(initial?.address     ?? '');
+  const [phone,    setPhone]    = useState(initial?.phone        ?? '');
+  const [isActive, setIsActive] = useState(initial?.is_active   ?? true);
+
+  const valid = name.trim().length >= 2 && (isEdit || code.trim().length >= 2);
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Branch Name *</label>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Westlands Branch"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Branch Code {!isEdit && '*'}</label>
+        <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} disabled={isEdit}
+          placeholder="e.g. NBO-01"
+          className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-primary-500 focus:outline-none ${isEdit ? 'bg-gray-50 text-gray-400' : ''}`} />
+        {isEdit && <p className="mt-0.5 text-xs text-gray-400">Code cannot be changed after creation</p>}
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Address</label>
+        <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2}
+          placeholder="Street, City, Country"
+          className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Phone</label>
+        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+254…"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
+      </div>
+      {isEdit && (
+        <label className="flex items-center gap-3 cursor-pointer">
+          <span className="text-sm text-gray-700">Active</span>
+          <button type="button" onClick={() => setIsActive(!isActive)}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isActive ? 'bg-primary-600' : 'bg-gray-300'}`}>
+            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${isActive ? 'translate-x-4' : 'translate-x-1'}`} />
+          </button>
+        </label>
+      )}
+      <div className="flex gap-3 pt-2">
+        <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+        <Button fullWidth disabled={!valid} loading={isPending}
+          onClick={() => onSave({ branch_name: name.trim(), branch_code: code.trim(), address: address.trim() || null, phone: phone.trim() || null, is_active: isActive })}>
+          {isEdit ? 'Save Changes' : 'Create Branch'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function BranchesTab() {
+  const qc = useQueryClient();
+  const [addOpen,  setAddOpen]  = useState(false);
+  const [editBranch, setEditBranch] = useState(null);
+
+  const { data: branches = [], isLoading } = useQuery({
+    queryKey: ['branches'],
+    queryFn:  () => api.get('/branches').then((r) => r.data.data),
+  });
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['branches'] });
+
+  const createMut = useMutation({
+    mutationFn: (body) => api.post('/branches', body),
+    onSuccess: () => { toast.success('Branch created'); invalidate(); setAddOpen(false); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Create failed'),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, body }) => api.put(`/branches/${id}`, body),
+    onSuccess: () => { toast.success('Branch updated'); invalidate(); setEditBranch(null); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Update failed'),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Branches</h2>
+          <p className="text-sm text-gray-500 mt-0.5">Manage your company's branch locations.</p>
+        </div>
+        <Button icon={<Plus className="h-4 w-4" />} size="sm" onClick={() => setAddOpen(true)}>Add Branch</Button>
+      </div>
+
+      {isLoading ? <PageSpinner /> : (
+        <div className="rounded-xl border border-gray-100 bg-white overflow-hidden shadow-sm">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Branch</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Code</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Address</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Phone</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600">HQ</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {branches.map((b) => (
+                <tr key={b.branch_id} className={`hover:bg-gray-50 transition-colors ${!b.is_active ? 'opacity-50' : ''}`}>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-100">
+                        <GitBranch className="h-3.5 w-3.5 text-primary-600" />
+                      </div>
+                      <span className="font-medium text-gray-900">{b.branch_name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-500">{b.branch_code}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">{b.address || <span className="text-gray-300">—</span>}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">{b.phone   || <span className="text-gray-300">—</span>}</td>
+                  <td className="px-4 py-3 text-center">
+                    {b.is_headquarters
+                      ? <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium"><Check className="h-3 w-3" /> HQ</span>
+                      : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {b.is_active
+                      ? <span className="text-green-600 text-xs font-medium">Active</span>
+                      : <span className="text-gray-400 text-xs">Inactive</span>}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => setEditBranch(b)}
+                      className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {branches.length === 0 && (
+                <tr><td colSpan={7} className="py-12 text-center text-gray-400">
+                  <GitBranch className="mx-auto mb-2 h-8 w-8 opacity-30" />No branches found.
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Branch" size="sm">
+        <BranchForm onSave={(body) => createMut.mutate(body)} onClose={() => setAddOpen(false)} isPending={createMut.isPending} />
+      </Modal>
+      <Modal open={!!editBranch} onClose={() => setEditBranch(null)} title={`Edit — ${editBranch?.branch_name}`} size="sm">
+        <BranchForm initial={editBranch}
+          onSave={(body) => updateMut.mutate({ id: editBranch?.branch_id, body })}
+          onClose={() => setEditBranch(null)} isPending={updateMut.isPending} />
+      </Modal>
+    </div>
+  );
+}
+
+// ── Tax Rates Tab ─────────────────────────────────────────────────────────────
+
+const KE_PRESETS = [
+  { template_name: 'VAT 16%',    tax_type: 'VAT',    tax_rate: 16,  is_inclusive: false, is_default: false },
+  { template_name: 'Zero-Rated', tax_type: 'VAT',    tax_rate: 0,   is_inclusive: false, is_default: false },
+  { template_name: 'Exempt',     tax_type: 'Exempt', tax_rate: 0,   is_inclusive: false, is_default: false },
+];
+
+function TaxForm({ initial, onSave, onClose, isPending }) {
+  const [name,        setName]        = useState(initial?.template_name ?? '');
+  const [taxType,     setTaxType]     = useState(initial?.tax_type      ?? 'VAT');
+  const [rate,        setRate]        = useState(String(initial?.tax_rate ?? ''));
+  const [inclusive,   setInclusive]   = useState(initial?.is_inclusive  ?? false);
+  const [isDefault,   setIsDefault]   = useState(initial?.is_default    ?? false);
+  const valid = name.trim().length >= 2 && rate !== '';
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Template Name *</label>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. VAT 16%"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Tax Type</label>
+          <select value={taxType} onChange={(e) => setTaxType(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none">
+            <option value="VAT">VAT</option>
+            <option value="Exempt">Exempt</option>
+            <option value="Zero-Rated">Zero-Rated</option>
+            <option value="Custom">Custom</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Rate (%)</label>
+          <input type="number" step="0.01" min="0" max="100" value={rate} onChange={(e) => setRate(e.target.value)}
+            placeholder="16"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
+        </div>
+      </div>
+      <label className="flex items-center gap-3 cursor-pointer">
+        <span className="text-sm text-gray-700">Tax inclusive in price</span>
+        <button type="button" onClick={() => setInclusive(!inclusive)}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${inclusive ? 'bg-primary-600' : 'bg-gray-300'}`}>
+          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${inclusive ? 'translate-x-4' : 'translate-x-1'}`} />
+        </button>
+        <span className="text-xs text-gray-400">{inclusive ? 'Inclusive (price already includes tax)' : 'Exclusive (tax added on top)'}</span>
+      </label>
+      <label className="flex items-center gap-3 cursor-pointer">
+        <span className="text-sm text-gray-700">Set as default</span>
+        <button type="button" onClick={() => setIsDefault(!isDefault)}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isDefault ? 'bg-primary-600' : 'bg-gray-300'}`}>
+          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${isDefault ? 'translate-x-4' : 'translate-x-1'}`} />
+        </button>
+        <span className="text-xs text-gray-400">Applied automatically in POS</span>
+      </label>
+      <div className="flex gap-3 pt-2">
+        <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+        <Button fullWidth disabled={!valid} loading={isPending}
+          onClick={() => onSave({ template_name: name.trim(), tax_type: taxType, tax_rate: parseFloat(rate), is_inclusive: inclusive, is_default: isDefault })}>
+          {initial ? 'Save Changes' : 'Create Tax Rate'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function TaxTab() {
+  const qc = useQueryClient();
+  const [addOpen,  setAddOpen]  = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  const [kraPin,   setKraPin]   = useState('');
+  const [pinDirty, setPinDirty] = useState(false);
+
+  const { data: rates = [], isLoading } = useQuery({
+    queryKey: ['tax-rates'],
+    queryFn:  () => api.get('/tax-rates').then((r) => r.data.data),
+  });
+
+  // Fetch KRA PIN from company profile
+  useQuery({
+    queryKey: ['company-mine'],
+    queryFn:  () => api.get('/companies/mine').then((r) => r.data.data),
+    onSuccess: (d) => setKraPin(d.tax_id ?? ''),
+  });
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['tax-rates'] });
+
+  const createMut = useMutation({
+    mutationFn: (body) => api.post('/tax-rates', body),
+    onSuccess: () => { toast.success('Tax rate created'); invalidate(); setAddOpen(false); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Create failed'),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, body }) => api.put(`/tax-rates/${id}`, body),
+    onSuccess: () => { toast.success('Tax rate updated'); invalidate(); setEditItem(null); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Update failed'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => api.delete(`/tax-rates/${id}`),
+    onSuccess: () => { toast.success('Tax rate deleted'); invalidate(); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Delete failed'),
+  });
+
+  const savePinMut = useMutation({
+    mutationFn: (taxId) => api.patch('/companies/mine/profile', { tax_id: taxId }),
+    onSuccess: () => { toast.success('KRA PIN saved'); setPinDirty(false); qc.invalidateQueries({ queryKey: ['company-mine'] }); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Save failed'),
+  });
+
+  const addPreset = (preset) => createMut.mutate(preset);
+
+  const usedPresets = rates.map((r) => r.template_name);
+  const availablePresets = KE_PRESETS.filter((p) => !usedPresets.includes(p.template_name));
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Tax Rates</h2>
+          <p className="text-sm text-gray-500 mt-0.5">Configure tax templates applied at point of sale (Kenya VAT ready).</p>
+        </div>
+        <Button icon={<Plus className="h-4 w-4" />} size="sm" onClick={() => setAddOpen(true)}>Add Tax Rate</Button>
+      </div>
+
+      {/* KRA PIN row */}
+      <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+        <label className="mb-1 block text-sm font-medium text-gray-700">KRA PIN (Tax Identification Number)</label>
+        <div className="flex gap-3">
+          <input value={kraPin} onChange={(e) => { setKraPin(e.target.value); setPinDirty(true); }}
+            placeholder="e.g. P051234567A"
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-primary-500 focus:outline-none" />
+          {pinDirty && (
+            <Button size="sm" loading={savePinMut.isPending} onClick={() => savePinMut.mutate(kraPin.trim() || null)}>
+              Save PIN
+            </Button>
+          )}
+        </div>
+        <p className="mt-1 text-xs text-gray-400">Printed on receipts as required by KRA regulations.</p>
+      </div>
+
+      {/* Quick-add Kenyan presets */}
+      {availablePresets.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-gray-500 font-medium">Quick add:</span>
+          {availablePresets.map((p) => (
+            <button key={p.template_name}
+              onClick={() => addPreset(p)}
+              className="rounded-full border border-dashed border-primary-400 px-3 py-1 text-xs text-primary-600 hover:bg-primary-50 transition-colors">
+              + {p.template_name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {isLoading ? <PageSpinner /> : (
+        <div className="rounded-xl border border-gray-100 bg-white overflow-hidden shadow-sm">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Name</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Type</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600">Rate</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600">Inclusive</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600">Default</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {rates.map((r) => (
+                <tr key={r.tax_template_id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3 font-medium text-gray-900">{r.template_name}</td>
+                  <td className="px-4 py-3">
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{r.tax_type}</span>
+                  </td>
+                  <td className="px-4 py-3 text-center font-semibold text-gray-700">{r.tax_rate}%</td>
+                  <td className="px-4 py-3 text-center">
+                    {r.is_inclusive
+                      ? <span className="text-green-600 text-xs font-medium">Incl.</span>
+                      : <span className="text-gray-400 text-xs">Excl.</span>}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {r.is_default
+                      ? <span className="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700"><Check className="h-3 w-3" /> Default</span>
+                      : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => setEditItem(r)}
+                        className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => { if (window.confirm(`Delete "${r.template_name}"?`)) deleteMut.mutate(r.tax_template_id); }}
+                        className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {rates.length === 0 && (
+                <tr><td colSpan={6} className="py-12 text-center text-gray-400">
+                  <Percent className="mx-auto mb-2 h-8 w-8 opacity-30" />
+                  No tax rates yet. Add one or use quick-add presets above.
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Tax Rate" size="sm">
+        <TaxForm onSave={(b) => createMut.mutate(b)} onClose={() => setAddOpen(false)} isPending={createMut.isPending} />
+      </Modal>
+      <Modal open={!!editItem} onClose={() => setEditItem(null)} title={`Edit — ${editItem?.template_name}`} size="sm">
+        <TaxForm initial={editItem}
+          onSave={(b) => updateMut.mutate({ id: editItem.tax_template_id, body: b })}
+          onClose={() => setEditItem(null)} isPending={updateMut.isPending} />
+      </Modal>
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
+const TABS = [
+  { id: 'branches',   label: 'Branches',          Icon: GitBranch  },
+  { id: 'categories', label: 'Product Categories', Icon: Package    },
+  { id: 'cust-groups',label: 'Customer Groups',    Icon: Users      },
+  { id: 'loyalty',    label: 'Loyalty Points',     Icon: Star       },
+  { id: 'tax',        label: 'Tax Rates',           Icon: Percent    },
+  { id: 'pay-modes',  label: 'Payment Methods',    Icon: CreditCard },
+  { id: 'terminals',  label: 'Terminals',           Icon: Monitor    },
+];
+
+export default function SettingsPage() {
+  const [activeTab, setActiveTab] = useState('pay-modes');
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-xl font-bold text-gray-900">Settings</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Configure your POS system</p>
+      </div>
+
+      <div className="flex border-b border-gray-200">
+        {TABS.map(({ id, label, Icon }) => (
+          <button key={id} onClick={() => setActiveTab(id)}
+            className={[
+              'flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors',
+              activeTab === id
+                ? 'border-primary-600 text-primary-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
+            ].join(' ')}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div>
+        {activeTab === 'branches'    && <BranchesTab />}
+        {activeTab === 'categories'  && <CategoriesTab />}
+        {activeTab === 'cust-groups' && <CustomerGroupsTab />}
+        {activeTab === 'loyalty'     && <LoyaltyTab />}
+        {activeTab === 'tax'         && <TaxTab />}
+        {activeTab === 'pay-modes'   && <PayModesTab />}
+        {activeTab === 'terminals'   && <TerminalsTab />}
+      </div>
+    </div>
+  );
+}
