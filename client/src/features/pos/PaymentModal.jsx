@@ -644,22 +644,6 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
     );
   };
 
-  // Auto-submit after M-Pesa resolves and all payment lines are satisfied.
-  useEffect(() => {
-    if (!autoSubmitRef.current || !canProcess || isPending) return;
-    autoSubmitRef.current = false;
-    autoSubmitTimerRef.current = setTimeout(() => handleCharge(), 800);
-    return () => clearTimeout(autoSubmitTimerRef.current);
-  }, [canProcess, handleCharge, isPending]);
-
-  // Cancel any pending auto-submit when modal closes
-  useEffect(() => {
-    if (!open) {
-      autoSubmitRef.current = false;
-      clearTimeout(autoSubmitTimerRef.current);
-    }
-  }, [open]);
-
   const handleCharge = useCallback(() => {
     if (!canProcess) return;
     processPayment({
@@ -690,6 +674,22 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
       }),
     });
   }, [canProcess, processPayment, branchId, session, customer, notes, cartTotals, items, methods, paymentLines, pointsToRedeem]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-submit after M-Pesa resolves and all payment lines are satisfied.
+  useEffect(() => {
+    if (!autoSubmitRef.current || !canProcess || isPending) return;
+    autoSubmitRef.current = false;
+    autoSubmitTimerRef.current = setTimeout(() => handleCharge(), 800);
+    return () => clearTimeout(autoSubmitTimerRef.current);
+  }, [canProcess, handleCharge, isPending]);
+
+  // Cancel any pending auto-submit when modal closes
+  useEffect(() => {
+    if (!open) {
+      autoSubmitRef.current = false;
+      clearTimeout(autoSubmitTimerRef.current);
+    }
+  }, [open]);
 
   return (
     <Modal
