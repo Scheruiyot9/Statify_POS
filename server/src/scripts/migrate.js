@@ -19,6 +19,9 @@ const FILES_IN_ORDER = [
   '15_customer_id_fields.sql',   // adds kra_pin, id_number; safe to re-run (IF NOT EXISTS)
   '16_mpesa.sql',                // mpesa_config + mpesa_transactions; safe to re-run (IF NOT EXISTS)
   '17_mpesa_branch_config.sql', // adds branch_id to mpesa_config; partial unique indexes
+  '18_mpesa_checkout_unique.sql', // unique index on checkout_request_id for ON CONFLICT dedup
+  '19_mpesa_c2b.sql',             // unique receipt index + c2b payment_mode
+  '20_stk_sessions.sql',          // persisted STK sessions for server-restart resilience
 ];
 
 async function migrate() {

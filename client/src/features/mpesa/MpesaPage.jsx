@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Smartphone, Search, CheckCircle2, XCircle, Clock, AlertCircle,
-  Download, Settings, Eye, RefreshCw,
+  Download, Settings, Eye, RefreshCw, Link,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -33,16 +33,15 @@ function StatusBadge({ status }) {
   );
 }
 
+const MODE_META = {
+  stk_push: { label: 'STK Push', cls: 'bg-blue-100   text-blue-700'   },
+  manual:   { label: 'Manual',   cls: 'bg-purple-100 text-purple-700' },
+  c2b:      { label: 'C2B',      cls: 'bg-teal-100   text-teal-700'   },
+};
+
 function ModeBadge({ mode }) {
-  return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-      mode === 'stk_push'
-        ? 'bg-blue-100 text-blue-700'
-        : 'bg-purple-100 text-purple-700'
-    }`}>
-      {mode === 'stk_push' ? 'STK Push' : 'Manual'}
-    </span>
-  );
+  const m = MODE_META[mode] ?? { label: mode, cls: 'bg-gray-100 text-gray-600' };
+  return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${m.cls}`}>{m.label}</span>;
 }
 
 // ── Detail row ────────────────────────────────────────────────────────────────
@@ -240,14 +239,23 @@ export default function MpesaPage() {
     retry:    false,
   });
 
+  const { mutate: registerC2B, isPending: isRegistering } = useMutation({
+    mutationFn: (branchId) => api.post('/mpesa/register-c2b', { branchId: branchId || null }),
+    onSuccess: (res) => {
+      const d = res.data.data;
+      toast.success(`C2B registered! Confirmation: ${d.confirmationURL}`);
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'C2B registration failed'),
+  });
+
   const transactions = data?.transactions ?? [];
   const total        = data?.total        ?? 0;
   const pages        = data?.pages        ?? 1;
 
   // Summary stats from current page data
-  const completedAmt = transactions.filter((t) => t.status === 'completed')
+  const completedAmt  = transactions.filter((t) => t.status === 'completed')
     .reduce((s, t) => s + t.amount, 0);
-  const pendingCount = transactions.filter((t) => t.status === 'pending').length;
+  const completedCount = transactions.filter((t) => t.status === 'completed').length;
 
   const clearFilters = () => {
     setSearch(''); setStatus(''); setMode('');
@@ -345,11 +353,21 @@ export default function MpesaPage() {
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <button
-                        onClick={() => { setEditConfig(cfg); setShowConfig(true); }}
-                        className="text-xs text-primary-600 hover:text-primary-800 font-medium">
-                        Edit
-                      </button>
+                      <div className="flex items-center justify-end gap-3">
+                        <button
+                          onClick={() => registerC2B(cfg.branch_id)}
+                          disabled={isRegistering}
+                          title="Register C2B callback URL with Daraja so direct paybill payments appear here"
+                          className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-800 font-medium disabled:opacity-50">
+                          <Link className="h-3 w-3" />
+                          Register C2B
+                        </button>
+                        <button
+                          onClick={() => { setEditConfig(cfg); setShowConfig(true); }}
+                          className="text-xs text-primary-600 hover:text-primary-800 font-medium">
+                          Edit
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -367,12 +385,12 @@ export default function MpesaPage() {
             <p className="text-2xl font-bold text-gray-900 mt-1">{total}</p>
           </div>
           <div className="rounded-xl border border-green-100 bg-green-50 p-4">
-            <p className="text-xs text-green-600 font-medium uppercase tracking-wide">Completed (this page)</p>
+            <p className="text-xs text-green-600 font-medium uppercase tracking-wide">Collected (this page)</p>
             <p className="text-2xl font-bold text-green-700 mt-1">{formatCurrency(completedAmt)}</p>
           </div>
-          <div className="rounded-xl border border-yellow-100 bg-yellow-50 p-4">
-            <p className="text-xs text-yellow-600 font-medium uppercase tracking-wide">Pending (this page)</p>
-            <p className="text-2xl font-bold text-yellow-700 mt-1">{pendingCount}</p>
+          <div className="rounded-xl border border-green-100 bg-green-50 p-4">
+            <p className="text-xs text-green-600 font-medium uppercase tracking-wide">Completed (this page)</p>
+            <p className="text-2xl font-bold text-green-700 mt-1">{completedCount}</p>
           </div>
         </div>
       )}
@@ -390,14 +408,15 @@ export default function MpesaPage() {
           className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none">
           <option value="">All Statuses</option>
           <option value="completed">Completed</option>
-          <option value="pending">Pending</option>
           <option value="failed">Failed</option>
           <option value="cancelled">Cancelled</option>
+          <option value="timeout">Timeout</option>
         </select>
         <select value={mode} onChange={(e) => { setMode(e.target.value); setPage(1); }}
           className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none">
           <option value="">All Modes</option>
           <option value="stk_push">STK Push</option>
+          <option value="c2b">C2B (Direct Paybill)</option>
           <option value="manual">Manual Entry</option>
         </select>
         <input type="date" value={startDate}

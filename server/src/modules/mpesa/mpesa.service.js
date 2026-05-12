@@ -7,6 +7,10 @@ const { isCompanyWide } = require('../../shared/roles');
 // Tokens are valid for 1 hour; we refresh 60 s early.
 const tokenCache = new Map();
 
+// Pending STK sessions (not persisted — short-lived, 30-second window).
+// Keyed by CheckoutRequestID; holds metadata needed to create the DB record on callback.
+const stkSessions = new Map();
+
 // ── Daraja helpers ────────────────────────────────────────────────────────────
 
 const DARAJA_BASE = {
@@ -268,53 +272,100 @@ async function initiateSTKPush(companyId, branchId, {
     throw AppError.badRequest(msg, 'MPESA_STK_FAILED');
   }
 
-  const { rows } = await query(`
-    INSERT INTO mpesa_transactions
-      (company_id, branch_id, checkout_request_id, merchant_request_id,
-       payment_mode, phone_number, amount, account_reference, description,
-       status, stk_response)
-    VALUES ($1,$2,$3,$4,'stk_push',$5,$6,$7,$8,'pending',$9)
-    RETURNING mpesa_txn_id, checkout_request_id, status
-  `, [
-    companyId, branchId || null,
-    data.CheckoutRequestID, data.MerchantRequestID,
-    formattedPhone, parseFloat(amount),
-    accountReference || 'POS', description || 'POS Payment',
-    JSON.stringify(data),
-  ]);
+  const sessionData = {
+    companyId,
+    branchId:         branchId || null,
+    phone:            formattedPhone,
+    amount:           parseFloat(amount),
+    accountReference: accountReference || 'POS',
+    description:      description || 'POS Payment',
+    initiatedAt:      Date.now(),
+  };
+
+  // Keep in memory for fast polling access
+  stkSessions.set(data.CheckoutRequestID, sessionData);
+
+  // Also persist to DB so callbacks survive server restarts.
+  // Fire-and-forget — a failure here doesn't block the STK push response.
+  query(
+    `INSERT INTO stk_sessions
+       (checkout_request_id, company_id, branch_id, phone, amount, account_reference, description)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT (checkout_request_id) DO NOTHING`,
+    [
+      data.CheckoutRequestID, companyId, branchId || null,
+      formattedPhone, parseFloat(amount),
+      accountReference || 'POS', description || 'POS Payment',
+    ]
+  ).catch((e) => console.error('[mpesa-stk] session persist failed:', e.message));
+
+  // Purge stale sessions older than 1 hour (housekeeping)
+  query(`DELETE FROM stk_sessions WHERE created_at < now() - interval '1 hour'`).catch(() => {});
 
   return {
-    mpesaTxnId:        rows[0].mpesa_txn_id,
+    mpesaTxnId:        null,
     checkoutRequestId: data.CheckoutRequestID,
     status:            'pending',
   };
 }
 
-// Poll or return DB state for an STK push in progress
+// Check STK push status.
+// Primary path: callback-created DB record (works when callback URL is publicly reachable).
+// Fallback: query Daraja directly after 8 s (handles localhost dev where callbacks can't arrive).
 async function querySTKStatus(companyId, checkoutRequestId) {
-  const { rows: dbRows } = await query(
-    `SELECT mpesa_txn_id, branch_id, status, mpesa_receipt_number, amount::numeric,
-            failure_reason, completed_at
+  const { rows } = await query(
+    `SELECT mpesa_txn_id, status, mpesa_receipt_number, amount::numeric, failure_reason
      FROM mpesa_transactions
      WHERE checkout_request_id = $1 AND company_id = $2`,
     [checkoutRequestId, companyId]
   );
-  if (!dbRows.length) throw AppError.notFound('M-Pesa transaction');
 
-  const rec = dbRows[0];
-  if (rec.status !== 'pending') {
+  if (rows.length) {
+    const rec = rows[0];
     return {
-      mpesaTxnId:          rec.mpesa_txn_id,
-      status:              rec.status,
-      mpesaReceiptNumber:  rec.mpesa_receipt_number,
-      amount:              parseFloat(rec.amount),
-      failureReason:       rec.failure_reason,
+      mpesaTxnId:         rec.mpesa_txn_id,
+      status:             rec.status,
+      mpesaReceiptNumber: rec.mpesa_receipt_number,
+      amount:             parseFloat(rec.amount),
+      failureReason:      rec.failure_reason,
     };
   }
 
-  // Still pending — actively query Daraja
+  let session = stkSessions.get(checkoutRequestId);
+
+  // If not in memory (server restart), try the DB-persisted session
+  if (!session) {
+    const { rows: dbRows } = await query(
+      `SELECT * FROM stk_sessions WHERE checkout_request_id = $1`,
+      [checkoutRequestId]
+    );
+    if (dbRows.length) {
+      const r = dbRows[0];
+      session = {
+        companyId:        r.company_id,
+        branchId:         r.branch_id,
+        phone:            r.phone,
+        amount:           parseFloat(r.amount),
+        accountReference: r.account_reference,
+        description:      r.description,
+        initiatedAt:      new Date(r.created_at).getTime(),
+      };
+      // Restore to in-memory map so subsequent polls are fast
+      stkSessions.set(checkoutRequestId, session);
+    }
+  }
+
+  const amount = session?.amount ?? 0;
+
+  if (!session) return { mpesaTxnId: null, status: 'pending', amount };
+
+  // Wait 8 s before querying Daraja — gives sandbox auto-payment time to settle
+  // and avoids premature 1037 (DS Timeout) codes before the customer has responded.
+  const elapsedSecs = (Date.now() - session.initiatedAt) / 1000;
+  if (elapsedSecs < 8) return { mpesaTxnId: null, status: 'pending', amount };
+
   try {
-    const config   = await fetchConfig(companyId, rec.branch_id);
+    const config   = await fetchConfig(companyId, session.branchId);
     const base     = darajaBase(config.environment);
     const ts       = mpesaTimestamp();
     const password = Buffer.from(
@@ -323,46 +374,56 @@ async function querySTKStatus(companyId, checkoutRequestId) {
 
     const { data } = await darajaPost(
       `${base}/mpesa/stkpushquery/v1/query`,
-      {
-        BusinessShortCode: config.shortcode.trim(),
-        Password:          password,
-        Timestamp:         ts,
-        CheckoutRequestID: checkoutRequestId,
-      },
+      { BusinessShortCode: config.shortcode.trim(), Password: password, Timestamp: ts, CheckoutRequestID: checkoutRequestId },
       config
     );
+
     const code = String(data.ResultCode ?? '');
 
     if (code === '0') {
-      await query(`
-        UPDATE mpesa_transactions
-        SET status = 'completed', result_code = $2, completed_at = now(), updated_at = now()
-        WHERE checkout_request_id = $1
-      `, [checkoutRequestId, code]);
-      return {
-        mpesaTxnId:         rec.mpesa_txn_id,
-        status:             'completed',
-        mpesaReceiptNumber: rec.mpesa_receipt_number || null,
-        amount:             parseFloat(rec.amount),
-      };
+      // Payment confirmed but callback was missed (or URL not reachable) — create record
+      const { rows: ins } = await query(`
+        INSERT INTO mpesa_transactions
+          (company_id, branch_id, checkout_request_id, payment_mode, phone_number, amount,
+           account_reference, description, status, result_code, completed_at)
+        VALUES ($1,$2,$3,'stk_push',$4,$5,$6,$7,'completed',$8,now())
+        ON CONFLICT (checkout_request_id) DO NOTHING
+        RETURNING mpesa_txn_id
+      `, [
+        companyId, session.branchId, checkoutRequestId,
+        session.phone, session.amount,
+        session.accountReference, session.description, code,
+      ]);
+      stkSessions.delete(checkoutRequestId);
+
+      // ON CONFLICT DO NOTHING → callback arrived concurrently; re-read the full row
+      if (!ins.length) {
+        const { rows: existing } = await query(
+          `SELECT mpesa_txn_id, mpesa_receipt_number FROM mpesa_transactions WHERE checkout_request_id = $1`,
+          [checkoutRequestId]
+        );
+        const row = existing[0];
+        return { mpesaTxnId: row?.mpesa_txn_id ?? null, status: 'completed', mpesaReceiptNumber: row?.mpesa_receipt_number ?? null, amount };
+      }
+      return { mpesaTxnId: ins[0].mpesa_txn_id, status: 'completed', mpesaReceiptNumber: null, amount };
+
     } else if (code !== '' && code !== 'undefined') {
-      const newStatus = code === '1032' ? 'cancelled' : 'failed';
-      const reason    = data.ResultDesc || null;
-      await query(`
-        UPDATE mpesa_transactions
-        SET status = $2, result_code = $3, failure_reason = $4, completed_at = now(), updated_at = now()
-        WHERE checkout_request_id = $1
-      `, [checkoutRequestId, newStatus, code, reason]);
-      return { mpesaTxnId: rec.mpesa_txn_id, status: newStatus, amount: parseFloat(rec.amount), failureReason: reason };
+      // Terminal failure — tell the client; don't clutter the DB with failed attempts
+      const newStatus = code === '1032' ? 'cancelled' : code === '1037' ? 'timeout' : 'failed';
+      stkSessions.delete(checkoutRequestId);
+      return { mpesaTxnId: null, status: newStatus, amount, failureReason: data.ResultDesc || null };
     }
-  } catch {
-    // Daraja query failed — return current DB state
+    // Empty code → Daraja still processing; keep polling
+  } catch (err) {
+    console.error('[mpesa-stk-query] Daraja fallback failed:', err.message);
   }
 
-  return { mpesaTxnId: rec.mpesa_txn_id, status: 'pending', amount: parseFloat(rec.amount) };
+  return { mpesaTxnId: null, status: 'pending', amount };
 }
 
 // ── Daraja callback (called by M-Pesa server) ─────────────────────────────────
+// This is the ONLY place that creates mpesa_transaction records for STK pushes.
+// The POS never inserts — it only reads (via querySTKStatus) and links sales (linkToSale).
 
 async function processCallback(body) {
   const cb = body?.Body?.stkCallback;
@@ -371,37 +432,192 @@ async function processCallback(body) {
   const { CheckoutRequestID, ResultCode, ResultDesc, CallbackMetadata } = cb;
   const succeeded = ResultCode === 0 || ResultCode === '0';
 
+  // Recover metadata from in-memory session first (fast path).
+  // Fall back to DB-persisted stk_sessions when Map is cold (server restart scenario).
+  let session = stkSessions.get(CheckoutRequestID);
+  stkSessions.delete(CheckoutRequestID);
+
+  if (!session) {
+    const { rows: dbRows } = await query(
+      `DELETE FROM stk_sessions WHERE checkout_request_id = $1 RETURNING *`,
+      [CheckoutRequestID]
+    );
+    if (dbRows.length) {
+      const r = dbRows[0];
+      session = {
+        companyId:        r.company_id,
+        branchId:         r.branch_id,
+        phone:            r.phone,
+        amount:           parseFloat(r.amount),
+        accountReference: r.account_reference,
+        description:      r.description,
+        initiatedAt:      new Date(r.created_at).getTime(),
+      };
+      console.log('[mpesa-callback] Recovered session from DB for', CheckoutRequestID);
+    }
+  } else {
+    // Also clean up the DB row so we don't accumulate stale entries
+    query(
+      `DELETE FROM stk_sessions WHERE checkout_request_id = $1`,
+      [CheckoutRequestID]
+    ).catch(() => {});
+  }
+
+  if (!session) {
+    console.warn('[mpesa-callback] No session for', CheckoutRequestID, '— cannot record payment');
+    return;
+  }
+
   let receiptNumber = null;
-  if (succeeded && Array.isArray(CallbackMetadata?.Item)) {
+  let amount        = session.amount;
+  let phone         = session.phone;
+
+  if (Array.isArray(CallbackMetadata?.Item)) {
     for (const item of CallbackMetadata.Item) {
       if (item.Name === 'MpesaReceiptNumber') receiptNumber = String(item.Value);
+      if (item.Name === 'Amount')             amount        = parseFloat(item.Value) || amount;
+      if (item.Name === 'PhoneNumber')        phone         = String(item.Value)     || phone;
     }
   }
 
-  if (succeeded) {
-    await query(`
-      UPDATE mpesa_transactions
-      SET status               = 'completed',
-          mpesa_receipt_number = $2,
-          result_code          = $3,
-          callback_payload     = $4,
-          completed_at         = now(),
-          updated_at           = now()
-      WHERE checkout_request_id = $1 AND status = 'pending'
-    `, [CheckoutRequestID, receiptNumber, String(ResultCode), JSON.stringify(body)]);
-  } else {
-    const newStatus = String(ResultCode) === '1032' ? 'cancelled' : 'failed';
-    await query(`
-      UPDATE mpesa_transactions
-      SET status           = $2,
-          result_code      = $3,
-          failure_reason   = $4,
-          callback_payload = $5,
-          completed_at     = now(),
-          updated_at       = now()
-      WHERE checkout_request_id = $1 AND status = 'pending'
-    `, [CheckoutRequestID, newStatus, String(ResultCode), ResultDesc || null, JSON.stringify(body)]);
+  if (!succeeded) {
+    const code = String(ResultCode);
+    const reason = code === '1032' ? 'cancelled' : code === '1037' ? 'prompt expired' : 'failed';
+    console.log('[mpesa-callback] payment %s for %s — not recorded', reason, CheckoutRequestID);
+    return;
   }
+
+  // Only completed payments are written to mpesa_transactions.
+  // ON CONFLICT DO UPDATE backfills the receipt number if the Daraja query fallback
+  // already created the row (which has no receipt number since the query API doesn't return one).
+  await query(`
+    INSERT INTO mpesa_transactions
+      (company_id, branch_id, checkout_request_id, payment_mode, phone_number, amount,
+       account_reference, description, status, mpesa_receipt_number,
+       result_code, callback_payload, completed_at)
+    VALUES ($1,$2,$3,'stk_push',$4,$5,$6,$7,'completed',$8,$9,$10,now())
+    ON CONFLICT (checkout_request_id) DO UPDATE SET
+      mpesa_receipt_number = COALESCE(EXCLUDED.mpesa_receipt_number, mpesa_transactions.mpesa_receipt_number),
+      status               = 'completed',
+      result_code          = EXCLUDED.result_code,
+      callback_payload     = EXCLUDED.callback_payload,
+      completed_at         = COALESCE(mpesa_transactions.completed_at, EXCLUDED.completed_at),
+      updated_at           = now()
+  `, [
+    session.companyId, session.branchId, CheckoutRequestID,
+    phone, amount,
+    session.accountReference, session.description,
+    receiptNumber, String(ResultCode),
+    JSON.stringify(body),
+  ]);
+}
+
+// ── C2B (direct paybill/till payments — customer-initiated) ──────────────────
+
+// Called by Daraja's confirmation callback when a customer pays directly to the paybill.
+// Identifies the company by matching BusinessShortCode → mpesa_config.shortcode.
+async function processC2BCallback(body) {
+  // Daraja uses TransID / BusinessShortCode / TransAmount / MSISDN.
+  // Accept common aliases so sandbox simulations work without exact field names.
+  const b = body || {};
+  const TransID           = b.TransID           || b.transID           || b.transId;
+  const BusinessShortCode = b.BusinessShortCode || b.ShortCode         || b.shortCode;
+  const TransAmount       = b.TransAmount       || b.Amount            || b.amount;
+  const BillRefNumber     = b.BillRefNumber     || b.billRefNumber     || b.AccountReference;
+  const MSISDN            = b.MSISDN            || b.Msisdn            || b.msisdn            || b.PhoneNumber;
+  const FirstName         = b.FirstName  || '';
+  const LastName          = b.LastName   || '';
+
+  if (!TransID || !BusinessShortCode) {
+    console.warn('[mpesa-c2b] Missing TransID or BusinessShortCode — got:', JSON.stringify(b).slice(0, 200));
+    return;
+  }
+
+  // Resolve company from shortcode
+  const { rows: cfgRows } = await query(
+    `SELECT company_id FROM mpesa_config WHERE shortcode = $1 AND is_active = TRUE LIMIT 1`,
+    [String(BusinessShortCode)]
+  );
+  if (!cfgRows.length) {
+    // Log all active shortcodes so the mismatch is visible in server logs
+    const { rows: allCodes } = await query(
+      `SELECT shortcode FROM mpesa_config WHERE is_active = TRUE`
+    );
+    console.warn(
+      '[mpesa-c2b] No active config for shortcode "%s". Active shortcodes in DB: [%s]',
+      BusinessShortCode,
+      allCodes.map((r) => r.shortcode).join(', ') || 'none'
+    );
+    return;
+  }
+
+  const { company_id } = cfgRows[0];
+  const name = [FirstName, LastName].filter(Boolean).join(' ');
+
+  await query(`
+    INSERT INTO mpesa_transactions
+      (company_id, branch_id, payment_mode, phone_number, amount,
+       mpesa_receipt_number, account_reference, description,
+       status, completed_at, callback_payload)
+    VALUES ($1, NULL, 'c2b', $2, $3, $4, $5, $6, 'completed', now(), $7)
+    ON CONFLICT (mpesa_receipt_number) WHERE mpesa_receipt_number IS NOT NULL DO NOTHING
+  `, [
+    company_id,
+    MSISDN ? formatPhone(String(MSISDN)) : null,
+    parseFloat(TransAmount) || 0,
+    String(TransID),
+    BillRefNumber  || null,
+    name ? `C2B: ${name}` : 'C2B Payment',
+    JSON.stringify(body),
+  ]);
+}
+
+// Register C2B confirmation + validation URLs with Daraja for a given config.
+// Must be called once per shortcode (or whenever the callback URL changes).
+async function registerC2BUrl(companyId, branchId) {
+  const config = await fetchConfig(companyId, branchId);
+  const base   = darajaBase(config.environment);
+
+  // Derive public base URL from callback_url or API_BASE_URL env
+  let apiBase = (process.env.API_BASE_URL || '').trim();
+  if (!apiBase && config.callback_url) {
+    try { apiBase = new URL(config.callback_url).origin; } catch {}
+  }
+  if (!apiBase)
+    throw AppError.badRequest(
+      'Set API_BASE_URL in your environment (or a Callback URL in the config) before registering C2B.',
+      'MISSING_API_BASE_URL'
+    );
+
+  const confirmationURL = `${apiBase}/api/v1/mpesa/callback/c2b`;
+  const validationURL   = `${apiBase}/api/v1/mpesa/callback/c2b/validate`;
+
+  const { res, data } = await darajaPost(
+    `${base}/mpesa/c2b/v1/registerurl`,
+    {
+      ShortCode:       config.shortcode.trim(),
+      ResponseType:    'Completed',
+      ConfirmationURL: confirmationURL,
+      ValidationURL:   validationURL,
+    },
+    config
+  );
+
+  console.log('[mpesa-c2b-register] status=%d body=%s', res.status, JSON.stringify(data));
+
+  // ResponseCode '0' = success; some Daraja responses omit it on 200 OK
+  // "already registered" is also treated as success — URLs are already in place
+  const responseCode = String(data.ResponseCode ?? '0');
+  const description  = (data.ResponseDescription || '').toLowerCase();
+  const alreadyDone  = description.includes('already') || description.includes('exists');
+  const failed = !res.ok && !alreadyDone && responseCode !== '0';
+  if (failed) {
+    const detail = data.ResponseDescription || data.errorMessage || data.errorCode
+      || `HTTP ${res.status}: ${JSON.stringify(data).slice(0, 300)}`;
+    throw AppError.badRequest(`C2B registration failed — ${detail}`, 'C2B_REGISTRATION_FAILED');
+  }
+
+  return { confirmationURL, validationURL, daraja: data };
 }
 
 // ── Manual receipt entry ──────────────────────────────────────────────────────
@@ -589,6 +805,7 @@ async function listTransactions(companyId, role, branchIds, filters = {}) {
 module.exports = {
   getConfigForCompany, saveConfig,
   initiateSTKPush, querySTKStatus, processCallback,
+  processC2BCallback, registerC2BUrl,
   recordManualPayment, listUnlinked, linkToSale,
   listTransactions,
 };

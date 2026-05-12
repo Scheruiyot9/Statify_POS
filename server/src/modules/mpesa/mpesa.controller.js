@@ -27,13 +27,33 @@ const stkStatus = async (req, res) => {
   res.json({ success: true, data: result });
 };
 
-// ── Daraja callback — no auth, must respond 200 before processing ─────────────
+// ── Daraja callbacks — no auth, must respond 200 before processing ────────────
 
 const callback = async (req, res) => {
   res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
   svc.processCallback(req.body).catch((err) =>
     console.error('[mpesa-callback]', err.message)
   );
+};
+
+// C2B validation — Daraja asks "should I accept this payment?" — always say yes
+const c2bValidate = (req, res) => {
+  res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+};
+
+// C2B confirmation — Daraja confirms the payment has been received
+const c2bConfirm = async (req, res) => {
+  res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  svc.processC2BCallback(req.body).catch((err) =>
+    console.error('[mpesa-c2b]', err.message)
+  );
+};
+
+// Register C2B URLs with Daraja (admin, one-time per shortcode)
+const registerC2B = async (req, res) => {
+  const branchId = resolveBranchId(req, { from: ['body'], required: false });
+  const result   = await svc.registerC2BUrl(req.tenantId, branchId);
+  res.json({ success: true, data: result });
 };
 
 // ── Manual receipt entry ──────────────────────────────────────────────────────
@@ -67,4 +87,4 @@ const list = async (req, res) => {
   res.json({ success: true, data: result });
 };
 
-module.exports = { getConfig, saveConfig, stkPush, stkStatus, callback, manualEntry, unlinked, linkToSale, list };
+module.exports = { getConfig, saveConfig, stkPush, stkStatus, callback, c2bValidate, c2bConfirm, registerC2B, manualEntry, unlinked, linkToSale, list };

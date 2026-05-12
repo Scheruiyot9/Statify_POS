@@ -23,7 +23,7 @@ const isMpesa = (methodName) =>
 
 // ── Manual entry sub-panel (with "find received payment" lookup) ──────────────
 
-function ManualPanel({ line, phone, setPhone, manualCode, setManualCode, isSubmitting, handleManual, onReferenceResolved, inputCls }) {
+function ManualPanel({ line, phone, setPhone, manualCode, setManualCode, isSubmitting, handleManual, onReferenceResolved, inputCls, autoOpenLookup, onAutoOpenDone }) {
   const [showLookup, setShowLookup]   = useState(false);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [unlinked, setUnlinked]       = useState([]);
@@ -44,6 +44,15 @@ function ManualPanel({ line, phone, setPhone, manualCode, setManualCode, isSubmi
       setLookupLoading(false);
     }
   };
+
+  // When coming from a timed-out STK session, auto-open the lookup immediately
+  useEffect(() => {
+    if (autoOpenLookup) {
+      fetchUnlinked();
+      onAutoOpenDone?.();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSelect = (txn) => {
     // Use the existing transaction — skip /manual creation entirely
@@ -130,22 +139,59 @@ function ManualPanel({ line, phone, setPhone, manualCode, setManualCode, isSubmi
 
 // ── STK Push panel (shown when M-Pesa is added) ───────────────────────────────
 
+const SESSION_LIMIT_MS = 30 * 1000; // 30 seconds
+
+function formatElapsed(ms) {
+  const total = Math.floor(ms / 1000);
+  const m     = Math.floor(total / 60);
+  const s     = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
   const method        = methods.find((m) => m.payment_method_id === line.methodId);
   const customerPhone = useAuthStore((s) => s.user)?.phone || '';
 
-  const [mpesaMode,   setMpesaMode]   = useState('stk');   // 'stk' | 'manual'
+  const [mpesaMode,   setMpesaMode]   = useState('stk');
   const [phone,       setPhone]       = useState(customerPhone);
   const [manualCode,  setManualCode]  = useState('');
   const [stkState,    setStkState]    = useState('idle');   // idle|sending|waiting|done|failed
   const [stkError,    setStkError]    = useState('');
-  const [pendingTxn,  setPendingTxn]  = useState(null);    // { mpesaTxnId, checkoutRequestId }
-  const pollRef = useRef(null);
+  const [pendingTxn,  setPendingTxn]  = useState(null);
+  const [elapsed,     setElapsed]     = useState(0);        // ms since first STK push
+  const [autoLookup,  setAutoLookup]  = useState(false);   // open lookup immediately in manual mode
+
+  const pollRef        = useRef(null);
+  const clockRef       = useRef(null);
+  const sessionStartRef = useRef(null);  // timestamp of first STK push this session
 
   const amount = line.amount;
 
-  // Clear poll on unmount or mode switch
-  useEffect(() => () => clearInterval(pollRef.current), []);
+  // Clear intervals on unmount
+  useEffect(() => () => {
+    clearInterval(pollRef.current);
+    clearInterval(clockRef.current);
+  }, []);
+
+  const stopSession = () => {
+    clearInterval(pollRef.current);
+    clearInterval(clockRef.current);
+    sessionStartRef.current = null;
+    setElapsed(0);
+  };
+
+  const startClock = () => {
+    clearInterval(clockRef.current);
+    clockRef.current = setInterval(() => {
+      const ms = Date.now() - sessionStartRef.current;
+      setElapsed(ms);
+      if (ms >= SESSION_LIMIT_MS) {
+        stopSession();
+        setStkState('failed');
+        setStkError('Payment session expired. If the customer already paid, use "Find Payment" below.');
+      }
+    }, 1000);
+  };
 
   const { mutate: startSTK, isPending: isSending } = useMutation({
     mutationFn: (body) => api.post('/mpesa/stk-push', body).then((r) => r.data.data),
@@ -153,7 +199,11 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
       setPendingTxn(data);
       setStkState('waiting');
       setStkError('');
-      // Poll every 4 seconds until resolved
+      if (!sessionStartRef.current) {
+        sessionStartRef.current = Date.now();
+        startClock();
+      }
+      clearInterval(pollRef.current);
       pollRef.current = setInterval(() => pollStatus(data.checkoutRequestId), 4000);
     },
     onError: (e) => {
@@ -165,7 +215,6 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
   const { mutate: submitManual, isPending: isSubmitting } = useMutation({
     mutationFn: (body) => api.post('/mpesa/manual', body).then((r) => r.data.data),
     onSuccess: (data) => {
-      // triggers auto-submit in PaymentModal via canProcess effect
       onReferenceResolved(line.methodId, data.mpesaReceiptNumber, data.mpesaTxnId);
     },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to record receipt'),
@@ -175,15 +224,37 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
     try {
       const { data } = await api.get(`/mpesa/stk-status/${checkoutRequestId}`);
       const result = data.data;
+
       if (result.status === 'completed') {
         clearInterval(pollRef.current);
+        stopSession();
         setStkState('done');
-        onReferenceResolved(line.methodId, result.mpesaReceiptNumber, pendingTxn.mpesaTxnId);
-        toast.success(`M-Pesa payment confirmed: ${result.mpesaReceiptNumber}`);
-      } else if (result.status === 'failed' || result.status === 'cancelled') {
+        onReferenceResolved(line.methodId, result.mpesaReceiptNumber, result.mpesaTxnId);
+        toast.success('M-Pesa payment confirmed!');
+
+      } else if (result.status === 'timeout') {
+        // Prompt expired on customer's phone — resend automatically if session still open
+        clearInterval(pollRef.current);
+        const sessionMs = Date.now() - (sessionStartRef.current || Date.now());
+        if (sessionMs < SESSION_LIMIT_MS) {
+          toast('Prompt expired — resending to customer…', { icon: '🔄', duration: 3000 });
+          startSTK({ phone, amount, accountReference: 'POS', description: 'POS Payment' });
+        } else {
+          stopSession();
+          setStkState('failed');
+          setStkError('Payment session expired. Please start a new transaction.');
+        }
+
+      } else if (result.status === 'cancelled') {
         clearInterval(pollRef.current);
         setStkState('failed');
-        setStkError(result.failureReason || 'Payment was not completed. Please retry.');
+        setStkError('Customer cancelled the M-Pesa prompt. Tap "Resend" to try again.');
+
+      } else if (result.status === 'failed') {
+        clearInterval(pollRef.current);
+        stopSession();
+        setStkState('failed');
+        setStkError(result.failureReason || 'Payment failed. Please retry.');
       }
     } catch {
       // Network blip — keep polling
@@ -197,18 +268,27 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
     startSTK({ phone, amount, accountReference: 'POS', description: 'POS Payment' });
   };
 
-  const handleManual = () => {
-    if (!manualCode.trim()) { toast.error('Enter the M-Pesa receipt code'); return; }
-    submitManual({ receiptNumber: manualCode.trim(), amount, phone: phone || undefined });
+  const handleResend = () => {
+    setStkState('sending');
+    setStkError('');
+    startSTK({ phone, amount, accountReference: 'POS', description: 'POS Payment' });
   };
 
   const handleCancel = () => {
     clearInterval(pollRef.current);
+    stopSession();
     setStkState('idle');
     setPendingTxn(null);
     setStkError('');
   };
 
+  const handleManual = () => {
+    if (!manualCode.trim()) { toast.error('Enter the M-Pesa receipt code'); return; }
+    submitManual({ receiptNumber: manualCode.trim(), amount, phone: phone || undefined });
+  };
+
+  const sessionActive   = !!sessionStartRef.current;
+  const remainingMs     = Math.max(0, SESSION_LIMIT_MS - elapsed);
   const inputCls = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-green-500 focus:outline-none';
 
   return (
@@ -222,12 +302,19 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
             {formatCurrency(amount)}
           </span>
         </div>
-        <button onClick={onRemove} className="text-gray-300 hover:text-red-500 transition-colors">
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          {sessionActive && stkState === 'waiting' && (
+            <span className="text-xs text-gray-400 font-mono">
+              {formatElapsed(SESSION_LIMIT_MS - elapsed)} left
+            </span>
+          )}
+          <button onClick={onRemove} className="text-gray-300 hover:text-red-500 transition-colors">
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
-      {/* Mode toggle */}
+      {/* Mode toggle — only shown before session starts */}
       {stkState === 'idle' && (
         <div className="flex rounded-lg border border-green-200 bg-white overflow-hidden text-xs font-medium">
           <button
@@ -272,6 +359,9 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
               <p className="text-xs text-gray-500 text-center">
                 M-Pesa prompt sent to <strong>{phone}</strong>. Ask the customer to enter their PIN.
               </p>
+              <p className="text-xs text-gray-400">
+                Session open for {formatElapsed(elapsed)} · resends automatically if prompt expires
+              </p>
               <button onClick={handleCancel}
                 className="text-xs text-red-500 hover:text-red-700 mt-1">
                 Cancel
@@ -298,10 +388,32 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
                 <XCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-red-700">{stkError}</p>
               </div>
-              <Button size="sm" fullWidth variant="secondary"
-                onClick={handleCancel}>
-                Try Again
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" fullWidth variant="secondary" onClick={handleCancel}>
+                  Cancel
+                </Button>
+                {remainingMs > 0 ? (
+                  <Button size="sm" fullWidth
+                    icon={<Send className="h-3.5 w-3.5" />}
+                    onClick={handleResend}
+                    disabled={isSending}
+                    loading={isSending}
+                    className="!bg-green-600 !text-white hover:!bg-green-700">
+                    Resend
+                  </Button>
+                ) : (
+                  <Button size="sm" fullWidth
+                    icon={<Search className="h-3.5 w-3.5" />}
+                    onClick={() => {
+                      setStkState('idle');
+                      setMpesaMode('manual');
+                      setAutoLookup(true);
+                    }}
+                    className="!bg-green-600 !text-white hover:!bg-green-700">
+                    Find Payment
+                  </Button>
+                )}
+              </div>
             </div>
           )}
         </>
@@ -319,6 +431,8 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
           handleManual={handleManual}
           onReferenceResolved={onReferenceResolved}
           inputCls={inputCls}
+          autoOpenLookup={autoLookup}
+          onAutoOpenDone={() => setAutoLookup(false)}
         />
       )}
     </div>

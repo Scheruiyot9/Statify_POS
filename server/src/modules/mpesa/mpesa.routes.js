@@ -9,14 +9,17 @@ const router = Router();
 
 // ── Public — Daraja sends callbacks here, no auth token ───────────────────────
 // Must be registered before the authenticate middleware block below.
-router.post('/callback', controller.callback);
+router.post('/callback',              controller.callback);
+router.post('/callback/c2b',          controller.c2bConfirm);   // C2B confirmation
+router.post('/callback/c2b/validate', controller.c2bValidate);  // C2B validation
 
 // ── All other routes require authentication + tenant context ──────────────────
 router.use(authenticate, attachTenant, verifyTenant, scopeTenant, requireTenantContext);
 
 // Config — company_admin only
-router.get('/config',  requireRole('company_admin'), controller.getConfig);
-router.post('/config', requireRole('company_admin'), controller.saveConfig);
+router.get('/config',         requireRole('company_admin'), controller.getConfig);
+router.post('/config',        requireRole('company_admin'), controller.saveConfig);
+router.post('/register-c2b',  requireRole('company_admin'), controller.registerC2B);
 
 // Transaction list — accountant and above
 router.get('/transactions', requireRole('accountant'), controller.list);
