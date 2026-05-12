@@ -41,10 +41,10 @@ const linkSaleSchema = Joi.object({
 });
 
 const listQuerySchema = Joi.object({
-  status:      Joi.string().valid('pending', 'completed', 'failed', 'cancelled', 'timeout'),
-  paymentMode: Joi.string().valid('stk_push', 'manual', 'c2b'),
-  startDate:   Joi.string().isoDate(),
-  endDate:     Joi.string().isoDate(),
+  status:      Joi.string().valid('pending', 'completed', 'failed', 'cancelled', 'timeout').allow(''),
+  paymentMode: Joi.string().valid('stk_push', 'manual', 'c2b').allow(''),
+  startDate:   Joi.string().isoDate().allow(''),
+  endDate:     Joi.string().isoDate().allow(''),
   search:      Joi.string().max(100).allow(''),
   branchId:    Joi.string().uuid().allow(''),
   page:        Joi.number().integer().min(1).default(1),
