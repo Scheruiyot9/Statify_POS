@@ -371,10 +371,12 @@ async function querySTKStatus(companyId, checkoutRequestId) {
 
   if (!session) return { mpesaTxnId: null, status: 'pending', amount };
 
-  // Wait 8 s before querying Daraja — gives sandbox auto-payment time to settle
-  // and avoids premature 1037 (DS Timeout) codes before the customer has responded.
+  // Wait 55 s before falling back to a direct Daraja query.
+  // Daraja's STK prompt is active for ~60 s; querying before it expires always
+  // returns 1037 ("DS Timeout") even while the customer is still responding.
+  // The callback path (primary) resolves this much sooner when the URL is reachable.
   const elapsedSecs = (Date.now() - session.initiatedAt) / 1000;
-  if (elapsedSecs < 8) return { mpesaTxnId: null, status: 'pending', amount };
+  if (elapsedSecs < 55) return { mpesaTxnId: null, status: 'pending', amount };
 
   try {
     const config   = await fetchConfig(companyId, session.branchId);

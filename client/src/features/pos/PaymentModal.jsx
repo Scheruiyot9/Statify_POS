@@ -139,7 +139,7 @@ function ManualPanel({ line, phone, setPhone, manualCode, setManualCode, isSubmi
 
 // ── STK Push panel (shown when M-Pesa is added) ───────────────────────────────
 
-const SESSION_LIMIT_MS = 65 * 1000; // 65 s — Daraja keeps the prompt open for ~60 s
+const SESSION_LIMIT_MS = 120 * 1000; // 2 min — covers 55 s Daraja fallback wait + response time
 
 function formatElapsed(ms) {
   const total = Math.floor(ms / 1000);
