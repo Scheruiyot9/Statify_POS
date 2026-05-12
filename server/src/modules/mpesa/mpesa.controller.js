@@ -75,7 +75,7 @@ const unlinked = async (req, res) => {
 // ── Link to sale (called after createTransaction succeeds) ────────────────────
 
 const linkToSale = async (req, res) => {
-  await svc.linkToSale(req.params.id, req.body.salesTransactionId);
+  await svc.linkToSale(req.tenantId, req.params.id, req.body.salesTransactionId);
   res.json({ success: true });
 };
 

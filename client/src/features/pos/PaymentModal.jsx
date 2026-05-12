@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   CreditCard, Smartphone, Banknote, CheckCircle, Plus, Trash2,
@@ -139,7 +139,7 @@ function ManualPanel({ line, phone, setPhone, manualCode, setManualCode, isSubmi
 
 // ── STK Push panel (shown when M-Pesa is added) ───────────────────────────────
 
-const SESSION_LIMIT_MS = 30 * 1000; // 30 seconds
+const SESSION_LIMIT_MS = 65 * 1000; // 65 s — Daraja keeps the prompt open for ~60 s
 
 function formatElapsed(ms) {
   const total = Math.floor(ms / 1000);
@@ -650,7 +650,7 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
     autoSubmitRef.current = false;
     autoSubmitTimerRef.current = setTimeout(() => handleCharge(), 800);
     return () => clearTimeout(autoSubmitTimerRef.current);
-  }, [canProcess]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [canProcess, handleCharge, isPending]);
 
   // Cancel any pending auto-submit when modal closes
   useEffect(() => {
@@ -660,7 +660,7 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
     }
   }, [open]);
 
-  const handleCharge = () => {
+  const handleCharge = useCallback(() => {
     if (!canProcess) return;
     processPayment({
       branchId,
@@ -689,7 +689,7 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
         };
       }),
     });
-  };
+  }, [canProcess, processPayment, branchId, session, customer, notes, cartTotals, items, methods, paymentLines, pointsToRedeem]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Modal

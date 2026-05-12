@@ -5,10 +5,15 @@ const { isCompanyWide } = require('../../shared/roles');
 
 // Per-process access-token cache keyed by config_id.
 // Tokens are valid for 1 hour; we refresh 60 s early.
+// NOTE: this is in-process only. With multiple workers (PM2 cluster, multiple dynos)
+// each worker fetches its own token independently — harmless but redundant.
+// Replace with a shared Redis cache if running more than one Node process.
 const tokenCache = new Map();
 
-// Pending STK sessions (not persisted — short-lived, 30-second window).
-// Keyed by CheckoutRequestID; holds metadata needed to create the DB record on callback.
+// Pending STK sessions keyed by CheckoutRequestID.
+// Backed by the stk_sessions DB table so sessions survive server restarts.
+// NOTE: same single-process caveat as tokenCache above — a push on worker 1 is
+// immediately visible to worker 2 only via the DB fallback path, not this Map.
 const stkSessions = new Map();
 
 // ── Daraja helpers ────────────────────────────────────────────────────────────
@@ -241,8 +246,15 @@ async function initiateSTKPush(companyId, branchId, {
   ).toString('base64');
 
   const formattedPhone = formatPhone(phone);
-  const callbackUrl = (config.callback_url || '').trim()
-    || `${(process.env.API_BASE_URL || '').trim() || 'https://your-server.com'}/api/v1/mpesa/callback`;
+  let apiBase = null;
+  try { if (config.callback_url) apiBase = new URL(config.callback_url).origin; } catch {}
+  apiBase = apiBase || (process.env.API_BASE_URL || '').trim() || null;
+  if (!apiBase)
+    throw AppError.badRequest(
+      'Set API_BASE_URL in your environment (or a Callback URL in the M-Pesa config) before initiating STK Push.',
+      'MISSING_API_BASE_URL'
+    );
+  const callbackUrl = `${apiBase}/api/v1/mpesa/callback`;
 
   const stkBody = {
     BusinessShortCode: config.shortcode.trim(),
@@ -632,18 +644,12 @@ async function recordManualPayment(companyId, branchId, {
 
   const receipt = receiptNumber.toUpperCase().trim();
 
-  const { rows: dup } = await query(
-    `SELECT 1 FROM mpesa_transactions WHERE company_id = $1 AND mpesa_receipt_number = $2`,
-    [companyId, receipt]
-  );
-  if (dup.length)
-    throw AppError.conflict('This M-Pesa receipt number has already been recorded', 'DUPLICATE_RECEIPT');
-
   const { rows } = await query(`
     INSERT INTO mpesa_transactions
       (company_id, branch_id, payment_mode, phone_number, amount,
        account_reference, description, status, mpesa_receipt_number, completed_at)
     VALUES ($1,$2,'manual',$3,$4,$5,$6,'completed',$7,now())
+    ON CONFLICT (mpesa_receipt_number) WHERE mpesa_receipt_number IS NOT NULL DO NOTHING
     RETURNING mpesa_txn_id, status, mpesa_receipt_number, amount::numeric
   `, [
     companyId, branchId || null,
@@ -653,6 +659,9 @@ async function recordManualPayment(companyId, branchId, {
     description || 'Manual M-Pesa entry',
     receipt,
   ]);
+
+  if (!rows.length)
+    throw AppError.conflict('This M-Pesa receipt number has already been recorded', 'DUPLICATE_RECEIPT');
 
   return {
     mpesaTxnId:         rows[0].mpesa_txn_id,
@@ -709,14 +718,14 @@ async function listUnlinked(companyId, { amount, hours = 48 } = {}) {
 
 // ── Link M-Pesa txn to a completed sale ──────────────────────────────────────
 
-async function linkToSale(mpesaTxnId, salesTransactionId) {
+async function linkToSale(companyId, mpesaTxnId, salesTransactionId) {
   if (!salesTransactionId) throw AppError.badRequest('salesTransactionId is required');
   if (!mpesaTxnId)         throw AppError.badRequest('mpesaTxnId is required');
   const { rowCount } = await query(
     `UPDATE mpesa_transactions
      SET sales_transaction_id = $2, updated_at = now()
-     WHERE mpesa_txn_id = $1`,
-    [mpesaTxnId, salesTransactionId]
+     WHERE mpesa_txn_id = $1 AND company_id = $3`,
+    [mpesaTxnId, salesTransactionId, companyId]
   );
   if (rowCount === 0)
     console.warn('[mpesa] linkToSale: no row matched mpesaTxnId', mpesaTxnId);
