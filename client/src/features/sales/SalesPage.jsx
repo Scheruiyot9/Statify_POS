@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Eye, XCircle, Receipt, Printer, Download } from 'lucide-react';
+import { Search, Eye, XCircle, Receipt, Printer, Download, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDateTime } from '@/utils/formatters';
@@ -10,6 +10,7 @@ import { PageSpinner } from '@/components/ui/Spinner';
 import { usePermission } from '@/hooks/usePermission';
 import ReceiptModal from '@/components/ui/ReceiptModal';
 import { exportToExcel } from '@/utils/exportExcel';
+import CreateReturnModal from '@/features/returns/CreateReturnModal';
 
 const STATUS_STYLES = {
   completed: 'bg-green-100 text-green-700',
@@ -125,7 +126,8 @@ function VoidConfirm({ onConfirm, onClose }) {
 export default function SalesPage() {
   const qc = useQueryClient();
   const { hasCapability } = usePermission();
-  const canVoidSales = hasCapability('sales.void');
+  const canVoidSales  = hasCapability('sales.void');
+  const canReturn     = hasCapability('returns.view');
   const [search,        setSearch]        = useState('');
   const [startDate,     setStartDate]     = useState('');
   const [endDate,       setEndDate]       = useState('');
@@ -136,6 +138,7 @@ export default function SalesPage() {
   const [selected,      setSelected]      = useState(null);
   const [voidTarget,    setVoidTarget]    = useState(null);
   const [receiptTxn,    setReceiptTxn]    = useState(null);
+  const [returnTxn,     setReturnTxn]     = useState(null);
 
   const { data: payMethods = [] } = useQuery({
     queryKey: ['payment-methods-sales'],
@@ -254,10 +257,22 @@ export default function SalesPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button onClick={() => setSelected(t.transaction_id)}
-                      className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
-                      <Eye className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center gap-1 justify-end">
+                      <button onClick={() => setSelected(t.transaction_id)}
+                        title="View details"
+                        className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      {canReturn && t.status === 'completed' && (
+                        <button
+                          onClick={() => setReturnTxn(t)}
+                          title="Create return"
+                          className="rounded-md p-1.5 text-gray-400 hover:bg-orange-50 hover:text-orange-600 transition-colors"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -294,6 +309,13 @@ export default function SalesPage() {
       </Modal>
 
       <ReceiptModal open={!!receiptTxn} onClose={() => setReceiptTxn(null)} txn={receiptTxn} />
+
+      {returnTxn && (
+        <CreateReturnModal
+          preloadedTxn={returnTxn}
+          onClose={() => setReturnTxn(null)}
+        />
+      )}
     </div>
   );
 }

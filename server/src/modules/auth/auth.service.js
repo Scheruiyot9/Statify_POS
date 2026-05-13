@@ -16,26 +16,39 @@ const hashToken = (token) =>
 
 // Build the JWT payload: includes role, assigned branches, and permission codes
 const buildTokenPayload = async (user) => {
-  const branches = await query(
-    `SELECT branch_id FROM user_branch_assignments WHERE user_id = $1`,
-    [user.user_id]
-  );
+  const [branchRes, permRes, planRes] = await Promise.all([
+    query(`SELECT branch_id FROM user_branch_assignments WHERE user_id = $1`, [user.user_id]),
+    query(
+      `SELECT p.permission_code
+         FROM role_permissions rp
+         JOIN permissions p ON p.permission_id = rp.permission_id
+         JOIN user_roles ur  ON ur.role_id = rp.role_id
+        WHERE ur.user_id = $1`,
+      [user.user_id]
+    ),
+    // Fetch plan feature flags for tenant users; super_admin has no company
+    user.company_id
+      ? query(
+          `SELECT sp.has_finance, sp.has_api_access
+             FROM companies c
+             JOIN subscription_plans sp ON sp.plan_id = c.subscription_plan_id
+            WHERE c.company_id = $1`,
+          [user.company_id]
+        )
+      : Promise.resolve({ rows: [] }),
+  ]);
 
-  const perms = await query(
-    `SELECT p.permission_code
-       FROM role_permissions rp
-       JOIN permissions p ON p.permission_id = rp.permission_id
-       JOIN user_roles ur  ON ur.role_id = rp.role_id
-      WHERE ur.user_id = $1`,
-    [user.user_id]
-  );
-
+  const plan = planRes.rows[0];
   return {
     userId:      user.user_id,
     companyId:   user.company_id,
     role:        user.role_name,
-    branchIds:   branches.rows.map((r) => r.branch_id),
-    permissions: perms.rows.map((r) => r.permission_code),
+    branchIds:   branchRes.rows.map((r) => r.branch_id),
+    permissions: permRes.rows.map((r) => r.permission_code),
+    planFeatures: {
+      hasFinance:   user.role_name === 'super_admin' ? true : (plan?.has_finance  ?? false),
+      hasApiAccess: user.role_name === 'super_admin' ? true : (plan?.has_api_access ?? false),
+    },
   };
 };
 
@@ -77,12 +90,13 @@ const login = async ({ email, password }) => {
     accessToken,
     refreshToken,
     user: {
-      userId:    user.user_id,
-      firstName: user.first_name,
-      lastName:  user.last_name,
-      role:      user.role_name,
-      companyId: user.company_id,
-      branchIds: payload.branchIds,
+      userId:       user.user_id,
+      firstName:    user.first_name,
+      lastName:     user.last_name,
+      role:         user.role_name,
+      companyId:    user.company_id,
+      branchIds:    payload.branchIds,
+      planFeatures: payload.planFeatures,
     },
   };
 };

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Eye, RotateCcw, CheckCircle, XCircle } from 'lucide-react';
+import { Search, Eye, RotateCcw, CheckCircle, XCircle, Plus, Banknote } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDateTime } from '@/utils/formatters';
@@ -8,6 +8,7 @@ import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
 import { usePermission } from '@/hooks/usePermission';
+import CreateReturnModal from './CreateReturnModal';
 
 const STATUS_STYLES = {
   pending:  'bg-yellow-100 text-yellow-700',
@@ -125,8 +126,10 @@ export default function ReturnsPage() {
   const [endDate, setEndDate]     = useState('');
   const [page, setPage]           = useState(1);
   const [selected, setSelected]   = useState(null);
-  const [approveTarget, setApproveTarget] = useState(null);
-  const [rejectTarget,  setRejectTarget]  = useState(null);
+  const [approveTarget, setApproveTarget]   = useState(null);
+  const [rejectTarget,  setRejectTarget]    = useState(null);
+  const [refundTarget,  setRefundTarget]    = useState(null);
+  const [createOpen,    setCreateOpen]      = useState(false);
 
   const filters = { search, status, startDate, endDate, page, limit: 25 };
 
@@ -164,12 +167,25 @@ export default function ReturnsPage() {
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to reject'),
   });
 
+  const refundMut = useMutation({
+    mutationFn: ({ id, notes }) => api.patch(`/returns/${id}/refund`, { refundNotes: notes }),
+    onSuccess: () => {
+      toast.success('Return marked as refunded');
+      qc.invalidateQueries(['returns']);
+      qc.invalidateQueries(['return-detail', refundTarget]);
+      setRefundTarget(null);
+      setSelected(null);
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed'),
+  });
+
   const returns = data?.returns ?? [];
   const total   = data?.total   ?? 0;
   const pages   = data?.pages   ?? 1;
 
   const selectedRet = retDetail;
-  const isPending   = selectedRet?.status === 'pending';
+  const isPending  = selectedRet?.status === 'pending';
+  const isApproved = selectedRet?.status === 'approved';
 
   return (
     <div className="space-y-4">
@@ -178,6 +194,11 @@ export default function ReturnsPage() {
           <h1 className="text-xl font-bold text-gray-900">Returns</h1>
           <p className="text-sm text-gray-500 mt-0.5">{total} return{total !== 1 ? 's' : ''}</p>
         </div>
+        {canProcess && (
+          <Button icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
+            New Return
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
@@ -270,16 +291,26 @@ export default function ReturnsPage() {
         onClose={() => setSelected(null)}
         title="Return Details"
         size="lg"
-        footer={isPending && canProcess ? (
+        footer={canProcess && (isPending || isApproved) ? (
           <div className="flex gap-3">
-            <Button variant="secondary" fullWidth icon={<XCircle className="h-4 w-4 text-red-500" />}
-              onClick={() => setRejectTarget(selected)}>
-              Reject
-            </Button>
-            <Button fullWidth icon={<CheckCircle className="h-4 w-4" />}
-              onClick={() => setApproveTarget(selected)}>
-              Approve
-            </Button>
+            {isPending && (
+              <>
+                <Button variant="secondary" fullWidth icon={<XCircle className="h-4 w-4 text-red-500" />}
+                  onClick={() => setRejectTarget(selected)}>
+                  Reject
+                </Button>
+                <Button fullWidth icon={<CheckCircle className="h-4 w-4" />}
+                  onClick={() => setApproveTarget(selected)}>
+                  Approve
+                </Button>
+              </>
+            )}
+            {isApproved && (
+              <Button fullWidth icon={<Banknote className="h-4 w-4" />}
+                onClick={() => setRefundTarget(selected)}>
+                Mark as Refunded
+              </Button>
+            )}
           </div>
         ) : null}
       >
@@ -304,6 +335,24 @@ export default function ReturnsPage() {
           onConfirm={(notes) => rejectMut.mutate({ id: rejectTarget, notes })}
         />
       </Modal>
+
+      <Modal open={!!refundTarget} onClose={() => setRefundTarget(null)} title="Confirm Refund Dispensed" size="sm">
+        <ApprovalForm
+          label="Refund notes (optional — e.g. cash handed over, M-Pesa sent)"
+          actionLabel="Confirm Refunded"
+          onClose={() => setRefundTarget(null)}
+          onConfirm={(notes) => refundMut.mutate({ id: refundTarget, notes })}
+        />
+      </Modal>
+
+      {createOpen && (
+        <CreateReturnModal
+          onClose={(created) => {
+            setCreateOpen(false);
+            if (created) qc.invalidateQueries(['returns']);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -19,5 +19,7 @@ router.get('/:id', requirePermission('process_refund'), ctrl.getOne);
 // Approval workflow
 router.patch('/:id/approve', requirePermission('process_refund'), ctrl.approve);
 router.patch('/:id/reject',  requirePermission('process_refund'), ctrl.reject);
+// Confirm refund was physically dispensed to customer
+router.patch('/:id/refund',  requirePermission('process_refund'), ctrl.markRefunded);
 
 module.exports = router;

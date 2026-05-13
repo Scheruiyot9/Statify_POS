@@ -339,8 +339,12 @@ async function updateSubscriptionStatus(companyId, { status }) {
 
 async function listSubscriptionPlans() {
   const { rows } = await query(
-    `SELECT plan_id, plan_name, price, max_users, max_branches
-     FROM subscription_plans ORDER BY price`,
+    `SELECT plan_id, plan_name, price::numeric, annual_price::numeric,
+            max_users, max_branches, trial_days,
+            has_finance, has_api_access, sort_order, is_active
+     FROM subscription_plans
+     WHERE is_active = TRUE
+     ORDER BY sort_order, price`,
     []
   );
   return rows;

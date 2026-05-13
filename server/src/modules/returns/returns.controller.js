@@ -37,4 +37,10 @@ const reject = async (req, res) => {
   ok(res, result);
 };
 
-module.exports = { listReasons, list, getOne, create, approve, reject };
+const markRefunded = async (req, res) => {
+  const { userId } = req.user;
+  const result = await svc.markRefunded(req.tenantId, req.params.id, userId, req.body.refundNotes);
+  ok(res, result);
+};
+
+module.exports = { listReasons, list, getOne, create, approve, reject, markRefunded };

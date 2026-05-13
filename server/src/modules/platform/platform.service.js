@@ -1,5 +1,6 @@
 const { query } = require('../../config/database');
 const QueryBuilder = require('../../shared/qb');
+const AppError = require('../../shared/AppError');
 
 // ── Shared helpers ─────────────────────────────────────────────────────────────
 
@@ -378,8 +379,121 @@ async function platformStats() {
   };
 }
 
+// ── Subscription Plans CRUD ───────────────────────────────────────────────────
+
+async function listPlans() {
+  const { rows } = await query(`
+    SELECT plan_id, plan_name, price::numeric, annual_price::numeric,
+           billing_cycle, max_users, max_branches, trial_days,
+           has_finance, has_api_access, sort_order,
+           features_json, is_active, created_at
+    FROM subscription_plans
+    ORDER BY sort_order, plan_name
+  `);
+  return rows;
+}
+
+async function createPlan(data) {
+  const {
+    plan_name, price, annual_price, billing_cycle = 'monthly',
+    max_users = 5, max_branches = 1, trial_days = 14,
+    has_finance = false, has_api_access = false, sort_order = 0,
+    features_json = {},
+  } = data;
+
+  if (!plan_name) throw AppError.badRequest('plan_name is required');
+  if (price == null) throw AppError.badRequest('price is required');
+
+  const { rows } = await query(`
+    INSERT INTO subscription_plans
+      (plan_name, price, annual_price, billing_cycle, max_users, max_branches,
+       trial_days, has_finance, has_api_access, sort_order, features_json)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+    RETURNING plan_id, plan_name, price::numeric, has_finance, has_api_access
+  `, [
+    plan_name, price, annual_price ?? null, billing_cycle,
+    max_users, max_branches, trial_days,
+    has_finance, has_api_access, sort_order,
+    JSON.stringify(features_json),
+  ]);
+  return rows[0];
+}
+
+async function updatePlan(planId, data) {
+  const allowed = [
+    'plan_name','price','annual_price','billing_cycle','max_users','max_branches',
+    'trial_days','has_finance','has_api_access','sort_order','features_json','is_active',
+  ];
+  const sets  = [];
+  const params = [planId];
+  for (const key of allowed) {
+    if (data[key] !== undefined) {
+      params.push(key === 'features_json' ? JSON.stringify(data[key]) : data[key]);
+      sets.push(`${key} = $${params.length}`);
+    }
+  }
+  if (!sets.length) throw AppError.badRequest('No fields to update');
+
+  const { rows } = await query(`
+    UPDATE subscription_plans SET ${sets.join(', ')}
+    WHERE plan_id = $1
+    RETURNING plan_id, plan_name, price::numeric, has_finance, has_api_access, is_active
+  `, params);
+  if (!rows.length) throw AppError.notFound('Subscription plan');
+  return rows[0];
+}
+
+async function deletePlan(planId) {
+  const { rows: inUse } = await query(
+    `SELECT COUNT(*) AS cnt FROM companies WHERE subscription_plan_id = $1`, [planId]
+  );
+  if (parseInt(inUse[0].cnt) > 0)
+    throw AppError.conflict('Cannot deactivate a plan that is assigned to active companies');
+
+  const { rows } = await query(
+    `UPDATE subscription_plans SET is_active = FALSE WHERE plan_id = $1 RETURNING plan_id`,
+    [planId]
+  );
+  if (!rows.length) throw AppError.notFound('Subscription plan');
+  return { plan_id: planId, is_active: false };
+}
+
+// ── Company Management ────────────────────────────────────────────────────────
+
+async function changeCompanyPlan(companyId, planId) {
+  const { rows: plan } = await query(
+    `SELECT plan_id, plan_name FROM subscription_plans WHERE plan_id = $1 AND is_active = TRUE`, [planId]
+  );
+  if (!plan.length) throw AppError.notFound('Subscription plan');
+
+  const { rows } = await query(`
+    UPDATE companies
+    SET subscription_plan_id = $2, updated_at = now()
+    WHERE company_id = $1
+    RETURNING company_id, company_name
+  `, [companyId, planId]);
+  if (!rows.length) throw AppError.notFound('Company');
+  return { company_id: companyId, plan_name: plan[0].plan_name };
+}
+
+async function changeCompanyStatus(companyId, status) {
+  const valid = ['trial','active','suspended','cancelled'];
+  if (!valid.includes(status)) throw AppError.badRequest(`status must be one of: ${valid.join(', ')}`);
+
+  const { rows } = await query(`
+    UPDATE companies
+    SET subscription_status = $2, updated_at = now()
+    WHERE company_id = $1
+    RETURNING company_id, company_name, subscription_status
+  `, [companyId, status]);
+  if (!rows.length) throw AppError.notFound('Company');
+  return rows[0];
+}
+
 module.exports = {
   listAllCompanies, listAllUsers, listAllBranches, listAllTerminals,
   listAllSessions,  listAllSales,  listAllProducts,  listAllInventory,
   listAllCustomers, listAllPaymentMethods, platformStats,
+  listPlans, createPlan, updatePlan, deletePlan,
+  changeCompanyPlan, changeCompanyStatus,
 };

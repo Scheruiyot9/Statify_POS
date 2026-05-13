@@ -289,6 +289,24 @@ async function rejectReturn(companyId, returnId, userId, rejectionNotes) {
   return { return_id: returnId, status: 'rejected' };
 }
 
+async function markRefunded(companyId, returnId, userId, refundNotes) {
+  const { rows } = await query(
+    `UPDATE returns
+     SET status             = 'refunded',
+         refunded_by_user_id = $2,
+         refunded_at         = now(),
+         refund_notes        = $3,
+         updated_at          = now()
+     WHERE return_id = $1
+       AND company_id = $4
+       AND status = 'approved'
+     RETURNING return_id`,
+    [returnId, userId, refundNotes || null, companyId]
+  );
+  if (!rows.length) throw AppError.conflict('Return not found or not in approved status');
+  return { return_id: returnId, status: 'refunded' };
+}
+
 module.exports = {
   listReturnReasons,
   listReturns,
@@ -296,4 +314,5 @@ module.exports = {
   createReturn,
   approveReturn,
   rejectReturn,
+  markRefunded,
 };

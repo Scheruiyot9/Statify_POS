@@ -22,6 +22,8 @@ const FILES_IN_ORDER = [
   '18_mpesa_checkout_unique.sql', // unique index on checkout_request_id for ON CONFLICT dedup
   '19_mpesa_c2b.sql',             // unique receipt index + c2b payment_mode
   '20_stk_sessions.sql',          // persisted STK sessions for server-restart resilience
+  '21_subscription_plans_v2.sql', // has_finance, has_api_access, sort_order; upsert canonical tiers
+  '22_returns_refunded_status.sql', // refunded_by_user_id, refunded_at, refund_notes on returns
 ];
 
 async function migrate() {

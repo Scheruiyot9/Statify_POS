@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Building2, Users, GitBranch, Plus, Search,
@@ -335,22 +335,185 @@ function CompanyEditModal({ company, plans, onClose }) {
 
 // ── Plans Panel ───────────────────────────────────────────────────────────────
 
-function PlansPanel({ plans }) {
-  if (!plans.length) return <div className="text-center py-8 text-gray-400 text-sm">No subscription plans configured</div>;
+function PlanModal({ plan, onClose }) {
+  const qc = useQueryClient();
+  const isEdit = !!plan;
+  const [form, setFormState] = useState({
+    plan_name:     plan?.plan_name     ?? '',
+    price:         plan?.price         ?? '',
+    annual_price:  plan?.annual_price  ?? '',
+    max_users:     plan?.max_users     ?? 5,
+    max_branches:  plan?.max_branches  ?? 1,
+    trial_days:    plan?.trial_days    ?? 14,
+    has_finance:   plan?.has_finance   ?? false,
+    has_api_access:plan?.has_api_access ?? false,
+    sort_order:    plan?.sort_order    ?? 0,
+    is_active:     plan?.is_active     ?? true,
+  });
+  const set = (k, v) => setFormState((f) => ({ ...f, [k]: v }));
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: (data) => isEdit
+      ? api.patch(`/platform/plans/${plan.plan_id}`, data)
+      : api.post('/platform/plans', data),
+    onSuccess: () => {
+      toast.success(isEdit ? 'Plan updated' : 'Plan created');
+      qc.invalidateQueries({ queryKey: ['subscription-plans'] });
+      qc.invalidateQueries({ queryKey: ['platform-plans'] });
+      onClose();
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Save failed'),
+  });
+
+  const handleSubmit = () => {
+    if (!form.plan_name) { toast.error('Plan name is required'); return; }
+    if (form.price === '') { toast.error('Price is required'); return; }
+    mutate({
+      ...form,
+      price:        parseFloat(form.price),
+      annual_price: form.annual_price !== '' ? parseFloat(form.annual_price) : null,
+      max_users:    parseInt(form.max_users),
+      max_branches: parseInt(form.max_branches),
+      trial_days:   parseInt(form.trial_days),
+      sort_order:   parseInt(form.sort_order),
+    });
+  };
+
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-      {plans.map((p) => (
-        <div key={p.plan_id} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm flex flex-col gap-3">
-          <div>
-            <h3 className="font-semibold text-gray-900">{p.plan_name}</h3>
-            <p className="text-2xl font-bold text-primary-700 mt-1">{formatCurrency(p.price)}<span className="text-sm font-normal text-gray-400">/mo</span></p>
+    <Modal open onClose={onClose} title={isEdit ? `Edit Plan — ${plan.plan_name}` : 'New Subscription Plan'} size="md"
+      footer={<div className="flex gap-3"><Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button><Button fullWidth loading={isPending} onClick={handleSubmit}>{isEdit ? 'Save Changes' : 'Create Plan'}</Button></div>}
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <Field label="Plan Name" required>
+              <input value={form.plan_name} onChange={(e) => set('plan_name', e.target.value)} className={inp} placeholder="e.g. Growth" />
+            </Field>
           </div>
-          <div className="flex-1 space-y-1.5 text-sm text-gray-600">
-            <div className="flex items-center gap-2"><Users className="h-3.5 w-3.5 text-gray-400" /> Up to {p.max_users ?? 'unlimited'} users</div>
-            <div className="flex items-center gap-2"><GitBranch className="h-3.5 w-3.5 text-gray-400" /> Up to {p.max_branches ?? 'unlimited'} branches</div>
-          </div>
+          <Field label="Monthly Price (KES)" required>
+            <input type="number" value={form.price} onChange={(e) => set('price', e.target.value)} className={inp} placeholder="2999" />
+          </Field>
+          <Field label="Annual Price (KES)" hint="Leave blank to not offer annual billing">
+            <input type="number" value={form.annual_price} onChange={(e) => set('annual_price', e.target.value)} className={inp} placeholder="29990" />
+          </Field>
+          <Field label="Max Users" hint="-1 = unlimited">
+            <input type="number" value={form.max_users} onChange={(e) => set('max_users', e.target.value)} className={inp} />
+          </Field>
+          <Field label="Max Branches" hint="-1 = unlimited">
+            <input type="number" value={form.max_branches} onChange={(e) => set('max_branches', e.target.value)} className={inp} />
+          </Field>
+          <Field label="Trial Days">
+            <input type="number" value={form.trial_days} onChange={(e) => set('trial_days', e.target.value)} className={inp} />
+          </Field>
+          <Field label="Display Order">
+            <input type="number" value={form.sort_order} onChange={(e) => set('sort_order', e.target.value)} className={inp} />
+          </Field>
         </div>
-      ))}
+
+        <div className="rounded-xl border border-gray-100 p-4 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Feature Flags</p>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" checked={form.has_finance} onChange={(e) => set('has_finance', e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            <div>
+              <p className="text-sm font-medium text-gray-800">Finance Module</p>
+              <p className="text-xs text-gray-500">Suppliers, Purchase Orders, AP Payments, CoA, Bank Accounts, Aging & Financial Reports</p>
+            </div>
+          </label>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" checked={form.has_api_access} onChange={(e) => set('has_api_access', e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            <div>
+              <p className="text-sm font-medium text-gray-800">API Access</p>
+              <p className="text-xs text-gray-500">REST API access for integrations and custom development</p>
+            </div>
+          </label>
+        </div>
+
+        {isEdit && (
+          <Field label="Status">
+            <select value={form.is_active ? 'true' : 'false'} onChange={(e) => set('is_active', e.target.value === 'true')} className={sel}>
+              <option value="true">Active</option>
+              <option value="false">Inactive (hidden from new signups)</option>
+            </select>
+          </Field>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function PlansPanel() {
+  const qc = useQueryClient();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [selected,   setSelected]   = useState(null);
+
+  const { data: plans = [], isLoading } = useQuery({
+    queryKey: ['platform-plans'],
+    queryFn: () => api.get('/platform/plans').then((r) => r.data.data),
+  });
+
+  const deactivateMut = useMutation({
+    mutationFn: (id) => api.delete(`/platform/plans/${id}`),
+    onSuccess: () => { toast.success('Plan deactivated'); qc.invalidateQueries({ queryKey: ['platform-plans'] }); },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
+  });
+
+  const FEAT = (val) => val
+    ? <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700"><CheckCircle className="h-3 w-3" /> Yes</span>
+    : <span className="text-xs text-gray-300">—</span>;
+
+  if (isLoading) return <PageSpinner />;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">{plans.length} plan{plans.length !== 1 ? 's' : ''} configured</p>
+        <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>New Plan</Button>
+      </div>
+
+      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b border-gray-100">
+            <tr>
+              {['Plan','Monthly','Annual','Users','Branches','Trial','Finance','API','Order','Status',''].map((h) => (
+                <th key={h} className="px-3 py-3 text-left text-xs font-medium text-gray-500">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {plans.map((p) => (
+              <tr key={p.plan_id} className="hover:bg-gray-50 transition-colors">
+                <td className="px-3 py-3 font-semibold text-gray-900">{p.plan_name}</td>
+                <td className="px-3 py-3 text-gray-700">{formatCurrency(p.price)}<span className="text-xs text-gray-400">/mo</span></td>
+                <td className="px-3 py-3 text-gray-500">{p.annual_price ? formatCurrency(p.annual_price) : <span className="text-gray-300">—</span>}</td>
+                <td className="px-3 py-3 text-center text-gray-600">{p.max_users === -1 ? '∞' : p.max_users}</td>
+                <td className="px-3 py-3 text-center text-gray-600">{p.max_branches === -1 ? '∞' : p.max_branches}</td>
+                <td className="px-3 py-3 text-center text-gray-600">{p.trial_days}d</td>
+                <td className="px-3 py-3 text-center">{FEAT(p.has_finance)}</td>
+                <td className="px-3 py-3 text-center">{FEAT(p.has_api_access)}</td>
+                <td className="px-3 py-3 text-center text-gray-400 text-xs">{p.sort_order}</td>
+                <td className="px-3 py-3">
+                  <StatusBadge status={p.is_active ? 'active' : 'cancelled'} />
+                </td>
+                <td className="px-3 py-3">
+                  <RowActions
+                    onEdit={() => setSelected(p)}
+                    onDelete={() => { if (window.confirm(`Deactivate "${p.plan_name}"?`)) deactivateMut.mutate(p.plan_id); }}
+                    deleting={deactivateMut.isPending}
+                  />
+                </td>
+              </tr>
+            ))}
+            {plans.length === 0 && (
+              <tr><td colSpan={11} className="py-12 text-center text-gray-400 text-sm">No plans configured</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {createOpen && <PlanModal onClose={() => setCreateOpen(false)} />}
+      {selected   && <PlanModal plan={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }
@@ -1499,8 +1662,24 @@ const TABS = [
 ];
 
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState('companies');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => {
+    const t = searchParams.get('tab');
+    return TABS.some((tab) => tab.id === t) ? t : 'companies';
+  });
   const qc = useQueryClient();
+
+  const switchTab = (id) => {
+    setActiveTab(id);
+    setSearchParams({ tab: id }, { replace: true });
+  };
+
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t && TABS.some((tab) => tab.id === t) && t !== activeTab) {
+      setActiveTab(t);
+    }
+  }, [searchParams]);
 
   const { data: plans = [] } = useQuery({
     queryKey: ['subscription-plans'],
@@ -1533,7 +1712,7 @@ export default function AdminPage() {
       {/* Tabs */}
       <div className="flex flex-wrap border-b border-gray-200 gap-0">
         {TABS.map(({ id, label, Icon }) => (
-          <button key={id} onClick={() => setActiveTab(id)}
+          <button key={id} onClick={() => switchTab(id)}
             className={[
               'flex items-center gap-1.5 border-b-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap',
               activeTab === id ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700',
@@ -1546,7 +1725,7 @@ export default function AdminPage() {
 
       {/* Tab panels */}
       {activeTab === 'companies' && <CompaniesPanel plans={plans} />}
-      {activeTab === 'plans'     && <PlansPanel plans={plans} />}
+      {activeTab === 'plans'     && <PlansPanel />}
       {activeTab === 'users'     && <UsersPanel companies={companiesForFilter} />}
       {activeTab === 'branches'  && <BranchesPanel companies={companiesForFilter} />}
       {activeTab === 'terminals' && <TerminalsPanel companies={companiesForFilter} />}
