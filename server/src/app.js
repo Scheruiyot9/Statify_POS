@@ -29,6 +29,8 @@ const suppliersRoutes    = require('./modules/suppliers/suppliers.routes');
 const purchasesRoutes    = require('./modules/purchases/purchases.routes');
 const grnsRoutes         = require('./modules/purchases/grns.routes');
 const paymentsRoutes     = require('./modules/payments/payments.routes');
+const journalRoutes      = require('./modules/journal/journal.routes');
+const journalsRoutes     = require('./modules/journals/journals.routes');
 
 const app = express();
 
@@ -79,6 +81,8 @@ app.use(`${API}/suppliers`,    suppliersRoutes);
 app.use(`${API}/purchases`,        purchasesRoutes);
 app.use(`${API}/grns`,             grnsRoutes);
 app.use(`${API}/supplier-payments`, paymentsRoutes);
+app.use(`${API}/journal`,          journalRoutes);
+app.use(`${API}/journals`,         journalsRoutes);
 
 // ── 404 + global error handler ────────────────────────────────────────────────
 app.use(notFound);

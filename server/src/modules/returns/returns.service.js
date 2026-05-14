@@ -2,6 +2,7 @@ const { query, transaction } = require('../../config/database');
 const AppError = require('../../shared/AppError');
 const { isCompanyWide } = require('../../shared/roles');
 const QueryBuilder = require('../../shared/qb');
+const jrn = require('../journal/journal.service');
 
 // ── Return Reasons ────────────────────────────────────────────────────────────
 
@@ -289,6 +290,18 @@ async function createReturn(companyId, branchId, userId, data) {
     }
 
     // If auto-approved, inventory restock is handled by DB trigger trg_restock_on_return_approval
+    // Post journal entry for auto-approved returns
+    if (!requiresApproval) {
+      await jrn.postReturnEntry(client, companyId, {
+        return_id:             ret.return_id,
+        return_number:         ret.return_number,
+        return_date:           ret.return_date,
+        total_refunded:        totalRefunded,
+        subtotal_refunded:     subtotalRefunded,
+        processed_by_user_id:  userId,
+      }, items, refunds);
+    }
+
     return { return_id: ret.return_id, return_number: ret.return_number, status: ret.status };
   });
 }
@@ -296,11 +309,13 @@ async function createReturn(companyId, branchId, userId, data) {
 async function approveReturn(companyId, returnId, userId, approvalNotes) {
   return transaction(async (client) => {
     const { rows } = await client.query(
-      `SELECT return_id, status FROM returns WHERE return_id = $1 AND company_id = $2 FOR UPDATE`,
+      `SELECT * FROM returns WHERE return_id = $1 AND company_id = $2 FOR UPDATE`,
       [returnId, companyId]
     );
-    if (!rows.length)              throw AppError.notFound('Return');
+    if (!rows.length)                 throw AppError.notFound('Return');
     if (rows[0].status !== 'pending') throw AppError.conflict(`Return is already ${rows[0].status}`);
+
+    const ret = rows[0];
 
     await client.query(`
       UPDATE returns
@@ -311,6 +326,14 @@ async function approveReturn(companyId, returnId, userId, approvalNotes) {
           updated_at          = now()
       WHERE return_id = $1
     `, [returnId, userId, approvalNotes || null]);
+
+    // Fetch items and refunds to post the journal entry
+    const [itemsRes, refundsRes] = await Promise.all([
+      client.query(`SELECT * FROM return_items WHERE return_id = $1`,  [returnId]),
+      client.query(`SELECT * FROM return_refunds WHERE return_id = $1`, [returnId]),
+    ]);
+
+    await jrn.postReturnEntry(client, companyId, ret, itemsRes.rows, refundsRes.rows);
 
     return { return_id: returnId, status: 'approved' };
   });

@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import {
   TrendingUp, ShoppingCart, Users, BarChart2, Calendar,
   FileText, Scale, AlertTriangle, Package, Truck,
+  ArrowDownLeft, ArrowUpRight, Droplets, CreditCard,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/app/store';
@@ -559,6 +561,230 @@ function BalanceSheetTab() {
   );
 }
 
+// ── Tab: Cash Flow ────────────────────────────────────────────────────────────
+
+function CashFlowTab() {
+  const [startDate, setStart] = useState(toISO(new Date(Date.now() - 29 * 86400000)));
+  const [endDate,   setEnd]   = useState(today);
+  const [preset,    setPreset] = useState('Last 30d');
+
+  const applyPreset = (p) => {
+    const end = new Date(); const start = new Date();
+    start.setDate(end.getDate() - p.days);
+    setStart(toISO(start)); setEnd(toISO(end)); setPreset(p.label);
+  };
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['reports-cashflow', startDate, endDate],
+    queryFn:  () => api.get('/reports/cash-flow', { params: { startDate, endDate } }).then((r) => r.data.data),
+  });
+
+  if (isLoading) return <PageSpinner />;
+  const d = data ?? {};
+  const op = d.operating ?? {};
+  const fi = d.financing ?? {};
+
+  const Row = ({ label, value, indent, bold, positive }) => (
+    <div className={`flex justify-between py-1.5 border-b border-gray-100 last:border-0 ${bold ? 'font-semibold' : ''} ${indent ? 'pl-5' : ''}`}>
+      <span className={bold ? 'text-gray-900' : 'text-gray-600'}>{label}</span>
+      <span className={value >= 0 ? (positive ? 'text-green-700' : 'text-gray-900') : 'text-red-600'}>
+        {value >= 0 ? formatCurrency(value) : `(${formatCurrency(Math.abs(value))})`}
+      </span>
+    </div>
+  );
+
+  return (
+    <div className="space-y-5">
+      <DateRange startDate={startDate} endDate={endDate} preset={preset}
+        onStart={(v) => { setStart(v); setPreset(''); }}
+        onEnd={(v)   => { setEnd(v);   setPreset(''); }}
+        onPreset={applyPreset} />
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <KPICard label="Opening Cash"  value={formatCurrency(d.openingBalance  ?? 0)} icon={Droplets} />
+        <KPICard label="Net Cash Flow" value={formatCurrency(d.netCashChange   ?? 0)} icon={ArrowUpRight}
+          accent={d.netCashChange >= 0} sub={d.netCashChange >= 0 ? 'Positive' : 'Negative'} />
+        <KPICard label="Closing Cash"  value={formatCurrency(d.closingBalance  ?? 0)} icon={CreditCard} accent />
+        <KPICard label="From Operations" value={formatCurrency(op.net ?? 0)} icon={TrendingUp}
+          sub={op.net >= 0 ? 'Operating surplus' : 'Operating deficit'} />
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <SectionCard title="Operating Activities">
+          <Row label="Receipts from customers"   value={op.receiptsFromCustomers ?? 0} indent />
+          {(op.arCollections ?? 0) > 0 && <Row label="AR collections"  value={op.arCollections ?? 0} indent />}
+          <Row label="Refunds to customers"      value={op.refundsToCustomers    ?? 0} indent />
+          <Row label="Payments to suppliers"     value={op.paymentsToSuppliers   ?? 0} indent />
+          {(op.supplierPaymentVoids ?? 0) !== 0 &&
+            <Row label="Supplier payment reversals" value={op.supplierPaymentVoids ?? 0} indent />}
+          <Row label="Net Operating Cash Flow"   value={op.net ?? 0} bold positive />
+        </SectionCard>
+
+        <SectionCard title="Financing Activities">
+          {(fi.openingDeposits ?? 0) !== 0 &&
+            <Row label="Opening equity deposits" value={fi.openingDeposits ?? 0} indent />}
+          <Row label="Net Financing Cash Flow"   value={fi.net ?? 0} bold positive />
+          {(d.other?.net ?? 0) !== 0 && (
+            <>
+              <div className="pt-2 mt-2 border-t border-gray-100">
+                <Row label="Other / Manual" value={d.other.net} indent />
+              </div>
+            </>
+          )}
+        </SectionCard>
+      </div>
+
+      <SectionCard title="Cash Position">
+        <div className="space-y-0">
+          <Row label="Opening Balance"  value={d.openingBalance  ?? 0} />
+          <Row label="Net Cash Change"  value={d.netCashChange   ?? 0} bold />
+          <div className="border-t-2 border-gray-300 mt-1 pt-1">
+            <Row label="Closing Balance" value={d.closingBalance ?? 0} bold positive />
+          </div>
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
+// ── Tab: AR Aging ─────────────────────────────────────────────────────────────
+
+function ARAgingTab() {
+  const [settling, setSettling] = useState(null); // { transactionId, transactionNumber, outstanding }
+  const [settleAmt, setSettleAmt] = useState('');
+  const [pmId, setPmId] = useState('');
+  const qc = useQueryClient();
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['ar-aging'],
+    queryFn:  () => api.get('/journal/ar-aging').then((r) => r.data.data),
+  });
+
+  const { data: paymentMethods = [] } = useQuery({
+    queryKey: ['payment-methods'],
+    queryFn:  () => api.get('/pos/payment-methods').then((r) => r.data.data ?? []),
+  });
+
+  const { mutate: settle, isPending } = useMutation({
+    mutationFn: (body) => api.post('/journal/ar-settlement', body),
+    onSuccess: () => {
+      toast.success('AR settlement recorded');
+      setSettling(null); setSettleAmt('');
+      qc.invalidateQueries({ queryKey: ['ar-aging'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed'),
+  });
+
+  if (isLoading) return <PageSpinner />;
+  const { receivables = [], totals = {} } = data ?? {};
+
+  const bucketColor = (b) => ({
+    current: 'bg-green-100 text-green-700',
+    '31_60': 'bg-yellow-100 text-yellow-700',
+    '61_90': 'bg-orange-100 text-orange-700',
+    over_90: 'bg-red-100 text-red-700',
+  }[b] ?? 'bg-gray-100 text-gray-600');
+
+  const bucketLabel = (b) => ({ current: '0–30d', '31_60': '31–60d', '61_90': '61–90d', over_90: '>90d' }[b] ?? b);
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <KPICard label="Total AR"    value={formatCurrency(totals.total   ?? 0)} icon={AlertTriangle} accent />
+        <KPICard label="Current"     value={formatCurrency(totals.current ?? 0)} icon={TrendingUp} />
+        <KPICard label="31–90 days"  value={formatCurrency((totals['31_60'] ?? 0) + (totals['61_90'] ?? 0))} icon={ShoppingCart} />
+        <KPICard label="Over 90d"    value={formatCurrency(totals.over_90 ?? 0)} icon={AlertTriangle} />
+      </div>
+
+      {receivables.length === 0 ? (
+        <SectionCard title="Accounts Receivable">
+          <p className="text-center text-gray-400 py-8">No outstanding receivables</p>
+        </SectionCard>
+      ) : (
+        <SectionCard title={`Outstanding Receivables — ${receivables.length} invoices`}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-gray-200">
+                <tr>
+                  <th className="pb-2 text-left text-xs font-medium text-gray-500">Invoice</th>
+                  <th className="pb-2 text-left text-xs font-medium text-gray-500">Customer</th>
+                  <th className="pb-2 text-right text-xs font-medium text-gray-500">Date</th>
+                  <th className="pb-2 text-right text-xs font-medium text-gray-500">Days</th>
+                  <th className="pb-2 text-right text-xs font-medium text-gray-500">Original</th>
+                  <th className="pb-2 text-right text-xs font-medium text-gray-500">Settled</th>
+                  <th className="pb-2 text-right text-xs font-medium text-gray-500">Outstanding</th>
+                  <th className="pb-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {receivables.map((r) => (
+                  <tr key={r.transactionId} className="hover:bg-gray-50">
+                    <td className="py-2 font-mono text-xs text-primary-700">{r.transactionNumber}</td>
+                    <td className="py-2 text-gray-700">{r.customerName}</td>
+                    <td className="py-2 text-right text-gray-500 text-xs">{formatDate(r.transactionDate)}</td>
+                    <td className="py-2 text-right">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${bucketColor(r.bucket)}`}>
+                        {r.daysOutstanding}d ({bucketLabel(r.bucket)})
+                      </span>
+                    </td>
+                    <td className="py-2 text-right text-gray-500">{formatCurrency(r.arCreated)}</td>
+                    <td className="py-2 text-right text-green-600">{r.arSettled > 0 ? formatCurrency(r.arSettled) : '—'}</td>
+                    <td className="py-2 text-right font-semibold text-gray-900">{formatCurrency(r.outstanding)}</td>
+                    <td className="py-2 text-right">
+                      <button onClick={() => { setSettling(r); setSettleAmt(r.outstanding.toFixed(2)); setPmId(''); }}
+                        className="rounded px-2 py-1 text-xs font-medium bg-primary-50 text-primary-700 hover:bg-primary-100 transition-colors">
+                        Collect
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* AR Settlement Modal */}
+      {settling && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white shadow-xl p-6 space-y-4">
+            <h2 className="text-base font-bold text-gray-900">Collect AR Payment</h2>
+            <p className="text-sm text-gray-600">Invoice: <span className="font-mono font-semibold">{settling.transactionNumber}</span></p>
+            <p className="text-sm text-gray-600">Outstanding: <span className="font-semibold text-red-600">{formatCurrency(settling.outstanding)}</span></p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-700">Amount Received</label>
+                <input type="number" value={settleAmt} onChange={(e) => setSettleAmt(e.target.value)} step="0.01"
+                  max={settling.outstanding}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-700">Payment Method</label>
+                <select value={pmId} onChange={(e) => setPmId(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none">
+                  <option value="">Cash (default)</option>
+                  {paymentMethods.map((m) => <option key={m.payment_method_id} value={m.payment_method_id}>{m.method_name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setSettling(null)}
+                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                Cancel
+              </button>
+              <button disabled={isPending || !settleAmt || parseFloat(settleAmt) <= 0}
+                onClick={() => settle({ transactionId: settling.transactionId, amount: parseFloat(settleAmt), paymentMethodId: pmId || undefined })}
+                className="flex-1 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50">
+                {isPending ? 'Posting…' : 'Record Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Tab: Stock Valuation ──────────────────────────────────────────────────────
 
 function StockTab() {
@@ -648,6 +874,8 @@ function StockTab() {
 const ALL_TABS = [
   { id: 'sales',          label: 'Sales',          icon: TrendingUp,    finance: false },
   { id: 'pl',             label: 'P&L',            icon: FileText,      finance: true  },
+  { id: 'cash-flow',      label: 'Cash Flow',      icon: Droplets,      finance: true  },
+  { id: 'ar-aging',       label: 'AR Aging',       icon: ArrowDownLeft, finance: true  },
   { id: 'ap-aging',       label: 'AP Aging',       icon: AlertTriangle, finance: true  },
   { id: 'balance-sheet',  label: 'Balance Sheet',  icon: Scale,         finance: true  },
   { id: 'stock',          label: 'Stock Value',    icon: Package,       finance: false },
@@ -684,6 +912,8 @@ export default function ReportsPage() {
       {/* Tab content */}
       {tab === 'sales'         && <SalesTab />}
       {tab === 'pl'            && <PLTab />}
+      {tab === 'cash-flow'     && <CashFlowTab />}
+      {tab === 'ar-aging'      && <ARAgingTab />}
       {tab === 'ap-aging'      && <APAgingTab />}
       {tab === 'balance-sheet' && <BalanceSheetTab />}
       {tab === 'stock'         && <StockTab />}

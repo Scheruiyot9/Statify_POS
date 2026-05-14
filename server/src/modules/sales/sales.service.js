@@ -2,6 +2,7 @@ const { query, transaction } = require('../../config/database');
 const AppError = require('../../shared/AppError');
 const { isCompanyWide } = require('../../shared/roles');
 const QueryBuilder = require('../../shared/qb');
+const jrn = require('../journal/journal.service');
 
 async function getLoyaltyRates(client, companyId) {
   const { rows } = await client.query(
@@ -123,6 +124,13 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
           p.amountTendered, p.amountApplied, p.changeGiven || 0,
           p.referenceNumber || null, i + 1]);
     }
+
+    // Post double-entry journal for this sale
+    await jrn.postSaleEntry(client, companyId, {
+      ...txn,
+      tax_amount:      taxAmount,
+      cashier_user_id: cashierUserId,
+    }, items, payments);
 
     // Award & deduct loyalty points — atomic WHERE guards against concurrent overdraft
     let pointsEarned = 0;

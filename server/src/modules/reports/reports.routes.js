@@ -24,5 +24,6 @@ router.get('/lpo',             requireTenantContext, requireFinance, requirePerm
 router.get('/grn',             requireTenantContext, requireFinance, requirePermission('view_reports'), controller.grnReport);
 router.get('/trial-balance',   requireTenantContext, requireFinance, requirePermission('view_reports'), controller.trialBalance);
 router.get('/ledger',          requireTenantContext, requireFinance, requirePermission('view_reports'), controller.ledgerEntries);
+router.get('/cash-flow',       requireTenantContext, requireFinance, requirePermission('view_reports'), controller.cashFlow);
 
 module.exports = router;

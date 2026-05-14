@@ -1,5 +1,6 @@
 const { query, transaction } = require('../../config/database');
 const AppError = require('../../shared/AppError');
+const jrn = require('../journal/journal.service');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -362,6 +363,9 @@ async function postGRN(companyId, grnId) {
       UPDATE grns SET status='posted', posted_at=now(), updated_at=now()
       WHERE grn_id=$1 RETURNING grn_id, grn_number, status
     `, [grnId]);
+
+    // Post double-entry journal for this GRN
+    await jrn.postGrnEntry(client, companyId, { ...grn, ...posted });
 
     return posted;
   });

@@ -197,7 +197,7 @@ async function getActiveSession(companyId, userId, branchId) {
   };
 }
 
-async function openSession(companyId, branchId, userId, { terminalId, openingCashAmount = 0, openingNotes, payModeAmounts = [] }) {
+async function openSession(companyId, branchId, userId, { terminalId, openingCashAmount = 0, openingNotes, payModeAmounts = [], forceClose = false }) {
   const { rows: termRows } = await query(
     `SELECT terminal_id, terminal_name, terminal_code FROM pos_terminals
      WHERE terminal_id = $1 AND branch_id = $2 AND company_id = $3 AND is_active = TRUE`,
@@ -205,11 +205,30 @@ async function openSession(companyId, branchId, userId, { terminalId, openingCas
   );
   if (!termRows.length) throw AppError.notFound('Terminal');
 
-  const { rows: existing } = await query(
-    `SELECT session_id FROM pos_sessions WHERE terminal_id = $1 AND status = 'open'`,
-    [terminalId]
-  );
-  if (existing.length) throw AppError.conflict('This terminal already has an open session. Please close it first.');
+  const { rows: existing } = await query(`
+    SELECT ps.session_id, ps.session_start,
+           (u.first_name || ' ' || u.last_name) AS cashier_name
+    FROM pos_sessions ps
+    LEFT JOIN users u ON u.user_id = ps.cashier_user_id
+    WHERE ps.terminal_id = $1 AND ps.status = 'open'
+  `, [terminalId]);
+
+  if (existing.length) {
+    const stuck = existing[0];
+    if (!forceClose) {
+      throw AppError.conflict(
+        'This terminal already has an open session. Close it first or take it over.',
+        'SESSION_ALREADY_OPEN',
+        { sessionId: stuck.session_id, sessionStart: stuck.session_start, cashierName: stuck.cashier_name }
+      );
+    }
+    // Force-close the stuck session before opening a new one
+    await query(`
+      UPDATE pos_sessions
+      SET status = 'closed', session_end = now(), closing_notes = 'Force-closed by new session open', updated_at = now()
+      WHERE session_id = $1
+    `, [stuck.session_id]);
+  }
 
   const { rows } = await query(`
     INSERT INTO pos_sessions

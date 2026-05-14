@@ -329,8 +329,8 @@ function AccountLedgerModal({ account, onClose }) {
     const header = ['Date', 'Type', 'Reference', 'Description', 'Debit (Dr)', 'Credit (Cr)', 'Balance'];
     const rows = allEntries.map((e) => [
       e.entryDate ? new Date(e.entryDate).toLocaleDateString('en-KE') : '',
-      e.entryType ?? '',
-      e.reference ?? '',
+      e.sourceType ?? '',
+      e.sourceRef ?? e.entryNumber ?? '',
       e.description ?? '',
       e.debit ?? 0,
       e.credit ?? 0,
@@ -423,14 +423,14 @@ function AccountLedgerModal({ account, onClose }) {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {entries.map((e, idx) => (
-                  <tr key={`${e.id}-${idx}`} className="hover:bg-gray-50">
+                  <tr key={`${e.lineId ?? e.entryId ?? idx}`} className="hover:bg-gray-50">
                     <td className="px-3 py-2.5 text-gray-500 text-xs whitespace-nowrap">{formatDate(e.entryDate)}</td>
                     <td className="px-3 py-2.5">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${ENTRY_TYPE_COLORS[e.entryType] ?? 'bg-gray-100 text-gray-600'}`}>
-                        {e.entryType}
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${ENTRY_TYPE_COLORS[e.sourceType] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {e.sourceType ?? '—'}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-gray-600 truncate">{e.reference}</td>
+                    <td className="px-3 py-2.5 font-mono text-xs text-gray-600 truncate">{e.sourceRef ?? e.entryNumber}</td>
                     <td className="px-3 py-2.5 text-xs text-gray-700">
                       <p className="truncate" title={e.description}>{e.description}</p>
                     </td>
@@ -547,16 +547,96 @@ function AccountRow({ account, depth, allAccounts, balanceMap, onEdit, onDelete,
   );
 }
 
+// ── Opening Balances Modal ────────────────────────────────────────────────────
+
+function OpeningBalancesModal({ accounts, onClose }) {
+  const qc = useQueryClient();
+  // Only show balance-sheet accounts (asset, liability, equity)
+  const eligible = accounts.filter((a) => ['asset', 'liability', 'equity'].includes(a.account_type) && a.is_active);
+  const [amounts, setAmounts] = useState({});
+
+  const setAmt = (id, val) => setAmounts((prev) => ({ ...prev, [id]: val }));
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: (entries) => api.post('/journal/opening-balances', { entries }),
+    onSuccess: () => {
+      toast.success('Opening balances posted');
+      qc.invalidateQueries({ queryKey: ['accounts'] });
+      qc.invalidateQueries({ queryKey: ['trial-balance-coa'] });
+      onClose();
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Post failed'),
+  });
+
+  const handleSubmit = () => {
+    const entries = eligible
+      .filter((a) => parseFloat(amounts[a.account_id] || 0) > 0)
+      .map((a) => ({
+        accountId:     a.account_id,
+        amount:        parseFloat(amounts[a.account_id]),
+        normalBalance: DEBIT_NORMAL.has(a.account_type) ? 'debit' : 'credit',
+        description:   `Opening balance — ${a.account_name}`,
+      }));
+    if (!entries.length) { toast.error('Enter at least one non-zero amount'); return; }
+    mutate(entries);
+  };
+
+  const grouped = {};
+  for (const a of eligible) {
+    if (!grouped[a.account_type]) grouped[a.account_type] = [];
+    grouped[a.account_type].push(a);
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Post Opening Balances"
+      footer={
+        <div className="flex gap-3">
+          <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+          <Button fullWidth loading={isPending} onClick={handleSubmit}>Post Balances</Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-xs text-gray-500">
+          Enter existing balances for each account. Each entry is automatically balanced against Owner&apos;s Equity (3000). Leave blank or zero to skip.
+        </p>
+        {['asset', 'liability', 'equity'].map((type) => {
+          const accs = grouped[type] ?? [];
+          if (!accs.length) return null;
+          return (
+            <div key={type}>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2 capitalize">{TYPE_LABELS[type]}</p>
+              <div className="space-y-1.5">
+                {accs.map((a) => (
+                  <div key={a.account_id} className="flex items-center gap-3">
+                    <span className="text-xs font-mono text-gray-500 w-12 shrink-0">{a.account_code}</span>
+                    <span className="text-xs text-gray-700 flex-1 truncate">{a.account_name}</span>
+                    <input type="number" min="0" step="0.01" placeholder="0.00"
+                      value={amounts[a.account_id] ?? ''}
+                      onChange={(e) => setAmt(a.account_id, e.target.value)}
+                      className="w-28 rounded-lg border border-gray-300 px-2 py-1.5 text-right text-sm focus:border-primary-500 focus:outline-none" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AccountsPage() {
   const qc = useQueryClient();
-  const [editTarget,    setEditTarget]   = useState(null);
-  const [createOpen,    setCreateOpen]   = useState(false);
-  const [deleteTarget,  setDeleteTarget] = useState(null);
-  const [ledgerTarget,  setLedgerTarget] = useState(null);
-  const [typeFilter,    setTypeFilter]   = useState('');
-  const [activeTab, setActiveTab]   = useState('accounts');
+  const [editTarget,      setEditTarget]      = useState(null);
+  const [createOpen,      setCreateOpen]      = useState(false);
+  const [deleteTarget,    setDeleteTarget]    = useState(null);
+  const [ledgerTarget,    setLedgerTarget]    = useState(null);
+  const [typeFilter,      setTypeFilter]      = useState('');
+  const [activeTab,       setActiveTab]       = useState('accounts');
+  const [openingBalOpen,  setOpeningBalOpen]  = useState(false);
 
   const { data: accounts = [], isLoading } = useQuery({
     queryKey: ['accounts'],
@@ -623,6 +703,12 @@ export default function AccountsPage() {
               <Button variant="secondary" size="sm" icon={<Sparkles className="h-4 w-4" />}
                 loading={seedMut.isPending} onClick={() => seedMut.mutate()}>
                 Seed Defaults
+              </Button>
+            )}
+            {accounts.length > 0 && (
+              <Button variant="secondary" size="sm" icon={<Layers className="h-4 w-4" />}
+                onClick={() => setOpeningBalOpen(true)}>
+                Opening Balances
               </Button>
             )}
             <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
@@ -717,6 +803,9 @@ export default function AccountsPage() {
       )}
 
       {/* Modals */}
+      {openingBalOpen && (
+        <OpeningBalancesModal accounts={accounts} onClose={() => setOpeningBalOpen(false)} />
+      )}
       {createOpen && (
         <AccountModal accounts={accounts} onClose={() => setCreateOpen(false)} />
       )}

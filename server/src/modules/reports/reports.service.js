@@ -1,4 +1,4 @@
-const { query } = require('../../config/database');
+﻿const { query } = require('../../config/database');
 const { isCompanyWide, branchScope } = require('../../shared/roles');
 
 const SALES_DASHBOARD_ROLES = ['super_admin', 'company_admin', 'branch_manager', 'accountant', 'cashier'];
@@ -312,42 +312,45 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
   };
 }
 
-// ── P&L Report ────────────────────────────────────────────────────────────────
+// ── P&L Report (journal-based) ────────────────────────────────────────────────
 
 async function getPLReport(companyId, { startDate, endDate } = {}) {
   const start = startDate || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
   const end   = endDate   || new Date().toISOString().slice(0, 10);
 
-  const [revenueRes, returnsRes, cogsRes, paymentBreakRes, expenseRes, expenseBreakRes] = await Promise.all([
-    // Gross revenue (VAT-inclusive)
+  const [jeRes, txnCountRes, returnsRes, paymentBreakRes, expenseRes, expenseBreakRes] = await Promise.all([
+    // Journal P&L: revenue, expense, and VAT Payable accounts for the period
     query(`
       SELECT
-        COALESCE(SUM(total_amount), 0)::numeric AS gross_revenue,
-        COUNT(*)::int                            AS txn_count,
-        COALESCE(SUM(tax_amount), 0)::numeric   AS tax_collected
+        a.account_code,
+        a.account_type,
+        COALESCE(SUM(jel.credit) FILTER (WHERE je.source_type = 'SALE'),   0)::numeric AS sale_credit,
+        COALESCE(SUM(jel.debit)  FILTER (WHERE je.source_type = 'RETURN'), 0)::numeric AS return_debit,
+        COALESCE(SUM(jel.debit),  0)::numeric AS total_debit,
+        COALESCE(SUM(jel.credit), 0)::numeric AS total_credit
+      FROM ledger_entry_lines jel
+      JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
+      JOIN accounts a         ON a.account_id        = jel.account_id
+      WHERE je.company_id = $1 AND je.status = 'posted'
+        AND je.entry_date BETWEEN $2 AND $3
+        AND (a.account_type IN ('revenue', 'expense') OR a.account_code = '2100')
+      GROUP BY a.account_code, a.account_type
+    `, [companyId, start, end]),
+
+    // Sales transaction count
+    query(`
+      SELECT COUNT(*)::int AS txn_count
       FROM sales_transactions
       WHERE company_id = $1 AND status = 'completed'
         AND transaction_date::date BETWEEN $2 AND $3
     `, [companyId, start, end]),
 
-    // Returns / refunds
+    // Returns count only
     query(`
-      SELECT COALESCE(SUM(total_refunded), 0)::numeric AS total_returns,
-             COUNT(*)::int AS return_count
+      SELECT COUNT(*)::int AS return_count
       FROM returns
-      WHERE company_id = $1
-        AND status IN ('approved', 'refunded')
+      WHERE company_id = $1 AND status IN ('approved', 'refunded')
         AND return_date::date BETWEEN $2 AND $3
-    `, [companyId, start, end]),
-
-    // COGS: qty sold × product cost_price
-    query(`
-      SELECT COALESCE(SUM(sti.quantity * COALESCE(p.cost_price, 0)), 0)::numeric AS cogs
-      FROM sales_transaction_items sti
-      JOIN products p ON p.product_id = sti.product_id
-      JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
-      WHERE st.company_id = $1 AND st.status = 'completed'
-        AND st.transaction_date::date BETWEEN $2 AND $3
     `, [companyId, start, end]),
 
     // Payment method breakdown
@@ -388,39 +391,54 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
     `, [companyId, start, end]),
   ]);
 
-  const grossRevenue        = parseFloat(revenueRes.rows[0].gross_revenue);
-  const taxCollected        = parseFloat(revenueRes.rows[0].tax_collected);
-  const revenueExVat        = grossRevenue - taxCollected;
-  const totalReturns        = parseFloat(returnsRes.rows[0].total_returns);
-  const netRevenue          = revenueExVat - totalReturns;
-  const cogs                = parseFloat(cogsRes.rows[0].cogs);
-  const grossProfit         = netRevenue - cogs;
-  const grossMargin         = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0;
-  const operatingExpenses   = parseFloat(expenseRes.rows[0].total_expenses);
-  const operatingProfit     = grossProfit - operatingExpenses;
-  const operatingMargin     = netRevenue > 0 ? (operatingProfit / netRevenue) * 100 : 0;
+  // Build map: account_code → journal row
+  const jeMap = {};
+  for (const r of jeRes.rows) jeMap[r.account_code] = r;
+
+  // Revenue accounts (credit-normal): sale credits = ex-VAT revenue; return debits = ex-VAT returns
+  const revenueRows  = jeRes.rows.filter((r) => r.account_type === 'revenue');
+  const revenueExVat = revenueRows.reduce((s, r) => s + parseFloat(r.sale_credit),  0);
+  const totalReturns = revenueRows.reduce((s, r) => s + parseFloat(r.return_debit), 0);
+
+  // VAT Payable (2100): sale credits = VAT collected on sales
+  const vatRow       = jeMap['2100'] || {};
+  const taxCollected = parseFloat(vatRow.sale_credit || 0);
+
+  // Gross revenue is VAT-inclusive total billed to customers
+  const grossRevenue = revenueExVat + taxCollected;
+  const netRevenue   = revenueExVat - totalReturns;
+
+  // COGS (5000): debit-normal expense account
+  const cogsRow  = jeMap['5000'] || {};
+  const cogs     = Math.max(0, parseFloat(cogsRow.total_debit || 0) - parseFloat(cogsRow.total_credit || 0));
+
+  const grossProfit     = netRevenue - cogs;
+  const grossMargin     = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0;
+  const operatingExpenses = parseFloat(expenseRes.rows[0].total_expenses);
+  const operatingProfit = grossProfit - operatingExpenses;
+  const operatingMargin = netRevenue > 0 ? (operatingProfit / netRevenue) * 100 : 0;
 
   return {
     period: { startDate: start, endDate: end },
     income: {
-      grossRevenue,
-      taxCollected,
-      revenueExVat,
-      totalReturns,
-      returnCount: parseInt(returnsRes.rows[0].return_count),
-      netRevenue,
-      txnCount: parseInt(revenueRes.rows[0].txn_count),
+      grossRevenue:  +grossRevenue.toFixed(2),
+      taxCollected:  +taxCollected.toFixed(2),
+      revenueExVat:  +revenueExVat.toFixed(2),
+      totalReturns:  +totalReturns.toFixed(2),
+      returnCount:   parseInt(returnsRes.rows[0].return_count),
+      netRevenue:    +netRevenue.toFixed(2),
+      txnCount:      parseInt(txnCountRes.rows[0].txn_count),
     },
-    cogs,
-    grossProfit,
-    grossMargin: +grossMargin.toFixed(2),
-    operatingExpenses,
-    operatingProfit,
-    operatingMargin: +operatingMargin.toFixed(2),
+    cogs:             +cogs.toFixed(2),
+    grossProfit:      +grossProfit.toFixed(2),
+    grossMargin:      +grossMargin.toFixed(2),
+    operatingExpenses: +operatingExpenses.toFixed(2),
+    operatingProfit:  +operatingProfit.toFixed(2),
+    operatingMargin:  +operatingMargin.toFixed(2),
     expenseBreakdown: expenseBreakRes.rows.map((r) => ({
-      supplierName:  r.supplier_name,
-      amount:        parseFloat(r.amount),
-      paymentCount:  r.payment_count,
+      supplierName: r.supplier_name,
+      amount:       parseFloat(r.amount),
+      paymentCount: r.payment_count,
     })),
     paymentBreakdown: paymentBreakRes.rows.map((r) => ({
       method:   r.method_name,
@@ -658,375 +676,155 @@ async function getGRNReport(companyId, { startDate, endDate, supplierId, page = 
   };
 }
 
-// ── Trial Balance ─────────────────────────────────────────────────────────────
+// ── Trial Balance (from ledger_entry_lines) ────────────────────────────────
 
 async function getTrialBalance(companyId, { asOf } = {}) {
   const asOfDate = asOf || new Date().toISOString().slice(0, 10);
 
-  const [
-    accountsRes,
-    bankRes,
-    inventoryRes,
-    salesRes,
-    returnsRes,
-    cogsRes,
-    apRes,
-    vatRes,
-    paymentRes,
-  ] = await Promise.all([
-    // All accounts for this company
+  const [accountsRes, jeLinesRes] = await Promise.all([
     query(
       `SELECT account_id, account_code, account_name, account_type, account_subtype, is_active
        FROM accounts WHERE company_id = $1 ORDER BY account_code`,
       [companyId]
     ),
-    // Bank balances
-    query(
-      `SELECT COALESCE(SUM(current_balance), 0)::numeric AS total
-       FROM bank_accounts WHERE company_id = $1 AND is_active = TRUE`,
-      [companyId]
-    ),
-    // Inventory value
     query(`
-      SELECT COALESCE(SUM(pbi.quantity_available * COALESCE(p.cost_price, 0)), 0)::numeric AS total
-      FROM product_branch_inventory pbi
-      JOIN products p  ON p.product_id  = pbi.product_id AND p.company_id = $1 AND p.is_active = TRUE
-      JOIN branches b  ON b.branch_id   = pbi.branch_id  AND b.company_id = $1
-      WHERE pbi.quantity_available > 0
-    `, [companyId]),
-    // Sales revenue (ex-VAT, net of returns)
-    query(`
-      SELECT
-        COALESCE(SUM(total_amount - COALESCE(tax_amount, 0)), 0)::numeric AS revenue,
-        COALESCE(SUM(COALESCE(tax_amount, 0)), 0)::numeric                AS vat
-      FROM sales_transactions
-      WHERE company_id = $1 AND status = 'completed'
-        AND transaction_date::date <= $2
-    `, [companyId, asOfDate]),
-    // Returns (reduce revenue)
-    query(`
-      SELECT COALESCE(SUM(total_refunded), 0)::numeric AS total
-      FROM returns
-      WHERE company_id = $1 AND status IN ('approved','refunded')
-        AND return_date::date <= $2
-    `, [companyId, asOfDate]),
-    // COGS
-    query(`
-      SELECT COALESCE(SUM(sti.quantity * COALESCE(p.cost_price, 0)), 0)::numeric AS total
-      FROM sales_transaction_items sti
-      JOIN products p ON p.product_id = sti.product_id
-      JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
-      WHERE st.company_id = $1 AND st.status = 'completed'
-        AND st.transaction_date::date <= $2
-    `, [companyId, asOfDate]),
-    // AP balance
-    query(
-      `SELECT COALESCE(SUM(current_balance), 0)::numeric AS total
-       FROM suppliers WHERE company_id = $1 AND current_balance > 0`,
-      [companyId]
-    ),
-    // VAT payable (gross VAT collected)
-    query(`
-      SELECT COALESCE(SUM(COALESCE(tax_amount, 0)), 0)::numeric AS total
-      FROM sales_transactions
-      WHERE company_id = $1 AND status = 'completed'
-        AND transaction_date::date <= $2
-    `, [companyId, asOfDate]),
-    // Supplier payments (cash outflow)
-    query(`
-      SELECT COALESCE(SUM(amount), 0)::numeric AS total
-      FROM supplier_payments
-      WHERE company_id = $1 AND is_void = FALSE
-        AND payment_date <= $2
+      SELECT jel.account_id,
+             COALESCE(SUM(jel.debit),  0)::numeric AS total_debit,
+             COALESCE(SUM(jel.credit), 0)::numeric AS total_credit
+      FROM ledger_entry_lines jel
+      JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
+      WHERE je.company_id = $1 AND je.status = 'posted' AND je.entry_date <= $2
+      GROUP BY jel.account_id
     `, [companyId, asOfDate]),
   ]);
 
-  const bankTotal      = parseFloat(bankRes.rows[0].total);
-  const inventoryTotal = parseFloat(inventoryRes.rows[0].total);
-  const salesRevenue   = parseFloat(salesRes.rows[0].revenue);
-  const returnsTotal   = parseFloat(returnsRes.rows[0].total);
-  const cogsTotal      = parseFloat(cogsRes.rows[0].total);
-  const apTotal        = parseFloat(apRes.rows[0].total);
-  const vatTotal       = parseFloat(vatRes.rows[0].total);
-  const paymentsTotal  = parseFloat(paymentRes.rows[0].total);
-  const netRevenue     = salesRevenue - returnsTotal;
+  const balMap = Object.fromEntries(
+    jeLinesRes.rows.map((r) => [r.account_id, {
+      debit:  parseFloat(r.total_debit),
+      credit: parseFloat(r.total_credit),
+    }])
+  );
 
-  // Map computed balances to account codes
-  const computedBalances = {
-    '1010': bankTotal,
-    '1200': inventoryTotal,
-    '2000': apTotal,
-    '2100': vatTotal,
-    '4000': netRevenue,
-    '5000': cogsTotal,
-  };
-
-  const accounts = accountsRes.rows;
-  const rows = [];
-
-  for (const acc of accounts) {
-    const computed = computedBalances[acc.account_code] ?? null;
-    const balance  = computed !== null ? computed : 0;
-    const hasData  = computed !== null;
-
-    let debit  = 0;
-    let credit = 0;
-
-    if (balance !== 0) {
-      const isDebitNormal = ['asset', 'expense'].includes(acc.account_type);
-      if (isDebitNormal) {
-        debit  = balance > 0 ? balance : 0;
-        credit = balance < 0 ? -balance : 0;
-      } else {
-        credit = balance > 0 ? balance : 0;
-        debit  = balance < 0 ? -balance : 0;
-      }
-    }
-
-    rows.push({
+  const rows = accountsRes.rows.map((acc) => {
+    const bal    = balMap[acc.account_id] || { debit: 0, credit: 0 };
+    const net    = bal.debit - bal.credit;
+    const debit  = net > 0.005  ? +net.toFixed(2)    : 0;
+    const credit = net < -0.005 ? +(-net).toFixed(2) : 0;
+    return {
       accountId:   acc.account_id,
       accountCode: acc.account_code,
       accountName: acc.account_name,
       accountType: acc.account_type,
       isActive:    acc.is_active,
-      hasData,
+      hasData:     (bal.debit > 0 || bal.credit > 0),
       debit,
       credit,
-    });
-  }
+    };
+  });
 
   const totalDebits  = rows.reduce((s, r) => s + r.debit,  0);
   const totalCredits = rows.reduce((s, r) => s + r.credit, 0);
 
   return {
-    asOf:        asOfDate,
+    asOf:         asOfDate,
     rows,
     totalDebits:  +totalDebits.toFixed(2),
     totalCredits: +totalCredits.toFixed(2),
     difference:   +(totalDebits - totalCredits).toFixed(2),
   };
 }
-
-// ── Ledger Entries (synthesized from transactions) ────────────────────────────
+// ── Ledger Entries — enriched with entity name + source reference ─────────────
 
 async function getLedgerEntries(companyId, { accountId, startDate, endDate, page = 1, limit = 50 } = {}) {
   const start = startDate || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
   const end   = endDate   || new Date().toISOString().slice(0, 10);
-  const pg = parseInt(page, 10);
+  const pg = parseInt(page,  10);
   const lm = parseInt(limit, 10);
 
-  // Resolve account code for the chosen account (if filtering)
-  let filterCode = null;
-  if (accountId) {
-    const { rows: accRows } = await query(
-      `SELECT account_code FROM accounts WHERE account_id = $1 AND company_id = $2`,
-      [accountId, companyId]
-    );
-    if (accRows.length) filterCode = accRows[0].account_code;
-  }
+  const { rows } = await query(`
+    WITH ranked AS (
+      SELECT
+        je.journal_entry_id,
+        je.entry_number,
+        je.entry_date,
+        je.source_type,
+        je.source_id,
+        je.status,
+        lel.line_id,
+        lel.account_id,
+        lel.debit::numeric   AS debit,
+        lel.credit::numeric  AS credit,
+        lel.entity_type,
+        lel.entity_id,
+        COALESCE(lel.description, je.description) AS description,
+        a.account_code,
+        a.account_name,
+        -- Who is the counterpart on this line
+        CASE lel.entity_type
+          WHEN 'customer'     THEN c.customer_name
+          WHEN 'supplier'     THEN s.supplier_name
+          WHEN 'bank_account' THEN ba.account_name
+        END AS entity_name,
+        -- Human-readable source document reference
+        CASE je.source_type
+          WHEN 'SALE'          THEN st_sale.transaction_number
+          WHEN 'RETURN'        THEN ret.return_number
+          WHEN 'GRN'           THEN grn.grn_number
+          WHEN 'AR_SETTLEMENT' THEN st_ar.transaction_number
+        END AS source_ref
+      FROM ledger_entry_lines lel
+      JOIN journal_entries je ON je.journal_entry_id = lel.journal_entry_id
+      JOIN accounts a         ON a.account_id        = lel.account_id
+      LEFT JOIN customers     c  ON lel.entity_type = 'customer'     AND c.customer_id      = lel.entity_id
+      LEFT JOIN suppliers     s  ON lel.entity_type = 'supplier'     AND s.supplier_id      = lel.entity_id
+      LEFT JOIN bank_accounts ba ON lel.entity_type = 'bank_account' AND ba.bank_account_id = lel.entity_id
+      LEFT JOIN sales_transactions st_sale ON je.source_type = 'SALE'          AND st_sale.transaction_id = je.source_id
+      LEFT JOIN returns            ret     ON je.source_type = 'RETURN'         AND ret.return_id           = je.source_id
+      LEFT JOIN grns               grn     ON je.source_type = 'GRN'            AND grn.grn_id              = je.source_id
+      LEFT JOIN sales_transactions st_ar   ON je.source_type = 'AR_SETTLEMENT' AND st_ar.transaction_id    = je.source_id
+      WHERE je.company_id = $1
+        AND je.status     = 'posted'
+        AND je.entry_date BETWEEN $2 AND $3
+        AND ($4::uuid IS NULL OR lel.account_id = $4::uuid)
+    ),
+    with_balance AS (
+      SELECT *,
+        SUM(debit - credit) OVER (
+          PARTITION BY account_id
+          ORDER BY entry_date ASC, entry_number ASC
+          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        )::numeric AS running_balance,
+        COUNT(*) OVER () AS total_count
+      FROM ranked
+    )
+    SELECT * FROM with_balance
+    ORDER BY entry_date DESC, entry_number DESC
+    LIMIT $5 OFFSET $6
+  `, [companyId, start, end, accountId || null, lm, (pg - 1) * lm]);
 
-  // Fetch all accounts for code→id mapping
-  const { rows: accMap } = await query(
-    `SELECT account_id, account_code, account_name FROM accounts WHERE company_id = $1`,
-    [companyId]
-  );
-  const byCode = {};
-  for (const a of accMap) byCode[a.account_code] = a;
-
-  // Helper to get account info by code
-  const acct = (code) => byCode[code] || { account_id: null, account_code: code, account_name: code };
-
-  // Build entries from all sources
-  const entries = [];
-
-  // 1 — Sales Transactions: DR Cash(1000)/Bank(1010), CR Revenue(4000) + VAT(2100)
-  if (!filterCode || ['4000', '2100', '1000', '1010'].includes(filterCode)) {
-    const { rows: sales } = await query(`
-      SELECT st.transaction_id, st.transaction_number, st.transaction_date,
-             (st.total_amount - COALESCE(st.tax_amount, 0))::numeric AS revenue,
-             COALESCE(st.tax_amount, 0)::numeric AS vat,
-             st.total_amount::numeric AS total,
-             COALESCE(c.customer_name, 'Walk-in') AS customer_name
-      FROM sales_transactions st
-      LEFT JOIN customers c ON c.customer_id = st.customer_id
-      WHERE st.company_id = $1 AND st.status = 'completed'
-        AND st.transaction_date::date BETWEEN $2 AND $3
-      ORDER BY st.transaction_date
-    `, [companyId, start, end]);
-
-    for (const s of sales) {
-      const desc = `Sale to ${s.customer_name}`;
-      const ref  = s.transaction_number;
-      const dt   = s.transaction_date;
-
-      // Credit: Sales Revenue
-      if (!filterCode || filterCode === '4000') {
-        entries.push({ date: dt, reference: ref, description: desc,
-          accountCode: '4000', accountName: acct('4000').account_name,
-          debit: 0, credit: parseFloat(s.revenue), sourceType: 'sale' });
-      }
-      // Credit: VAT Payable
-      if (parseFloat(s.vat) > 0 && (!filterCode || filterCode === '2100')) {
-        entries.push({ date: dt, reference: ref, description: `VAT — ${ref}`,
-          accountCode: '2100', accountName: acct('2100').account_name,
-          debit: 0, credit: parseFloat(s.vat), sourceType: 'sale_vat' });
-      }
-      // Debit: Bank (simplified — all cash/bank)
-      if (!filterCode || filterCode === '1010') {
-        entries.push({ date: dt, reference: ref, description: desc,
-          accountCode: '1010', accountName: acct('1010').account_name,
-          debit: parseFloat(s.total), credit: 0, sourceType: 'sale_bank' });
-      }
-    }
-  }
-
-  // 2 — GRN Postings: DR Inventory(1200), CR AP(2000)
-  if (!filterCode || ['1200', '2000'].includes(filterCode)) {
-    const { rows: grns } = await query(`
-      SELECT g.grn_id, g.grn_number, g.received_date, g.total_amount::numeric,
-             s.supplier_name
-      FROM grns g
-      JOIN suppliers s ON s.supplier_id = g.supplier_id
-      WHERE g.company_id = $1 AND g.status = 'posted'
-        AND g.received_date BETWEEN $2 AND $3
-      ORDER BY g.received_date
-    `, [companyId, start, end]);
-
-    for (const g of grns) {
-      const desc = `Goods received from ${g.supplier_name}`;
-      const ref  = g.grn_number;
-      const dt   = g.received_date;
-      const amt  = parseFloat(g.total_amount);
-
-      if (!filterCode || filterCode === '1200') {
-        entries.push({ date: dt, reference: ref, description: desc,
-          accountCode: '1200', accountName: acct('1200').account_name,
-          debit: amt, credit: 0, sourceType: 'grn' });
-      }
-      if (!filterCode || filterCode === '2000') {
-        entries.push({ date: dt, reference: ref, description: `AP: ${g.supplier_name}`,
-          accountCode: '2000', accountName: acct('2000').account_name,
-          debit: 0, credit: amt, sourceType: 'grn_ap' });
-      }
-    }
-  }
-
-  // 3 — Supplier Payments: DR AP(2000), CR Bank(1010)/Cash(1000)
-  if (!filterCode || ['2000', '1010', '1000'].includes(filterCode)) {
-    const { rows: pmts } = await query(`
-      SELECT sp.payment_id, sp.payment_date, sp.amount::numeric,
-             sp.payment_method, sp.reference_number,
-             s.supplier_name
-      FROM supplier_payments sp
-      JOIN suppliers s ON s.supplier_id = sp.supplier_id
-      WHERE sp.company_id = $1 AND sp.is_void = FALSE
-        AND sp.payment_date BETWEEN $2 AND $3
-      ORDER BY sp.payment_date
-    `, [companyId, start, end]);
-
-    for (const p of pmts) {
-      const desc     = `Payment to ${p.supplier_name}`;
-      const ref      = p.reference_number || p.payment_id.slice(0, 8);
-      const dt       = p.payment_date;
-      const amt      = parseFloat(p.amount);
-      const isCash   = ['cash', 'mpesa', 'other'].includes(p.payment_method);
-      const bankCode = isCash ? '1000' : '1010';
-
-      if (!filterCode || filterCode === '2000') {
-        entries.push({ date: dt, reference: ref, description: desc,
-          accountCode: '2000', accountName: acct('2000').account_name,
-          debit: amt, credit: 0, sourceType: 'payment_ap' });
-      }
-      if (!filterCode || filterCode === bankCode) {
-        entries.push({ date: dt, reference: ref, description: desc,
-          accountCode: bankCode, accountName: acct(bankCode).account_name,
-          debit: 0, credit: amt, sourceType: 'payment_bank' });
-      }
-    }
-  }
-
-  // 4 — Returns: DR Revenue(4000), CR Bank(1010)/Cash(1000)
-  if (!filterCode || ['4000', '1010', '1000'].includes(filterCode)) {
-    const { rows: rets } = await query(`
-      SELECT r.return_id, r.return_number, r.return_date, r.total_refunded::numeric
-      FROM returns r
-      WHERE r.company_id = $1 AND r.status IN ('approved','refunded')
-        AND r.return_date::date BETWEEN $2 AND $3
-      ORDER BY r.return_date
-    `, [companyId, start, end]);
-
-    for (const r of rets) {
-      const desc = `Sales return ${r.return_number}`;
-      const dt   = r.return_date;
-      const amt  = parseFloat(r.total_refunded);
-
-      if (!filterCode || filterCode === '4000') {
-        entries.push({ date: dt, reference: r.return_number, description: desc,
-          accountCode: '4000', accountName: acct('4000').account_name,
-          debit: amt, credit: 0, sourceType: 'return' });
-      }
-      if (!filterCode || filterCode === '1010') {
-        entries.push({ date: dt, reference: r.return_number, description: desc,
-          accountCode: '1010', accountName: acct('1010').account_name,
-          debit: 0, credit: amt, sourceType: 'return_bank' });
-      }
-    }
-  }
-
-  // Normalise sourceType → display entryType
-  const SOURCE_TYPE_MAP = {
-    sale:         'SALE',
-    sale_vat:     'SALE',
-    sale_bank:    'SALE',
-    grn:          'GRN',
-    grn_ap:       'GRN',
-    payment_ap:   'PAYMENT',
-    payment_bank: 'PAYMENT',
-    return:       'RETURN',
-    return_bank:  'RETURN',
-  };
-
-  // Sort by date desc, then paginate
-  entries.sort((a, b) => {
-    const d = new Date(b.date) - new Date(a.date);
-    return d !== 0 ? d : a.reference?.localeCompare(b.reference ?? '') ?? 0;
-  });
-
-  const totalCount = entries.length;
-  const page_entries = entries.slice((pg - 1) * lm, pg * lm);
-
-  // Running balance per account (for current page only)
-  const runMap = {};
-  for (const e of page_entries) {
-    const key = e.accountCode;
-    if (!runMap[key]) runMap[key] = 0;
-    runMap[key] += e.debit - e.credit;
-    e.runningBalance = +runMap[key].toFixed(2);
-  }
-
-  // Normalise to frontend-expected field names
-  const normalised = page_entries.map((e) => ({
-    id:          e.reference,
-    entryDate:   e.date instanceof Date ? e.date.toISOString() : e.date,
-    entryType:   SOURCE_TYPE_MAP[e.sourceType] ?? e.sourceType?.toUpperCase() ?? 'ENTRY',
-    reference:   e.reference,
-    accountCode: e.accountCode,
-    description: e.description,
-    debit:       e.debit,
-    credit:      e.credit,
-    balance:     e.runningBalance,
-  }));
+  const total = rows.length ? parseInt(rows[0].total_count) : 0;
 
   return {
     period:  { startDate: start, endDate: end },
-    entries: normalised,
-    total:   totalCount,
-    page:    pg,
-    limit:   lm,
-    pages:   Math.ceil(totalCount / lm),
+    entries: rows.map(({ total_count, ...r }) => ({
+      lineId:      r.line_id,
+      entryId:     r.journal_entry_id,
+      entryNumber: r.entry_number,
+      entryDate:   r.entry_date,
+      sourceType:  r.source_type,
+      sourceRef:   r.source_ref || r.entry_number,
+      accountCode: r.account_code,
+      accountName: r.account_name,
+      description: r.description,
+      entityType:  r.entity_type,
+      entityName:  r.entity_name,
+      debit:       parseFloat(r.debit),
+      credit:      parseFloat(r.credit),
+      balance:     parseFloat(r.running_balance),
+    })),
+    total, page: pg, limit: lm, pages: Math.ceil(total / lm),
   };
 }
-
 // ── AP Aging ──────────────────────────────────────────────────────────────────
 
 async function getAPAging(companyId) {
@@ -1080,11 +878,25 @@ async function getAPAging(companyId) {
   return { suppliers, totals };
 }
 
-// ── Balance Sheet ─────────────────────────────────────────────────────────────
+// ── Balance Sheet (journal-based) ─────────────────────────────────────────────
 
 async function getBalanceSheet(companyId) {
-  const [bankRes, inventoryRes, apRes, receivablesRes] = await Promise.all([
-    // Bank accounts
+  const [jeBalRes, bankRes, inventoryRes, suppliersRes] = await Promise.all([
+    // Journal net balances for key asset/liability accounts (all-time, no date filter)
+    query(`
+      SELECT
+        a.account_code,
+        COALESCE(SUM(jel.debit),  0)::numeric AS total_debit,
+        COALESCE(SUM(jel.credit), 0)::numeric AS total_credit
+      FROM ledger_entry_lines jel
+      JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
+      JOIN accounts a         ON a.account_id        = jel.account_id
+      WHERE je.company_id = $1 AND je.status = 'posted'
+        AND a.account_code IN ('1000', '1010', '1100', '1300', '2000', '2100')
+      GROUP BY a.account_code
+    `, [companyId]),
+
+    // Bank account details for breakdown
     query(`
       SELECT ba.account_name, ba.bank_name, ba.account_number,
              ba.current_balance::numeric AS balance, ba.currency, ba.is_default
@@ -1093,7 +905,7 @@ async function getBalanceSheet(companyId) {
       ORDER BY ba.is_default DESC, ba.account_name
     `, [companyId]),
 
-    // Inventory value (qty × cost_price)
+    // Inventory units and product count (operational table)
     query(`
       SELECT
         COALESCE(SUM(pbi.quantity_available * COALESCE(p.cost_price, 0)), 0)::numeric AS inventory_value,
@@ -1105,28 +917,54 @@ async function getBalanceSheet(companyId) {
       WHERE pbi.quantity_available > 0
     `, [companyId]),
 
-    // AP: outstanding supplier balances
+    // Supplier balances for AP breakdown
     query(`
       SELECT supplier_name, current_balance::numeric AS balance
       FROM suppliers
       WHERE company_id = $1 AND current_balance > 0
       ORDER BY current_balance DESC
     `, [companyId]),
-
-    // AR: nothing tracked yet, so 0
-    query(`SELECT 0::numeric AS ar_balance`, []),
   ]);
 
-  const bankAccounts   = bankRes.rows.map((r) => ({ ...r, balance: parseFloat(r.balance) }));
-  const totalBankCash  = bankAccounts.reduce((s, r) => s + r.balance, 0);
-  const inv            = inventoryRes.rows[0];
-  const inventoryValue = parseFloat(inv.inventory_value);
-  const apSuppliers    = apRes.rows.map((r) => ({ supplierName: r.supplier_name, balance: parseFloat(r.balance) }));
-  const totalAP        = apSuppliers.reduce((s, r) => s + r.balance, 0);
+  // Build journal net balance map: account_code → net (debit − credit)
+  // Positive = debit-heavy (assets), negative = credit-heavy (liabilities)
+  const jeMap = {};
+  for (const r of jeBalRes.rows) {
+    jeMap[r.account_code] = parseFloat(r.total_debit) - parseFloat(r.total_credit);
+  }
 
-  const totalAssets      = totalBankCash + inventoryValue;
-  const totalLiabilities = totalAP;
-  const equity           = totalAssets - totalLiabilities;
+  const hasJournalData = jeBalRes.rows.length > 0;
+
+  // Cash & Bank (1000 + 1010): debit-normal; fallback to bank_accounts.current_balance sum
+  const bankAccounts  = bankRes.rows.map((r) => ({ ...r, balance: parseFloat(r.balance) }));
+  const opCashTotal   = bankAccounts.reduce((s, r) => s + r.balance, 0);
+  const jesCash       = (jeMap['1000'] || 0) + (jeMap['1010'] || 0);
+  const totalBankCash = hasJournalData ? +jesCash.toFixed(2) : opCashTotal;
+
+  // Accounts Receivable (1100): debit-normal
+  const ar = Math.max(0, +(jeMap['1100'] || 0).toFixed(2));
+
+  // Inventory (1300): debit-normal; fallback to qty × cost_price
+  const inv            = inventoryRes.rows[0];
+  const jesInventory   = jeMap['1300'];
+  const inventoryValue = hasJournalData && jesInventory !== undefined
+    ? +Math.max(0, jesInventory).toFixed(2)
+    : parseFloat(inv.inventory_value);
+
+  // Accounts Payable (2000): credit-normal → net is negative → AP = |net|
+  const apSuppliers = suppliersRes.rows.map((r) => ({ supplierName: r.supplier_name, balance: parseFloat(r.balance) }));
+  const opAPTotal   = apSuppliers.reduce((s, r) => s + r.balance, 0);
+  const jesAP       = jeMap['2000'];
+  const totalAP     = hasJournalData && jesAP !== undefined
+    ? +Math.max(0, -jesAP).toFixed(2)
+    : opAPTotal;
+
+  // VAT Payable (2100): credit-normal
+  const vatPayable = +Math.max(0, -(jeMap['2100'] || 0)).toFixed(2);
+
+  const totalAssets      = +(totalBankCash + inventoryValue + ar).toFixed(2);
+  const totalLiabilities = +(totalAP + vatPayable).toFixed(2);
+  const equity           = +(totalAssets - totalLiabilities).toFixed(2);
 
   return {
     asOf: new Date().toISOString().slice(0, 10),
@@ -1140,6 +978,95 @@ async function getBalanceSheet(companyId) {
       total:           totalLiabilities,
     },
     equity,
+  };
+}
+
+// ── Cash Flow Statement (from ledger_entry_lines) ────────────────────────────
+
+async function getCashFlowStatement(companyId, { startDate, endDate } = {}) {
+  const start = startDate || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
+  const end   = endDate   || new Date().toISOString().slice(0, 10);
+
+  const [movementsRes, openingBalRes] = await Promise.all([
+    // Cash movements in period: debit to 1000/1010 = inflow, credit = outflow
+    query(`
+      SELECT
+        je.source_type,
+        COALESCE(SUM(jel.debit),  0)::numeric AS cash_in,
+        COALESCE(SUM(jel.credit), 0)::numeric AS cash_out
+      FROM ledger_entry_lines jel
+      JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
+      JOIN accounts a         ON a.account_id        = jel.account_id
+      WHERE je.company_id = $1 AND je.status = 'posted'
+        AND je.entry_date BETWEEN $2 AND $3
+        AND a.account_code IN ('1000', '1010')
+      GROUP BY je.source_type
+    `, [companyId, start, end]),
+
+    // Opening cash balance (all posted entries strictly before start date)
+    query(`
+      SELECT COALESCE(SUM(jel.debit - jel.credit), 0)::numeric AS opening_balance
+      FROM ledger_entry_lines jel
+      JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
+      JOIN accounts a         ON a.account_id        = jel.account_id
+      WHERE je.company_id = $1 AND je.status = 'posted'
+        AND je.entry_date < $2
+        AND a.account_code IN ('1000', '1010')
+    `, [companyId, start]),
+  ]);
+
+  // Classify movements into cash flow categories
+  const cf = {
+    operating: { receiptsFromCustomers: 0, arCollections: 0, refundsToCustomers: 0, paymentsToSuppliers: 0, supplierPaymentVoids: 0 },
+    financing: { openingDeposits: 0 },
+    other:     { net: 0 },
+  };
+
+  for (const r of movementsRes.rows) {
+    const inflow  = parseFloat(r.cash_in);
+    const outflow = parseFloat(r.cash_out);
+    const net     = inflow - outflow;
+    switch (r.source_type) {
+      case 'SALE':           cf.operating.receiptsFromCustomers += inflow;  break;
+      case 'AR_SETTLEMENT':  cf.operating.arCollections        += inflow;  break;
+      case 'RETURN':         cf.operating.refundsToCustomers   -= outflow; break;
+      case 'PAYMENT':        cf.operating.paymentsToSuppliers  -= outflow; break;
+      case 'PAYMENT_VOID':   cf.operating.supplierPaymentVoids += inflow;  break;
+      case 'OPENING':        cf.financing.openingDeposits      += net;     break;
+      default:               cf.other.net                      += net;     break;
+    }
+  }
+
+  const netOperating  = cf.operating.receiptsFromCustomers + cf.operating.arCollections
+                      + cf.operating.refundsToCustomers + cf.operating.paymentsToSuppliers
+                      + cf.operating.supplierPaymentVoids;
+  const netFinancing  = cf.financing.openingDeposits;
+  const netOther      = cf.other.net;
+  const netCashChange = netOperating + netFinancing + netOther;
+
+  const openingBalance = parseFloat(openingBalRes.rows[0].opening_balance);
+  const closingBalance = openingBalance + netCashChange;
+
+  const r2 = (n) => +n.toFixed(2);
+
+  return {
+    period: { startDate: start, endDate: end },
+    operating: {
+      receiptsFromCustomers: r2(cf.operating.receiptsFromCustomers),
+      arCollections:         r2(cf.operating.arCollections),
+      refundsToCustomers:    r2(cf.operating.refundsToCustomers),
+      paymentsToSuppliers:   r2(cf.operating.paymentsToSuppliers),
+      supplierPaymentVoids:  r2(cf.operating.supplierPaymentVoids),
+      net:                   r2(netOperating),
+    },
+    financing: {
+      openingDeposits: r2(cf.financing.openingDeposits),
+      net:             r2(netFinancing),
+    },
+    other: { net: r2(netOther) },
+    netCashChange:   r2(netCashChange),
+    openingBalance:  r2(openingBalance),
+    closingBalance:  r2(closingBalance),
   };
 }
 
@@ -1270,4 +1197,4 @@ async function getPurchasesSummary(companyId, { startDate, endDate } = {}) {
   };
 }
 
-module.exports = { getDashboard, getSalesReport, getPLReport, getAPAging, getBalanceSheet, getStockValuation, getPurchasesSummary, getLPOReport, getGRNReport, getTrialBalance, getLedgerEntries };
+module.exports = { getDashboard, getSalesReport, getPLReport, getAPAging, getBalanceSheet, getCashFlowStatement, getStockValuation, getPurchasesSummary, getLPOReport, getGRNReport, getTrialBalance, getLedgerEntries };

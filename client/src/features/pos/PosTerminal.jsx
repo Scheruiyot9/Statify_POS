@@ -21,6 +21,8 @@ function OpenSessionScreen({ branchId, onSessionOpened }) {
   const [openingAmount, setOpeningAmount] = useState('');
   const [notes,         setNotes]         = useState('');
   const [pmAmounts,     setPmAmounts]     = useState({});
+  // Stuck session recovery state
+  const [stuckSession,  setStuckSession]  = useState(null); // { sessionId, sessionStart, cashierName }
 
   const { data: terminals = [], isPending: terminalsLoading } = useQuery({
     queryKey: ['pos-terminals', branchId],
@@ -39,13 +41,25 @@ function OpenSessionScreen({ branchId, onSessionOpened }) {
     if (terminals.length && !terminalId) setTerminalId(String(terminals[0].terminal_id));
   }, [terminals, terminalId]);
 
+  // Clear stuck-session banner when the user picks a different terminal
+  useEffect(() => { setStuckSession(null); }, [terminalId]);
+
   const { mutate: open, isPending } = useMutation({
     mutationFn: (data) => api.post('/pos/sessions', data),
     onSuccess:  (res)  => {
       toast.success('Session opened!');
+      setStuckSession(null);
       onSessionOpened(res.data.data);
     },
-    onError: (err) => toast.error(err.response?.data?.message || 'Could not open session'),
+    onError: (err) => {
+      const resp = err.response?.data;
+      if (resp?.code === 'SESSION_ALREADY_OPEN' && resp?.data?.sessionId) {
+        // Surface the stuck session so the user can take over
+        setStuckSession(resp.data);
+      } else {
+        toast.error(resp?.message || 'Could not open session');
+      }
+    },
   });
 
   if (terminalsLoading) return <PageSpinner />;
@@ -53,6 +67,15 @@ function OpenSessionScreen({ branchId, onSessionOpened }) {
   const payModeAmounts = nonCashMethods
     .filter((m) => parseFloat(pmAmounts[m.payment_method_id]) > 0)
     .map((m) => ({ paymentMethodId: m.payment_method_id, amount: parseFloat(pmAmounts[m.payment_method_id]) }));
+
+  const doOpen = (forceClose = false) => open({
+    branchId,
+    terminalId,
+    openingCashAmount: parseFloat(openingAmount) || 0,
+    openingNotes: notes || null,
+    payModeAmounts,
+    forceClose,
+  });
 
   return (
     <div className="flex h-full items-center justify-center bg-gray-50 p-4">
@@ -64,6 +87,30 @@ function OpenSessionScreen({ branchId, onSessionOpened }) {
           <h2 className="text-xl font-bold text-gray-900">Open POS Session</h2>
           <p className="mt-1 text-sm text-gray-500">Select a terminal and count your opening float</p>
         </div>
+
+        {/* Stuck session recovery banner */}
+        {stuckSession && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
+            <div className="flex items-start gap-2">
+              <span className="text-amber-500 text-lg leading-none">⚠</span>
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Terminal has a stuck session</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  {stuckSession.cashierName ? `Opened by ${stuckSession.cashierName}` : 'Unknown cashier'}
+                  {stuckSession.sessionStart ? ` · ${new Date(stuckSession.sessionStart).toLocaleString()}` : ''}
+                </p>
+              </div>
+            </div>
+            <Button
+              fullWidth
+              loading={isPending}
+              className="!bg-amber-600 hover:!bg-amber-700 !text-white"
+              onClick={() => doOpen(true)}
+            >
+              Take Over Terminal
+            </Button>
+          </div>
+        )}
 
         <div className="space-y-4">
           <div>
@@ -129,13 +176,7 @@ function OpenSessionScreen({ branchId, onSessionOpened }) {
           <Button
             fullWidth size="lg" loading={isPending}
             disabled={!terminalId}
-            onClick={() => open({
-              branchId,
-              terminalId,
-              openingCashAmount: parseFloat(openingAmount) || 0,
-              openingNotes: notes || null,
-              payModeAmounts,
-            })}
+            onClick={() => doOpen(false)}
           >
             Open Session
           </Button>

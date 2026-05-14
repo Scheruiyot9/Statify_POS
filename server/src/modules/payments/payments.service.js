@@ -1,5 +1,6 @@
 const { query, transaction } = require('../../config/database');
 const AppError = require('../../shared/AppError');
+const jrn = require('../journal/journal.service');
 
 async function listPayments(companyId, { supplierId, fromDate, toDate, page = 1, limit = 25 } = {}) {
   const pg = parseInt(page, 10);
@@ -115,6 +116,9 @@ async function createPayment(companyId, userId, data) {
       );
     }
 
+    // Post double-entry journal for this payment
+    await jrn.postPaymentEntry(client, companyId, payment);
+
     return payment;
   });
 }
@@ -147,6 +151,9 @@ async function voidPayment(companyId, paymentId, userId) {
         [parseFloat(payment.amount), payment.bank_account_id]
       );
     }
+
+    // Post reversal journal entry
+    await jrn.postVoidPaymentEntry(client, companyId, payment, userId);
 
     return { payment_id: paymentId, voided: true };
   });

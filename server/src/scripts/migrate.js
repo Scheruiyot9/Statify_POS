@@ -29,6 +29,10 @@ const FILES_IN_ORDER = [
   '25_suppliers.sql',              // suppliers table
   '26_purchase_orders.sql',        // purchase_orders, purchase_order_items, grns, grn_items + company counters
   '27_supplier_payments.sql',      // supplier_payments table (AP payments)
+  '28_journal_entries.sql',        // journal_entries + journal_entry_lines (double-entry ledger)
+  '29_reconciliation.sql',         // is_reconciled columns on journal_entry_lines
+  '30_ledger_rename.sql',          // rename journal_entry_lines → ledger_entry_lines + entity_type/entity_id
+  '31_journals.sql',               // journals + journal_lines operational tables + journal_counter on companies
 ];
 
 async function migrate() {

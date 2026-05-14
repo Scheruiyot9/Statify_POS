@@ -1,6 +1,7 @@
 const {
   getDashboard, getSalesReport,
-  getPLReport, getAPAging, getBalanceSheet, getStockValuation, getPurchasesSummary,
+  getPLReport, getAPAging, getBalanceSheet, getCashFlowStatement,
+  getStockValuation, getPurchasesSummary,
   getLPOReport, getGRNReport, getTrialBalance, getLedgerEntries,
 } = require('./reports.service');
 
@@ -64,4 +65,9 @@ const ledgerEntries = async (req, res) => {
   res.json({ success: true, data });
 };
 
-module.exports = { dashboard, salesReport, plReport, apAging, balanceSheet, stockValuation, purchasesSummary, lpoReport, grnReport, trialBalance, ledgerEntries };
+const cashFlow = async (req, res) => {
+  const data = await getCashFlowStatement(req.tenantId, req.query);
+  res.json({ success: true, data });
+};
+
+module.exports = { dashboard, salesReport, plReport, apAging, balanceSheet, cashFlow, stockValuation, purchasesSummary, lpoReport, grnReport, trialBalance, ledgerEntries };

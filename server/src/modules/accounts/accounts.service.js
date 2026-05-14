@@ -147,7 +147,7 @@ async function seedDefaults(companyId) {
   return { seeded: DEFAULT_ACCOUNTS.length };
 }
 
-// ── Account Balance (computed from operational data) ──────────────────────────
+// ── Account Balance (from ledger_entry_lines) ────────────────────────────────
 
 async function getAccountBalance(companyId, accountId) {
   const { rows: accRows } = await query(
@@ -158,27 +158,30 @@ async function getAccountBalance(companyId, accountId) {
 
   const { account_code, account_name, account_type } = accRows[0];
 
-  const BALANCE_QUERIES = {
-    '1010': `SELECT COALESCE(SUM(current_balance), 0)::numeric AS val FROM bank_accounts WHERE company_id = $1 AND is_active = TRUE`,
-    '1200': `SELECT COALESCE(SUM(pbi.quantity_available * COALESCE(p.cost_price,0)),0)::numeric AS val
-             FROM product_branch_inventory pbi JOIN products p ON p.product_id=pbi.product_id AND p.company_id=$1 AND p.is_active=TRUE
-             JOIN branches b ON b.branch_id=pbi.branch_id AND b.company_id=$1 WHERE pbi.quantity_available>0`,
-    '2000': `SELECT COALESCE(SUM(current_balance),0)::numeric AS val FROM suppliers WHERE company_id=$1 AND current_balance>0`,
-    '2100': `SELECT COALESCE(SUM(COALESCE(tax_amount,0)),0)::numeric AS val FROM sales_transactions WHERE company_id=$1 AND status='completed'`,
-    '4000': `SELECT COALESCE(SUM(total_amount - COALESCE(tax_amount,0)) - (SELECT COALESCE(SUM(total_refunded),0) FROM returns WHERE company_id=$1 AND status IN ('approved','refunded')),0)::numeric AS val FROM sales_transactions WHERE company_id=$1 AND status='completed'`,
-    '5000': `SELECT COALESCE(SUM(sti.quantity*COALESCE(p.cost_price,0)),0)::numeric AS val FROM sales_transaction_items sti JOIN products p ON p.product_id=sti.product_id JOIN sales_transactions st ON st.transaction_id=sti.transaction_id WHERE st.company_id=$1 AND st.status='completed'`,
+  const { rows: balRows } = await query(`
+    SELECT COALESCE(SUM(jel.debit),  0)::numeric AS total_debit,
+           COALESCE(SUM(jel.credit), 0)::numeric AS total_credit
+    FROM ledger_entry_lines jel
+    JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
+    WHERE je.company_id = $1 AND je.status = 'posted' AND jel.account_id = $2
+  `, [companyId, accountId]);
+
+  const dr      = parseFloat(balRows[0]?.total_debit  ?? 0);
+  const cr      = parseFloat(balRows[0]?.total_credit ?? 0);
+  const balance = +(dr - cr).toFixed(2);
+
+  return {
+    accountId,
+    accountCode:  account_code,
+    accountName:  account_name,
+    accountType:  account_type,
+    balance,
+    totalDebits:  +dr.toFixed(2),
+    totalCredits: +cr.toFixed(2),
   };
-
-  let balance = 0;
-  if (BALANCE_QUERIES[account_code]) {
-    const { rows } = await query(BALANCE_QUERIES[account_code], [companyId]);
-    balance = parseFloat(rows[0]?.val ?? 0);
-  }
-
-  return { accountId, accountCode: account_code, accountName: account_name, accountType: account_type, balance };
 }
 
-// ── Account Ledger (synthesized entries) ─────────────────────────────────────
+// ── Account Ledger (from ledger_entry_lines) ─────────────────────────────────
 
 async function getAccountLedger(companyId, accountId, { startDate, endDate, page = 1, limit = 50 } = {}) {
   const { getLedgerEntries } = require('../reports/reports.service');

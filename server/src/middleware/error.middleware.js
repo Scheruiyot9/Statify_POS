@@ -15,6 +15,7 @@ const errorHandler = (err, req, res, _next) => {
       success: false,
       code:    err.code,
       message: err.message,
+      ...(err.data != null && { data: err.data }),
     });
   }
 

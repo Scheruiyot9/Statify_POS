@@ -5,7 +5,7 @@ import {
   BarChart2, Settings, ShieldCheck, Monitor, UserCog, Clock,
   RotateCcw, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   Smartphone, Building2, GitBranch, Layers, ShoppingCart,
-  CreditCard, BookOpen, Landmark, Truck, Lock, Star,
+  CreditCard, BookOpen, Landmark, Truck, Lock, Star, ScrollText,
 } from 'lucide-react';
 import { useAuthStore } from '@/app/store';
 import { usePermission } from '@/hooks/usePermission';
@@ -127,6 +127,7 @@ function FinanceGroup({ collapsed, hasCapability }) {
       <NavItem to="/app/payments" label="Payments" Icon={CreditCard} collapsed={collapsed} locked={!hasFinance} />
       <NavItem to="/app/accounts" label="Accounts" Icon={BookOpen} collapsed={collapsed} locked={!hasFinance} />
       <NavItem to="/app/bank-accounts" label="Bank Accounts" Icon={Landmark} collapsed={collapsed} locked={!hasFinance} />
+      <NavItem to="/app/journal" label="Journal" Icon={ScrollText} collapsed={collapsed} locked={!hasFinance} />
     </NavGroup>
   );
 }

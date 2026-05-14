@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Landmark, Plus, Edit2, Star, TrendingUp, TrendingDown, BookOpen, Calendar, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import { Landmark, Plus, Edit2, Star, TrendingUp, TrendingDown, BookOpen, Calendar, ArrowDownLeft, ArrowUpRight, CheckSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
@@ -129,6 +129,18 @@ function BankAccountModal({ account, accounts: coaAccounts, onClose }) {
   );
 }
 
+// ── Bank Ledger type → badge colour ──────────────────────────────────────────
+const BANK_TYPE_COLORS = {
+  SALE:           'bg-green-100 text-green-700',
+  AR_SETTLEMENT:  'bg-teal-100 text-teal-700',
+  GRN:            'bg-blue-100 text-blue-700',
+  PAYMENT:        'bg-red-100 text-red-600',
+  RETURN:         'bg-amber-100 text-amber-700',
+  OPENING:        'bg-purple-100 text-purple-700',
+  MANUAL:         'bg-gray-100 text-gray-600',
+  VOID:           'bg-rose-100 text-rose-700',
+};
+
 // ── Bank Account Ledger Modal ─────────────────────────────────────────────────
 
 function toISO(d) { return d.toISOString().slice(0, 10); }
@@ -147,7 +159,7 @@ function BankLedgerModal({ account, onClose }) {
     placeholderData: (prev) => prev,
   });
 
-  const { entries = [], total = 0, pages = 1, summary = {} } = data ?? {};
+  const { entries = [], total = 0, pages = 1, summary = {}, warning } = data ?? {};
 
   return (
     <Modal open onClose={onClose} size="xl"
@@ -178,6 +190,13 @@ function BankLedgerModal({ account, onClose }) {
             <p className="text-base font-bold text-red-600 mt-0.5">{formatCurrency(summary.totalOut ?? 0)}</p>
           </div>
         </div>
+
+        {/* Warning: bank account not linked to CoA */}
+        {warning && (
+          <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-xs text-amber-800">
+            ⚠ {warning}
+          </div>
+        )}
 
         {/* Date range */}
         <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 w-fit">
@@ -219,25 +238,26 @@ function BankLedgerModal({ account, onClose }) {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {entries.map((e, idx) => (
-                  <tr key={`${e.id}-${idx}`} className="hover:bg-gray-50">
+                  <tr key={`${e.lineId ?? e.entryId ?? idx}`} className="hover:bg-gray-50">
                     <td className="px-3 py-2.5 text-gray-500 text-xs whitespace-nowrap">{formatDate(e.entryDate)}</td>
                     <td className="px-3 py-2.5">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${e.entryType === 'DEPOSIT' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                        {e.entryType}
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${BANK_TYPE_COLORS[e.sourceType] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {e.sourceType ?? '—'}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-gray-600 truncate">{e.reference}</td>
+                    <td className="px-3 py-2.5 font-mono text-xs text-gray-600 truncate">{e.sourceRef ?? e.entryNumber}</td>
                     <td className="px-3 py-2.5 text-xs text-gray-700">
                       <p className="truncate" title={e.description}>{e.description}</p>
                     </td>
+                    {/* For bank/cash accounts: debit = money in, credit = money out */}
                     <td className="px-3 py-2.5 text-right font-mono text-xs">
-                      {e.creditIn > 0 ? <span className="font-semibold text-green-700">{formatCurrency(e.creditIn)}</span> : <span className="text-gray-300">—</span>}
+                      {e.debit > 0 ? <span className="font-semibold text-green-700">{formatCurrency(e.debit)}</span> : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono text-xs">
-                      {e.debitOut > 0 ? <span className="font-semibold text-red-600">{formatCurrency(e.debitOut)}</span> : <span className="text-gray-300">—</span>}
+                      {e.credit > 0 ? <span className="font-semibold text-red-600">{formatCurrency(e.credit)}</span> : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className={`px-3 py-2.5 text-right font-mono text-xs font-semibold ${e.balance >= 0 ? 'text-gray-800' : 'text-red-600'}`}>
-                      {formatCurrency(e.balance)}
+                    <td className={`px-3 py-2.5 text-right font-mono text-xs font-semibold ${(e.balance ?? 0) >= 0 ? 'text-gray-800' : 'text-red-600'}`}>
+                      {e.balance != null ? formatCurrency(e.balance) : '—'}
                     </td>
                   </tr>
                 ))}
@@ -262,13 +282,145 @@ function BankLedgerModal({ account, onClose }) {
   );
 }
 
+// ── Reconciliation Modal ──────────────────────────────────────────────────────
+
+function ReconciliationModal({ account, onClose }) {
+  const qc = useQueryClient();
+  const [startDate, setStart] = useState(new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10));
+  const [endDate,   setEnd]   = useState(new Date().toISOString().slice(0, 10));
+  const [selected,  setSelected] = useState(new Set());
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['unreconciled', account?.bank_account_id, startDate, endDate],
+    queryFn:  () => api.get('/journal/unreconciled', {
+      params: { bankAccountId: account?.bank_account_id, startDate, endDate },
+    }).then((r) => r.data.data),
+    enabled: !!account,
+  });
+
+  const lines = data?.lines ?? [];
+
+  const toggle = (id) => setSelected((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const toggleAll = () => {
+    if (selected.size === lines.length) setSelected(new Set());
+    else setSelected(new Set(lines.map((l) => l.lineId)));
+  };
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: (lineIds) => api.post('/journal/reconcile', { lineIds }),
+    onSuccess: (r) => {
+      toast.success(`${r.data.data.reconciled} lines marked as reconciled`);
+      setSelected(new Set());
+      qc.invalidateQueries({ queryKey: ['unreconciled'] });
+      refetch();
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Reconcile failed'),
+  });
+
+  const selectedTotal = lines
+    .filter((l) => selected.has(l.lineId))
+    .reduce((s, l) => s + l.debit - l.credit, 0);
+
+  return (
+    <Modal open onClose={onClose} title={`Reconcile — ${account?.account_name}`} size="xl"
+      footer={
+        <div className="flex items-center justify-between gap-3 w-full">
+          <span className="text-sm text-gray-500">
+            {selected.size} selected · Net: <span className={`font-semibold ${selectedTotal >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatCurrency(selectedTotal)}</span>
+          </span>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose}>Close</Button>
+            <Button disabled={selected.size === 0} loading={isPending}
+              onClick={() => mutate([...selected])}>
+              Mark Reconciled ({selected.size})
+            </Button>
+          </div>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        {/* Date filter */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5">
+            <Calendar className="h-3.5 w-3.5 text-gray-400" />
+            <input type="date" value={startDate} max={endDate}
+              onChange={(e) => setStart(e.target.value)}
+              className="text-xs border-none outline-none bg-transparent" />
+            <span className="text-gray-400 text-xs">—</span>
+            <input type="date" value={endDate} min={startDate}
+              onChange={(e) => setEnd(e.target.value)}
+              className="text-xs border-none outline-none bg-transparent" />
+          </div>
+        </div>
+
+        {isLoading ? (
+          <p className="text-center text-gray-400 py-8 text-sm">Loading…</p>
+        ) : lines.length === 0 ? (
+          <div className="text-center py-10">
+            <CheckSquare className="mx-auto h-10 w-10 text-green-400 mb-2" />
+            <p className="text-gray-500 font-medium">All clear</p>
+            <p className="text-gray-400 text-sm mt-1">No unreconciled cash lines in this period</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-gray-100">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-3 py-2.5 w-8">
+                    <input type="checkbox" checked={selected.size === lines.length && lines.length > 0}
+                      onChange={toggleAll} className="rounded" />
+                  </th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Date</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Ref</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Type</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Description</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-medium text-green-600">In</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-medium text-red-500">Out</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {lines.map((l) => (
+                  <tr key={l.lineId} onClick={() => toggle(l.lineId)}
+                    className={`cursor-pointer transition-colors ${selected.has(l.lineId) ? 'bg-primary-50' : 'hover:bg-gray-50'}`}>
+                    <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={selected.has(l.lineId)} onChange={() => toggle(l.lineId)} className="rounded" />
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{formatDate(l.entryDate)}</td>
+                    <td className="px-3 py-2.5 font-mono text-xs text-gray-600">{l.entryNumber}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{l.sourceType}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-gray-700 max-w-xs truncate">{l.description}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-xs">
+                      {l.debit > 0 ? <span className="text-green-700 font-semibold">{formatCurrency(l.debit)}</span> : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono text-xs">
+                      {l.credit > 0 ? <span className="text-red-600 font-semibold">{formatCurrency(l.credit)}</span> : <span className="text-gray-300">—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function BankAccountsPage() {
   const qc = useQueryClient();
-  const [editTarget,   setEditTarget]   = useState(null);
-  const [createOpen,   setCreateOpen]   = useState(false);
-  const [ledgerTarget, setLedgerTarget] = useState(null);
+  const [editTarget,       setEditTarget]       = useState(null);
+  const [createOpen,       setCreateOpen]       = useState(false);
+  const [ledgerTarget,     setLedgerTarget]     = useState(null);
+  const [reconcileTarget,  setReconcileTarget]  = useState(null);
 
   const { data: accounts = [], isLoading } = useQuery({
     queryKey: ['bank-accounts'],
@@ -342,11 +494,18 @@ export default function BankAccountsPage() {
                 {acc.coa_account_name && <p>CoA: {acc.coa_account_name}</p>}
               </div>
 
-              <button onClick={() => setLedgerTarget(acc)}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-gray-200 py-2 text-xs font-medium text-gray-600 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 transition-colors">
-                <BookOpen className="h-3.5 w-3.5" />
-                View Transactions
-              </button>
+              <div className="flex gap-2">
+                <button onClick={() => setLedgerTarget(acc)}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 py-2 text-xs font-medium text-gray-600 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 transition-colors">
+                  <BookOpen className="h-3.5 w-3.5" />
+                  Transactions
+                </button>
+                <button onClick={() => setReconcileTarget(acc)}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 py-2 text-xs font-medium text-gray-600 hover:border-green-300 hover:bg-green-50 hover:text-green-700 transition-colors">
+                  <CheckSquare className="h-3.5 w-3.5" />
+                  Reconcile
+                </button>
+              </div>
             </div>
           ))}
           {accounts.length === 0 && (
@@ -367,6 +526,9 @@ export default function BankAccountsPage() {
       )}
       {ledgerTarget && (
         <BankLedgerModal account={ledgerTarget} onClose={() => setLedgerTarget(null)} />
+      )}
+      {reconcileTarget && (
+        <ReconciliationModal account={reconcileTarget} onClose={() => setReconcileTarget(null)} />
       )}
     </div>
   );
