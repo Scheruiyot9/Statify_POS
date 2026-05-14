@@ -23,7 +23,7 @@ export default function Modal({ open, onClose, title, children, size = 'md', foo
             enter="ease-out duration-200" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100"
             leave="ease-in duration-150"  leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95"
           >
-            <Dialog.Panel className={`w-full ${sizes[size]} rounded-xl bg-white shadow-xl flex flex-col`}>
+            <Dialog.Panel className={`w-full ${sizes[size]} max-h-[90vh] rounded-xl bg-white shadow-xl flex flex-col`}>
               {/* Header */}
               <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
                 <Dialog.Title className="text-base font-semibold text-gray-900">{title}</Dialog.Title>

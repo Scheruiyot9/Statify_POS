@@ -24,6 +24,11 @@ const FILES_IN_ORDER = [
   '20_stk_sessions.sql',          // persisted STK sessions for server-restart resilience
   '21_subscription_plans_v2.sql', // has_finance, has_api_access, sort_order; upsert canonical tiers
   '22_returns_refunded_status.sql', // refunded_by_user_id, refunded_at, refund_notes on returns
+  '23_chart_of_accounts.sql',      // accounts table (CoA)
+  '24_bank_accounts.sql',          // bank_accounts table
+  '25_suppliers.sql',              // suppliers table
+  '26_purchase_orders.sql',        // purchase_orders, purchase_order_items, grns, grn_items + company counters
+  '27_supplier_payments.sql',      // supplier_payments table (AP payments)
 ];
 
 async function migrate() {

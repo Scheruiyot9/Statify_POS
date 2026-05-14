@@ -77,6 +77,54 @@ async function listRoles(companyId) {
   return rows;
 }
 
+async function listRolesWithPermissions(companyId) {
+  // Get all roles for this company
+  const { rows: roles } = await query(
+    `SELECT role_id, role_name, description
+     FROM roles
+     WHERE (company_id = $1 OR (company_id IS NULL AND role_name != 'super_admin'))
+     ORDER BY role_name`,
+    [companyId]
+  );
+
+  if (!roles.length) return [];
+
+  // Get all permissions with their module grouping
+  const { rows: perms } = await query(
+    `SELECT p.permission_id, p.permission_code, p.permission_name, p.module_name,
+            rp.role_id,
+            rp.can_create, rp.can_read, rp.can_update, rp.can_delete, rp.can_export
+     FROM permissions p
+     JOIN role_permissions rp ON rp.permission_id = p.permission_id
+     WHERE rp.role_id = ANY($1)
+     ORDER BY p.module_name, p.permission_name`,
+    [roles.map((r) => r.role_id)]
+  );
+
+  // Build a map: roleId -> Set of permission_codes
+  const rolePermMap = {};
+  for (const r of roles) rolePermMap[r.role_id] = [];
+  for (const p of perms) {
+    rolePermMap[p.role_id].push({
+      permission_code: p.permission_code,
+      permission_name: p.permission_name,
+      module_name:     p.module_name,
+      can_create:      p.can_create,
+      can_read:        p.can_read,
+      can_update:      p.can_update,
+      can_delete:      p.can_delete,
+      can_export:      p.can_export,
+    });
+  }
+
+  return roles.map((r) => ({
+    role_id:     r.role_id,
+    role_name:   r.role_name,
+    description: r.description,
+    permissions: rolePermMap[r.role_id] ?? [],
+  }));
+}
+
 async function createUser(companyId, data) {
   const { first_name, last_name, email, username, phone, role_id, branch_id } = data;
   if (!first_name || !email) throw AppError.badRequest('first_name and email are required');
@@ -207,4 +255,4 @@ async function deleteUser(companyId, userId, deletedBy) {
   if (!rows.length) throw AppError.notFound('User');
 }
 
-module.exports = { listUsers, listRoles, createUser, updateUser, resetPassword, deleteUser };
+module.exports = { listUsers, listRoles, listRolesWithPermissions, createUser, updateUser, resetPassword, deleteUser };

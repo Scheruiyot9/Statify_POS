@@ -7,13 +7,53 @@ const QueryBuilder = require('../../shared/qb');
 
 async function listReturnReasons(companyId) {
   const { rows } = await query(
-    `SELECT reason_id, reason_code, reason_name, restock_by_default, is_active
+    `SELECT reason_id, reason_code, reason_name, restock_by_default, is_active, is_system_reason
      FROM return_reasons
      WHERE company_id = $1
      ORDER BY reason_name`,
     [companyId]
   );
   return rows;
+}
+
+async function createReturnReason(companyId, { reason_code, reason_name, restock_by_default = true }) {
+  if (!reason_name?.trim()) throw AppError.badRequest('Reason name is required');
+  const { rows } = await query(
+    `INSERT INTO return_reasons (company_id, reason_code, reason_name, restock_by_default)
+     VALUES ($1, $2, $3, $4)
+     RETURNING reason_id, reason_code, reason_name, restock_by_default, is_active, is_system_reason`,
+    [companyId, reason_code?.trim() || null, reason_name.trim(), restock_by_default]
+  );
+  return rows[0];
+}
+
+async function updateReturnReason(companyId, reasonId, { reason_code, reason_name, restock_by_default, is_active }) {
+  const { rows } = await query(
+    `UPDATE return_reasons
+     SET reason_code       = COALESCE($3, reason_code),
+         reason_name       = COALESCE($4, reason_name),
+         restock_by_default= COALESCE($5, restock_by_default),
+         is_active         = COALESCE($6, is_active)
+     WHERE reason_id = $1 AND company_id = $2
+     RETURNING reason_id, reason_code, reason_name, restock_by_default, is_active, is_system_reason`,
+    [reasonId, companyId,
+     reason_code !== undefined ? reason_code?.trim() || null : null,
+     reason_name?.trim() || null,
+     restock_by_default !== undefined ? restock_by_default : null,
+     is_active !== undefined ? is_active : null]
+  );
+  if (!rows.length) throw AppError.notFound('Return reason');
+  return rows[0];
+}
+
+async function deleteReturnReason(companyId, reasonId) {
+  const { rows } = await query(
+    `SELECT is_system_reason FROM return_reasons WHERE reason_id = $1 AND company_id = $2`,
+    [reasonId, companyId]
+  );
+  if (!rows.length) throw AppError.notFound('Return reason');
+  if (rows[0].is_system_reason) throw AppError.forbidden('Cannot delete a system reason');
+  await query(`DELETE FROM return_reasons WHERE reason_id = $1 AND company_id = $2`, [reasonId, companyId]);
 }
 
 // ── Returns ───────────────────────────────────────────────────────────────────
@@ -309,6 +349,9 @@ async function markRefunded(companyId, returnId, userId, refundNotes) {
 
 module.exports = {
   listReturnReasons,
+  createReturnReason,
+  updateReturnReason,
+  deleteReturnReason,
   listReturns,
   getReturn,
   createReturn,

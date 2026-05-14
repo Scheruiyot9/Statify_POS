@@ -147,17 +147,18 @@ export default function AppLayout() {
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top bar */}
         <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3 shadow-sm">
-          {/* Left: company logo + name (non-super-admin) */}
-          <div className="flex items-center gap-2">
-            {myCompany?.logo_url ? (
-              <img
-                src={myCompany.logo_url}
-                alt={myCompany.company_name}
-                className="h-7 w-7 rounded-lg object-cover border border-gray-100"
-              />
-            ) : null}
+          {/* Left: Statify logo (light bg version) + optional tenant name */}
+          <div className="flex items-center gap-3">
+            <img
+              src="/statify-logo.svg"
+              alt="Statify"
+              className="h-10 w-auto"
+            />
             {myCompany?.company_name && (
-              <span className="text-sm font-semibold text-gray-700">{myCompany.company_name}</span>
+              <>
+                <div className="h-5 w-px bg-gray-200" />
+                <span className="text-sm font-semibold text-gray-600">{myCompany.company_name}</span>
+              </>
             )}
           </div>
 

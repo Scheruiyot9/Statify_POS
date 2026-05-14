@@ -272,7 +272,7 @@ async function getTransaction(companyId, transactionId, role, branchIds = []) {
 
   const [itemsRes, paymentsRes] = await Promise.all([
     query(`
-      SELECT sti.item_id, sti.quantity::numeric, sti.unit_price::numeric,
+      SELECT sti.item_id, sti.product_id, sti.quantity::numeric, sti.unit_price::numeric,
         sti.discount::numeric AS discount_amount, sti.tax_amount::numeric, sti.line_total::numeric,
         p.product_name, p.sku
       FROM sales_transaction_items sti

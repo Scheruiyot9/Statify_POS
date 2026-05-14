@@ -628,7 +628,7 @@ export default function PosTerminal() {
       )}
 
       {/* Session info bar */}
-      <div className="flex items-center justify-between bg-primary-800 px-4 py-1.5 text-white">
+      <div className="flex items-center justify-between bg-primary-600 px-4 py-1.5 text-white">
         <div className="flex items-center gap-3 text-xs">
           <Monitor className="h-3.5 w-3.5 text-secondary-400" />
           <span className="font-medium text-white/90">{session.terminal_name}</span>

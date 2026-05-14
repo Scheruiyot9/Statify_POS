@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CreditCard, Plus, Pencil, ToggleLeft, ToggleRight, Check,
   Monitor, GitBranch, Package, Users, Star, Percent, Trash2,
+  RotateCcw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -1072,16 +1073,222 @@ function TaxTab() {
   );
 }
 
+// ── Return Reasons Tab ────────────────────────────────────────────────────────
+
+function ReasonForm({ initial, onSave, onClose, isPending }) {
+  const [name,      setName]      = useState(initial?.reason_name   ?? '');
+  const [code,      setCode]      = useState(initial?.reason_code   ?? '');
+  const [restock,   setRestock]   = useState(initial?.restock_by_default ?? true);
+  const [isActive,  setIsActive]  = useState(initial?.is_active     ?? true);
+  const isEdit = !!initial;
+
+  const valid = name.trim().length >= 2;
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Reason Name *</label>
+        <input value={name} onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Defective product, Wrong item delivered…"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Reason Code (optional)</label>
+        <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
+          placeholder="e.g. DEFECT, WRONG"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-primary-500 focus:outline-none" />
+      </div>
+      <label className="flex items-center gap-3 cursor-pointer">
+        <span className="text-sm text-gray-700">Restock to inventory by default</span>
+        <button type="button" onClick={() => setRestock(!restock)}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${restock ? 'bg-primary-600' : 'bg-gray-300'}`}>
+          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${restock ? 'translate-x-4' : 'translate-x-1'}`} />
+        </button>
+        <span className="text-xs text-gray-400">{restock ? 'Yes — item goes back to stock' : 'No — write-off'}</span>
+      </label>
+      {isEdit && (
+        <label className="flex items-center gap-3 cursor-pointer">
+          <span className="text-sm text-gray-700">Active</span>
+          <button type="button" onClick={() => setIsActive(!isActive)}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isActive ? 'bg-primary-600' : 'bg-gray-300'}`}>
+            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${isActive ? 'translate-x-4' : 'translate-x-1'}`} />
+          </button>
+        </label>
+      )}
+      <div className="flex gap-3 pt-2">
+        <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+        <Button fullWidth disabled={!valid} loading={isPending}
+          onClick={() => onSave({ reason_name: name.trim(), reason_code: code.trim() || null, restock_by_default: restock, is_active: isActive })}>
+          {isEdit ? 'Save Changes' : 'Add Reason'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ReturnReasonsTab() {
+  const qc = useQueryClient();
+  const [addOpen,    setAddOpen]    = useState(false);
+  const [editReason, setEditReason] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  const { data: reasons = [], isLoading } = useQuery({
+    queryKey: ['return-reasons-settings'],
+    queryFn:  () => api.get('/returns/reasons').then((r) => r.data.data),
+  });
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['return-reasons-settings'] });
+
+  const createMut = useMutation({
+    mutationFn: (body) => api.post('/returns/reasons', body),
+    onSuccess: () => { toast.success('Reason added'); invalidate(); setAddOpen(false); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to add'),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, body }) => api.put(`/returns/reasons/${id}`, body),
+    onSuccess: () => { toast.success('Reason updated'); invalidate(); setEditReason(null); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to update'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => api.delete(`/returns/reasons/${id}`),
+    onSuccess: () => { toast.success('Reason deleted'); invalidate(); setDeleteTarget(null); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Cannot delete this reason'),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Return Reasons</h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Define the reasons customers may give when returning items.
+          </p>
+        </div>
+        <Button icon={<Plus className="h-4 w-4" />} size="sm" onClick={() => setAddOpen(true)}>
+          Add Reason
+        </Button>
+      </div>
+
+      {isLoading ? <PageSpinner /> : (
+        <div className="rounded-xl border border-gray-100 bg-white overflow-hidden shadow-sm">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Reason</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Code</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600">Restock Default</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {reasons.map((r) => (
+                <tr key={r.reason_id} className={`hover:bg-gray-50 transition-colors ${!r.is_active ? 'opacity-50' : ''}`}>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-100">
+                        <RotateCcw className="h-3.5 w-3.5 text-primary-600" />
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-900">{r.reason_name}</span>
+                        {r.is_system_reason && (
+                          <span className="ml-2 text-xs text-gray-400 italic">system</span>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                    {r.reason_code || <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {r.restock_by_default
+                      ? <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium"><Check className="h-3 w-3" /> Yes</span>
+                      : <span className="text-gray-400 text-xs">No</span>}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {r.is_active
+                      ? <span className="text-green-600 text-xs font-medium">Active</span>
+                      : <span className="text-gray-400 text-xs">Inactive</span>}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => setEditReason(r)}
+                        className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      {!r.is_system_reason && (
+                        <button onClick={() => setDeleteTarget(r)}
+                          className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-red-600 transition-colors">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {reasons.length === 0 && (
+                <tr><td colSpan={5} className="py-12 text-center text-gray-400">
+                  <RotateCcw className="mx-auto mb-2 h-8 w-8 opacity-30" />
+                  No return reasons yet.
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Add modal */}
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Return Reason" size="sm">
+        <ReasonForm
+          onSave={(body) => createMut.mutate(body)}
+          onClose={() => setAddOpen(false)}
+          isPending={createMut.isPending}
+        />
+      </Modal>
+
+      {/* Edit modal */}
+      <Modal open={!!editReason} onClose={() => setEditReason(null)} title={`Edit — ${editReason?.reason_name}`} size="sm">
+        <ReasonForm
+          initial={editReason}
+          onSave={(body) => updateMut.mutate({ id: editReason?.reason_id, body })}
+          onClose={() => setEditReason(null)}
+          isPending={updateMut.isPending}
+        />
+      </Modal>
+
+      {/* Delete confirm */}
+      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Delete Return Reason" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Are you sure you want to delete <span className="font-semibold">{deleteTarget?.reason_name}</span>?
+            This cannot be undone if the reason has never been used.
+          </p>
+          <div className="flex gap-3">
+            <Button variant="secondary" fullWidth onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="danger" fullWidth loading={deleteMut.isPending}
+              onClick={() => deleteMut.mutate(deleteTarget?.reason_id)}>
+              Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'branches',   label: 'Branches',          Icon: GitBranch  },
-  { id: 'categories', label: 'Product Categories', Icon: Package    },
-  { id: 'cust-groups',label: 'Customer Groups',    Icon: Users      },
-  { id: 'loyalty',    label: 'Loyalty Points',     Icon: Star       },
-  { id: 'tax',        label: 'Tax Rates',           Icon: Percent    },
-  { id: 'pay-modes',  label: 'Payment Methods',    Icon: CreditCard },
-  { id: 'terminals',  label: 'Terminals',           Icon: Monitor    },
+  { id: 'branches',       label: 'Branches',          Icon: GitBranch  },
+  { id: 'categories',     label: 'Product Categories', Icon: Package    },
+  { id: 'cust-groups',    label: 'Customer Groups',    Icon: Users      },
+  { id: 'loyalty',        label: 'Loyalty Points',     Icon: Star       },
+  { id: 'tax',            label: 'Tax Rates',           Icon: Percent    },
+  { id: 'pay-modes',      label: 'Payment Methods',    Icon: CreditCard },
+  { id: 'terminals',      label: 'Terminals',           Icon: Monitor    },
+  { id: 'return-reasons', label: 'Return Reasons',      Icon: RotateCcw  },
 ];
 
 export default function SettingsPage() {
@@ -1111,13 +1318,14 @@ export default function SettingsPage() {
       </div>
 
       <div>
-        {activeTab === 'branches'    && <BranchesTab />}
-        {activeTab === 'categories'  && <CategoriesTab />}
-        {activeTab === 'cust-groups' && <CustomerGroupsTab />}
-        {activeTab === 'loyalty'     && <LoyaltyTab />}
-        {activeTab === 'tax'         && <TaxTab />}
-        {activeTab === 'pay-modes'   && <PayModesTab />}
-        {activeTab === 'terminals'   && <TerminalsTab />}
+        {activeTab === 'branches'       && <BranchesTab />}
+        {activeTab === 'categories'     && <CategoriesTab />}
+        {activeTab === 'cust-groups'    && <CustomerGroupsTab />}
+        {activeTab === 'loyalty'        && <LoyaltyTab />}
+        {activeTab === 'tax'            && <TaxTab />}
+        {activeTab === 'pay-modes'      && <PayModesTab />}
+        {activeTab === 'terminals'      && <TerminalsTab />}
+        {activeTab === 'return-reasons' && <ReturnReasonsTab />}
       </div>
     </div>
   );

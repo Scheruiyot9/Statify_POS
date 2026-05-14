@@ -63,4 +63,12 @@ const requireBranchAccess = (branchIdParam = 'branchId') => (req, _res, next) =>
   next();
 };
 
-module.exports = { requireRole, requirePermission, requireAnyPermission, requireBranchAccess, ROLE_RANK };
+// Guard: Finance module — requires has_finance flag in JWT planFeatures
+const requireFinance = (req, _res, next) => {
+  if (req.user?.role === 'super_admin') return next();
+  if (!req.user?.planFeatures?.hasFinance)
+    throw AppError.forbidden('Finance module requires Growth plan or higher', 'FINANCE_REQUIRED');
+  next();
+};
+
+module.exports = { requireRole, requirePermission, requireAnyPermission, requireBranchAccess, requireFinance, ROLE_RANK };

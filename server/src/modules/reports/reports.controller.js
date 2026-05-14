@@ -1,4 +1,8 @@
-const { getDashboard, getSalesReport } = require('./reports.service');
+const {
+  getDashboard, getSalesReport,
+  getPLReport, getAPAging, getBalanceSheet, getStockValuation, getPurchasesSummary,
+  getLPOReport, getGRNReport, getTrialBalance, getLedgerEntries,
+} = require('./reports.service');
 
 const dashboard = async (req, res) => {
   const companyId = req.tenantId || null;
@@ -15,4 +19,49 @@ const salesReport = async (req, res) => {
   res.json({ success: true, data });
 };
 
-module.exports = { dashboard, salesReport };
+const plReport = async (req, res) => {
+  const data = await getPLReport(req.tenantId, req.query);
+  res.json({ success: true, data });
+};
+
+const apAging = async (req, res) => {
+  const data = await getAPAging(req.tenantId);
+  res.json({ success: true, data });
+};
+
+const balanceSheet = async (req, res) => {
+  const data = await getBalanceSheet(req.tenantId);
+  res.json({ success: true, data });
+};
+
+const stockValuation = async (req, res) => {
+  const data = await getStockValuation(req.tenantId, req.query);
+  res.json({ success: true, data });
+};
+
+const purchasesSummary = async (req, res) => {
+  const data = await getPurchasesSummary(req.tenantId, req.query);
+  res.json({ success: true, data });
+};
+
+const lpoReport = async (req, res) => {
+  const data = await getLPOReport(req.tenantId, req.query);
+  res.json({ success: true, data });
+};
+
+const grnReport = async (req, res) => {
+  const data = await getGRNReport(req.tenantId, req.query);
+  res.json({ success: true, data });
+};
+
+const trialBalance = async (req, res) => {
+  const data = await getTrialBalance(req.tenantId, req.query);
+  res.json({ success: true, data });
+};
+
+const ledgerEntries = async (req, res) => {
+  const data = await getLedgerEntries(req.tenantId, req.query);
+  res.json({ success: true, data });
+};
+
+module.exports = { dashboard, salesReport, plReport, apAging, balanceSheet, stockValuation, purchasesSummary, lpoReport, grnReport, trialBalance, ledgerEntries };

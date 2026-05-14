@@ -1,23 +1,29 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { Lock } from 'lucide-react';
 import { useAuthStore } from './store';
 import { capabilitiesForRole, permissionToCapability } from './permissions';
 
-import LoginPage     from '@/features/auth/LoginPage';
-import AppLayout     from '@/components/layout/AppLayout';
-import PosLayout     from '@/components/layout/PosLayout';
-import DashboardPage from '@/features/dashboard/DashboardPage';
-import ProductsPage  from '@/features/products/ProductsPage';
-import InventoryPage from '@/features/inventory/InventoryPage';
-import CustomersPage from '@/features/customers/CustomersPage';
-import SalesPage     from '@/features/sales/SalesPage';
-import ReturnsPage   from '@/features/returns/ReturnsPage';
-import ShiftsPage    from '@/features/shifts/ShiftsPage';
-import ReportsPage   from '@/features/reports/ReportsPage';
-import SettingsPage  from '@/features/settings/SettingsPage';
-import AdminPage     from '@/features/admin/AdminPage';
-import UsersPage     from '@/features/users/UsersPage';
-import PosTerminal   from '@/features/pos/PosTerminal';
-import MpesaPage     from '@/features/mpesa/MpesaPage';
+import LoginPage        from '@/features/auth/LoginPage';
+import AppLayout        from '@/components/layout/AppLayout';
+import PosLayout        from '@/components/layout/PosLayout';
+import DashboardPage    from '@/features/dashboard/DashboardPage';
+import ProductsPage     from '@/features/products/ProductsPage';
+import InventoryPage    from '@/features/inventory/InventoryPage';
+import CustomersPage    from '@/features/customers/CustomersPage';
+import SalesPage        from '@/features/sales/SalesPage';
+import ReturnsPage      from '@/features/returns/ReturnsPage';
+import ShiftsPage       from '@/features/shifts/ShiftsPage';
+import ReportsPage      from '@/features/reports/ReportsPage';
+import SettingsPage     from '@/features/settings/SettingsPage';
+import AdminPage        from '@/features/admin/AdminPage';
+import UsersPage        from '@/features/users/UsersPage';
+import PosTerminal      from '@/features/pos/PosTerminal';
+import MpesaPage        from '@/features/mpesa/MpesaPage';
+import AccountsPage     from '@/features/accounts/AccountsPage';
+import BankAccountsPage from '@/features/bank-accounts/BankAccountsPage';
+import SuppliersPage    from '@/features/suppliers/SuppliersPage';
+import PurchasesPage   from '@/features/purchases/PurchasesPage';
+import PaymentsPage    from '@/features/payments/PaymentsPage';
 
 // Redirect unauthenticated users to /login
 const PrivateRoute = ({ children }) => {
@@ -29,6 +35,25 @@ const PrivateRoute = ({ children }) => {
 const PublicRoute = ({ children }) => {
   const token = useAuthStore((s) => s.accessToken);
   return token ? <Navigate to="/app/dashboard" replace /> : children;
+};
+
+// Guard: Finance module — shows upgrade prompt if plan lacks has_finance
+const FinanceRoute = ({ children }) => {
+  const user = useAuthStore((s) => s.user);
+  if (user?.role !== 'super_admin' && !user?.planFeatures?.hasFinance) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 mb-4">
+          <Lock className="h-7 w-7 text-amber-500" />
+        </div>
+        <h2 className="text-xl font-bold text-gray-900">Finance Module</h2>
+        <p className="text-gray-500 mt-2 max-w-md text-sm">
+          Upgrade to the Growth plan or higher to access suppliers, chart of accounts, bank accounts, and financial reports.
+        </p>
+      </div>
+    );
+  }
+  return children;
 };
 
 const CapabilityRoute = ({ children, capability }) => {
@@ -83,6 +108,13 @@ export default function AppRouter() {
             <AdminPage />
           </CapabilityRoute>
         } />
+
+        {/* Finance module — gated by plan */}
+        <Route path="accounts"     element={<FinanceRoute><AccountsPage /></FinanceRoute>} />
+        <Route path="bank-accounts" element={<FinanceRoute><BankAccountsPage /></FinanceRoute>} />
+        <Route path="suppliers"    element={<FinanceRoute><SuppliersPage /></FinanceRoute>} />
+        <Route path="purchases"    element={<FinanceRoute><PurchasesPage /></FinanceRoute>} />
+        <Route path="payments"     element={<FinanceRoute><PaymentsPage /></FinanceRoute>} />
       </Route>
 
       {/* Fallback */}

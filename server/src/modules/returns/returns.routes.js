@@ -9,7 +9,10 @@ const router = Router();
 router.use(authenticate, attachTenant, verifyTenant, scopeTenant, requireTenantContext);
 
 // Return reasons catalogue
-router.get('/reasons', requirePermission('process_refund'), ctrl.listReasons);
+router.get   ('/reasons',     requirePermission('process_refund'), ctrl.listReasons);
+router.post  ('/reasons',     requirePermission('process_refund'), ctrl.createReason);
+router.put   ('/reasons/:id', requirePermission('process_refund'), ctrl.updateReason);
+router.delete('/reasons/:id', requirePermission('process_refund'), ctrl.deleteReason);
 
 // Returns CRUD
 router.get('/',    requirePermission('process_refund'), ctrl.list);

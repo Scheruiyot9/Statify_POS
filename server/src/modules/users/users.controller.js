@@ -10,6 +10,11 @@ const roles = async (req, res) => {
   res.json({ success: true, data: result });
 };
 
+const rolesWithPermissions = async (req, res) => {
+  const result = await svc.listRolesWithPermissions(req.tenantId);
+  res.json({ success: true, data: result });
+};
+
 const create = async (req, res) => {
   const user = await svc.createUser(req.tenantId, req.body);
   res.status(201).json({ success: true, data: user });
@@ -30,4 +35,4 @@ const remove = async (req, res) => {
   res.json({ success: true, message: 'User deleted' });
 };
 
-module.exports = { list, roles, create, update, resetPwd, remove };
+module.exports = { list, roles, rolesWithPermissions, create, update, resetPwd, remove };

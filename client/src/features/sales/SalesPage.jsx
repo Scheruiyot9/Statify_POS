@@ -150,7 +150,7 @@ export default function SalesPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['transactions', filters],
     queryFn: () => api.get('/sales/transactions', { params: filters }).then((r) => r.data.data),
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 
   const { data: txnDetail } = useQuery({
@@ -237,7 +237,9 @@ export default function SalesPage() {
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Customer</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Cashier</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Payment</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">Total</th>
+                <th className="px-4 py-3 text-right font-medium text-blue-600" title="DR Cash/Bank — total received">Dr (Cash/Bank)</th>
+                <th className="px-4 py-3 text-right font-medium text-green-600" title="CR Revenue — ex-VAT">Cr (Revenue)</th>
+                <th className="px-4 py-3 text-right font-medium text-purple-600" title="CR Tax Payable — VAT collected">Cr (VAT)</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -250,7 +252,24 @@ export default function SalesPage() {
                   <td className="px-4 py-3 text-gray-700">{t.customer_name}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs">{t.cashier_name}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs">{t.payment_method}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency(t.total_amount)}</td>
+                  {/* Dr: Cash/Bank = total received */}
+                  <td className="px-4 py-3 text-right font-mono text-xs">
+                    <span className={`font-semibold ${t.status === 'void' ? 'text-gray-400 line-through' : 'text-blue-700'}`}>
+                      {formatCurrency(t.total_amount)}
+                    </span>
+                  </td>
+                  {/* Cr: Revenue = total ex-VAT */}
+                  <td className="px-4 py-3 text-right font-mono text-xs">
+                    <span className={`font-semibold ${t.status === 'void' ? 'text-gray-400 line-through' : 'text-green-700'}`}>
+                      {formatCurrency(parseFloat(t.total_amount) - parseFloat(t.tax_amount || 0))}
+                    </span>
+                  </td>
+                  {/* Cr: VAT Payable */}
+                  <td className="px-4 py-3 text-right font-mono text-xs">
+                    {parseFloat(t.tax_amount) > 0
+                      ? <span className={`font-semibold ${t.status === 'void' ? 'text-gray-400 line-through' : 'text-purple-600'}`}>{formatCurrency(t.tax_amount)}</span>
+                      : <span className="text-gray-300">—</span>}
+                  </td>
                   <td className="px-4 py-3 text-center">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status] ?? 'bg-gray-100 text-gray-600'}`}>
                       {t.status}
@@ -277,7 +296,7 @@ export default function SalesPage() {
                 </tr>
               ))}
               {transactions.length === 0 && (
-                <tr><td colSpan={8} className="py-12 text-center text-gray-400">
+                <tr><td colSpan={11} className="py-12 text-center text-gray-400">
                   <Receipt className="mx-auto mb-2 h-8 w-8 opacity-30" />No transactions found
                 </td></tr>
               )}

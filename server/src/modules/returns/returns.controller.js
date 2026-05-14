@@ -6,6 +6,21 @@ const listReasons = async (req, res) => {
   ok(res, reasons);
 };
 
+const createReason = async (req, res) => {
+  const reason = await svc.createReturnReason(req.tenantId, req.body);
+  created(res, reason);
+};
+
+const updateReason = async (req, res) => {
+  const reason = await svc.updateReturnReason(req.tenantId, req.params.id, req.body);
+  ok(res, reason);
+};
+
+const deleteReason = async (req, res) => {
+  await svc.deleteReturnReason(req.tenantId, req.params.id);
+  ok(res, { deleted: true });
+};
+
 const list = async (req, res) => {
   const { role, branchIds = [] } = req.user;
   const result = await svc.listReturns(req.tenantId, role, branchIds, req.query);
@@ -43,4 +58,4 @@ const markRefunded = async (req, res) => {
   ok(res, result);
 };
 
-module.exports = { listReasons, list, getOne, create, approve, reject, markRefunded };
+module.exports = { listReasons, createReason, updateReason, deleteReason, list, getOne, create, approve, reject, markRefunded };

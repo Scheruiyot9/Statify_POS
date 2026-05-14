@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit2, UserCheck, UserX, KeyRound, Search } from 'lucide-react';
+import { Plus, Edit2, UserCheck, UserX, KeyRound, Search, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
-import { formatCurrency } from '@/utils/formatters';
-import Button from '@/components/ui/Button';
-import Modal  from '@/components/ui/Modal';
+import Button      from '@/components/ui/Button';
+import Modal       from '@/components/ui/Modal';
+import { PageSpinner } from '@/components/ui/Spinner';
 import { usePermission } from '@/hooks/usePermission';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -197,14 +197,14 @@ function ResetPasswordModal({ user, onClose }) {
       footer={
         <div className="flex gap-3">
           <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
-          <Button fullWidth loading={isPending} onClick={() => mutate()} disabled={pwd.length < 6}>Reset</Button>
+          <Button fullWidth loading={isPending} onClick={() => mutate()} disabled={pwd.length < 8}>Reset</Button>
         </div>
       }
     >
       <div className="space-y-3">
         <p className="text-sm text-gray-600">Set a new password for <span className="font-semibold">{user.first_name} {user.last_name}</span>.</p>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">New Password (min 6 characters)</label>
+          <label className="mb-1 block text-xs font-medium text-gray-600">New Password (min 8 characters)</label>
           <input type="password" value={pwd} onChange={(e) => setPwd(e.target.value)}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
         </div>
@@ -213,11 +213,151 @@ function ResetPasswordModal({ user, onClose }) {
   );
 }
 
+// ── Roles & Permissions Tab ───────────────────────────────────────────────────
+
+const MODULE_ORDER = [
+  'sales', 'pos', 'returns', 'inventory', 'products', 'customers',
+  'reports', 'users', 'settings', 'finance', 'shifts', 'mpesa',
+];
+
+function RolesTab() {
+  const { data: roles = [], isLoading } = useQuery({
+    queryKey: ['roles-with-permissions'],
+    queryFn:  () => api.get('/users/roles/permissions').then((r) => r.data.data),
+  });
+
+  if (isLoading) return <PageSpinner />;
+
+  if (!roles.length) return (
+    <div className="rounded-xl border border-gray-100 bg-white p-12 text-center text-gray-400 shadow-sm">
+      <ShieldCheck className="mx-auto mb-2 h-8 w-8 opacity-30" />
+      No roles found.
+    </div>
+  );
+
+  // Collect all unique modules across all roles
+  const allModules = [];
+  const seenMods = new Set();
+  for (const mod of MODULE_ORDER) {
+    for (const role of roles) {
+      if (role.permissions.some((p) => p.module_name === mod) && !seenMods.has(mod)) {
+        seenMods.add(mod);
+        allModules.push(mod);
+      }
+    }
+  }
+  // Add any remaining modules not in MODULE_ORDER
+  for (const role of roles) {
+    for (const p of role.permissions) {
+      if (!seenMods.has(p.module_name)) {
+        seenMods.add(p.module_name);
+        allModules.push(p.module_name);
+      }
+    }
+  }
+
+  // Build a nested map: module -> permission_name -> roleId -> { code, flags }
+  const matrix = {}; // { [module]: { [permission_code]: { permission_name, [roleId]: flags } } }
+  for (const role of roles) {
+    for (const p of role.permissions) {
+      if (!matrix[p.module_name]) matrix[p.module_name] = {};
+      if (!matrix[p.module_name][p.permission_code]) {
+        matrix[p.module_name][p.permission_code] = { permission_name: p.permission_name };
+      }
+      matrix[p.module_name][p.permission_code][role.role_id] = {
+        can_read: p.can_read, can_create: p.can_create,
+        can_update: p.can_update, can_delete: p.can_delete, can_export: p.can_export,
+      };
+    }
+  }
+
+  const flagLabel = { can_read: 'R', can_create: 'C', can_update: 'U', can_delete: 'D', can_export: 'X' };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-gray-900">Roles & Permissions</h2>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Read-only view of what each role can do. <span className="font-mono text-xs">R</span>=Read&nbsp;
+          <span className="font-mono text-xs">C</span>=Create&nbsp;
+          <span className="font-mono text-xs">U</span>=Update&nbsp;
+          <span className="font-mono text-xs">D</span>=Delete&nbsp;
+          <span className="font-mono text-xs">X</span>=Export
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-gray-100 bg-gray-50">
+              <th className="px-4 py-3 text-left font-medium text-gray-600 min-w-[200px]">Permission</th>
+              {roles.map((r) => (
+                <th key={r.role_id} className="px-3 py-3 text-center font-medium text-gray-600 min-w-[90px]">
+                  <span className="capitalize">{r.role_name.replace(/_/g, ' ')}</span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {allModules.map((mod) => {
+              const permCodes = Object.keys(matrix[mod] ?? {});
+              if (!permCodes.length) return null;
+              return (
+                <>
+                  {/* Module header row */}
+                  <tr key={`mod-${mod}`} className="bg-primary-50/60 border-t border-b border-gray-100">
+                    <td colSpan={roles.length + 1} className="px-4 py-1.5">
+                      <span className="text-xs font-bold uppercase tracking-widest text-primary-600">
+                        {mod}
+                      </span>
+                    </td>
+                  </tr>
+                  {permCodes.map((code) => {
+                    const row = matrix[mod][code];
+                    return (
+                      <tr key={code} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-2 text-gray-700">
+                          {row.permission_name}
+                          <span className="ml-1.5 font-mono text-gray-400">({code})</span>
+                        </td>
+                        {roles.map((r) => {
+                          const flags = row[r.role_id];
+                          if (!flags) {
+                            return (
+                              <td key={r.role_id} className="px-3 py-2 text-center text-gray-200">—</td>
+                            );
+                          }
+                          const active = Object.entries(flagLabel)
+                            .filter(([k]) => flags[k])
+                            .map(([, v]) => v);
+                          return (
+                            <td key={r.role_id} className="px-3 py-2 text-center">
+                              <div className="flex items-center justify-center gap-0.5">
+                                {active.map((lbl) => (
+                                  <span key={lbl} className="inline-flex h-5 w-5 items-center justify-center rounded bg-primary-100 font-bold text-primary-700">
+                                    {lbl}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
-export default function UsersPage() {
+function UsersListTab({ canManageUsers }) {
   const qc = useQueryClient();
-  const { hasCapability } = usePermission();
-  const canManageUsers = hasCapability('users.manage');
   const [search,    setSearch]    = useState('');
   const [formUser,  setFormUser]  = useState(null);  // null=closed, false=new, obj=edit
   const [resetUser, setResetUser] = useState(null);
@@ -238,12 +378,9 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
+      {/* Sub-header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Users</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{data?.total ?? 0} users in your company</p>
-        </div>
+        <p className="text-sm text-gray-500">{data?.total ?? 0} users in your company</p>
         {canManageUsers && (
           <Button icon={<Plus className="h-4 w-4" />} onClick={() => setFormUser(false)}>
             New User
@@ -337,6 +474,47 @@ export default function UsersPage() {
       {canManageUsers && resetUser && (
         <ResetPasswordModal user={resetUser} onClose={() => setResetUser(null)} />
       )}
+    </div>
+  );
+}
+
+export default function UsersPage() {
+  const { hasCapability } = usePermission();
+  const canManageUsers = hasCapability('users.manage');
+  const [activeTab, setActiveTab] = useState('users');
+
+  const TABS = [
+    { id: 'users', label: 'Users', Icon: UserCheck },
+    { id: 'roles', label: 'Roles & Permissions', Icon: ShieldCheck },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div>
+        <h1 className="text-xl font-bold text-gray-900">Users & Roles</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Manage team members and view role permissions</p>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200">
+        {TABS.map(({ id, label, Icon }) => (
+          <button key={id} onClick={() => setActiveTab(id)}
+            className={[
+              'flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors',
+              activeTab === id
+                ? 'border-primary-600 text-primary-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
+            ].join(' ')}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'users' && <UsersListTab canManageUsers={canManageUsers} />}
+      {activeTab === 'roles' && <RolesTab />}
     </div>
   );
 }

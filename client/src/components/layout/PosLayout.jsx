@@ -8,7 +8,7 @@ export default function PosLayout({ children }) {
   return (
     <div className="flex h-screen flex-col bg-gray-100">
       {/* Slim POS header */}
-      <header className="flex items-center justify-between bg-primary-900 px-4 py-2 text-white shadow-md">
+      <header className="flex items-center justify-between bg-primary-500 px-4 py-2 text-white shadow-md">
         <div className="flex items-center gap-3">
           <Link
             to="/app/dashboard"
@@ -17,7 +17,7 @@ export default function PosLayout({ children }) {
             <ArrowLeft className="h-3.5 w-3.5" />
             Back
           </Link>
-          <span className="text-sm font-semibold">Statify POS</span>
+          <img src="/statify-icon-white.svg" alt="Statify" className="h-7 w-7" />
         </div>
         <p className="text-xs text-white/70">
           {user?.firstName} {user?.lastName} · <span className="capitalize">{user?.role?.replace('_', ' ')}</span>

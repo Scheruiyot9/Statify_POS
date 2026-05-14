@@ -260,12 +260,12 @@ async function updateCompany(companyId, data) {
     RETURNING company_id, company_name, COALESCE(domain, domain_name) AS domain,
               timezone, currency, subscription_status, is_active, logo_url
   `, [companyId,
-    company_name ?? null,
-    domain ?? null,
-    timezone ?? null,
-    currency ?? null,
-    subscription_plan_id ?? null,
-    logo_url ?? null]);
+    company_name || null,
+    domain || null,
+    timezone || null,
+    currency || null,
+    subscription_plan_id || null,
+    logo_url || null]);
 
   if (!rows.length) throw AppError.notFound('Company');
   return rows[0];

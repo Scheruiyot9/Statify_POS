@@ -18,80 +18,147 @@ const STATUS_STYLES = {
   partial:  'bg-orange-100 text-orange-700',
 };
 
+const CONDITION_LABELS = {
+  resellable:  { label: 'Resellable',  cls: 'bg-green-100 text-green-700' },
+  damaged:     { label: 'Damaged',     cls: 'bg-red-100 text-red-600' },
+  opened:      { label: 'Opened',      cls: 'bg-orange-100 text-orange-700' },
+  write_off:   { label: 'Write-off',   cls: 'bg-gray-100 text-gray-600' },
+};
+
 function ReturnDetail({ ret }) {
   if (!ret) return null;
   return (
     <div className="space-y-4">
+      {/* Header band */}
       <div className="flex items-center justify-between rounded-xl bg-gray-50 p-4">
         <div>
           <p className="font-mono text-sm font-bold text-gray-800">{ret.return_number}</p>
           <p className="text-xs text-gray-500 mt-0.5">{formatDateTime(ret.return_date)}</p>
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_STYLES[ret.status] ?? 'bg-gray-100 text-gray-600'}`}>
-          {ret.status}
-        </span>
+        <div className="flex items-center gap-2">
+          {ret.requires_approval && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+              Requires Approval
+            </span>
+          )}
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_STYLES[ret.status] ?? 'bg-gray-100 text-gray-600'}`}>
+            {ret.status}
+          </span>
+        </div>
       </div>
 
+      {/* Meta grid */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
         <div><span className="text-gray-500">Original TXN: </span>
           <span className="font-mono font-medium text-primary-700">{ret.original_transaction_number}</span></div>
         <div><span className="text-gray-500">Branch: </span><span className="font-medium">{ret.branch_name}</span></div>
         <div><span className="text-gray-500">Processed by: </span><span className="font-medium">{ret.processed_by}</span></div>
-        {ret.approved_by && <div><span className="text-gray-500">Approved by: </span><span className="font-medium">{ret.approved_by}</span></div>}
+        {ret.approved_by && (
+          <div>
+            <span className="text-gray-500">Approved by: </span>
+            <span className="font-medium">{ret.approved_by}</span>
+            {ret.approved_at && <span className="text-gray-400 text-xs ml-1">({formatDateTime(ret.approved_at)})</span>}
+          </div>
+        )}
       </div>
 
+      {/* Notes */}
       {ret.customer_notes && (
-        <div className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
-          <span className="font-medium text-gray-700">Customer note: </span>{ret.customer_notes}
+        <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-sm text-blue-800">
+          <span className="font-semibold">Customer note: </span>{ret.customer_notes}
+        </div>
+      )}
+      {ret.internal_notes && (
+        <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-sm text-amber-800">
+          <span className="font-semibold">Internal note: </span>{ret.internal_notes}
         </div>
       )}
 
+      {/* Items table */}
       <div>
-        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Returned Items</p>
+        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Returned Items</p>
         <div className="rounded-lg border border-gray-100 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-3 py-2 text-left font-medium text-gray-600">Product</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-600">Reason</th>
+                <th className="px-3 py-2 text-center font-medium text-gray-600">Condition</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600">Qty</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600">Refund</th>
                 <th className="px-3 py-2 text-center font-medium text-gray-600">Restock</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {ret.items?.map((item, i) => (
-                <tr key={item.return_item_id ?? i}>
-                  <td className="px-3 py-2 font-medium text-gray-800">{item.product_name}</td>
-                  <td className="px-3 py-2 text-right">{parseFloat(item.quantity_returned)}</td>
-                  <td className="px-3 py-2 text-right font-semibold">{formatCurrency(item.line_refund_amount)}</td>
-                  <td className="px-3 py-2 text-center">
-                    {item.return_to_inventory
-                      ? <span className="text-green-600 text-xs font-medium">Yes</span>
-                      : <span className="text-red-400 text-xs">No</span>}
-                  </td>
-                </tr>
-              ))}
+              {ret.items?.map((item, i) => {
+                const cond = CONDITION_LABELS[item.item_condition] ?? { label: item.item_condition, cls: 'bg-gray-100 text-gray-600' };
+                return (
+                  <tr key={item.return_item_id ?? i}>
+                    <td className="px-3 py-2">
+                      <div className="font-medium text-gray-800">{item.product_name}</div>
+                      {item.sku && <div className="text-xs text-gray-400 font-mono">{item.sku}</div>}
+                      {item.line_notes && <div className="text-xs text-gray-400 italic mt-0.5">{item.line_notes}</div>}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-500">
+                      {item.reason_name || <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cond.cls}`}>
+                        {cond.label}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right">{parseFloat(item.quantity_returned)}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{formatCurrency(item.line_refund_amount)}</td>
+                    <td className="px-3 py-2 text-center">
+                      {item.return_to_inventory
+                        ? <span className="text-green-600 text-xs font-medium">Yes</span>
+                        : <span className="text-red-400 text-xs">No</span>}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
+      {/* Totals */}
       <div className="space-y-1 text-sm border-t border-gray-100 pt-3">
+        {ret.subtotal_refunded !== ret.total_refunded && (
+          <div className="flex justify-between text-gray-500">
+            <span>Subtotal</span>
+            <span>{formatCurrency(ret.subtotal_refunded)}</span>
+          </div>
+        )}
         <div className="flex justify-between font-bold text-base">
           <span>Total Refunded</span>
           <span className="text-secondary-600">{formatCurrency(ret.total_refunded)}</span>
         </div>
       </div>
 
+      {/* Refund methods */}
       {ret.refunds?.length > 0 && (
         <div className="text-sm">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Refund Method</p>
-          {ret.refunds.map((r, i) => (
-            <div key={r.refund_id ?? i} className="flex justify-between text-gray-700 py-0.5">
-              <span>{r.method_name}{r.reference_number && <span className="text-gray-400 text-xs ml-2">#{r.reference_number}</span>}</span>
-              <span className="font-medium">{formatCurrency(r.amount_refunded)}</span>
-            </div>
-          ))}
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Refund Methods</p>
+          <div className="rounded-lg border border-gray-100 overflow-hidden">
+            {ret.refunds.map((r, i) => (
+              <div key={r.refund_id ?? i}
+                className="flex items-center justify-between px-3 py-2 border-b border-gray-50 last:border-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-gray-800">{r.method_name}</span>
+                  {r.reference_number && (
+                    <span className="font-mono text-xs text-gray-400">#{r.reference_number}</span>
+                  )}
+                  {r.issued_as_store_credit && (
+                    <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+                      Store Credit
+                    </span>
+                  )}
+                </div>
+                <span className="font-semibold text-gray-900">{formatCurrency(r.amount_refunded)}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -136,7 +203,7 @@ export default function ReturnsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['returns', filters],
     queryFn: () => api.get('/returns', { params: filters }).then((r) => r.data.data),
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 
   const { data: retDetail } = useQuery({

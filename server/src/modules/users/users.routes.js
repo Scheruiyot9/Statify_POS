@@ -9,7 +9,8 @@ const router = Router();
 router.use(authenticate, attachTenant, verifyTenant, scopeTenant, requireTenantContext);
 
 // ── Roles list — branch_manager+ (needed when assigning roles to new users) ───
-router.get('/roles', requireRole('branch_manager'), controller.roles);
+router.get('/roles',             requireRole('branch_manager'), controller.roles);
+router.get('/roles/permissions', requireRole('branch_manager'), controller.rolesWithPermissions);
 
 // ── User management ───────────────────────────────────────────────────────────
 router.get('/',                    requireRole('branch_manager'), controller.list);

@@ -8,36 +8,23 @@ import { useAuthStore } from '@/app/store';
 import Button from '@/components/ui/Button';
 
 // ── Brand logo mark ───────────────────────────────────────────────────────────
-function StatifyLogo({ size = 48, className = '' }) {
+// variant="white" → white/gold for dark backgrounds
+// variant="color" → teal/gold for light backgrounds
+function StatifyLogo({ size = 48, variant = 'white', className = '' }) {
+  const src = variant === 'white' ? '/statify-icon-white.svg' : '/statify-icon.svg';
   return (
-    <svg
-      width={size} height={size} viewBox="0 0 48 48" fill="none"
-      xmlns="http://www.w3.org/2000/svg" className={className}
-    >
-      <rect width="48" height="48" rx="14" fill="#FFA916" />
-      {/* Bar chart bars */}
-      <rect x="9"  y="28" width="6" height="11" rx="2" fill="#011920" />
-      <rect x="18" y="20" width="6" height="19" rx="2" fill="#011920" />
-      <rect x="27" y="14" width="6" height="25" rx="2" fill="#011920" />
-      {/* Trend line */}
-      <polyline
-        points="12,26 21,18 30,12 39,9"
-        stroke="#011920" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-        fill="none"
-      />
-      <circle cx="39" cy="9" r="3" fill="#011920" />
-    </svg>
+    <img src={src} alt="Statify" width={size} height={size} className={className} />
   );
 }
 
 // ── Feature pill used in the left panel ──────────────────────────────────────
 function FeaturePill({ icon: Icon, label }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-xl bg-white/10 px-4 py-2.5 backdrop-blur-sm">
-      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-secondary-400/20">
+    <div className="flex items-center gap-2.5 rounded-xl bg-white/[.15] border border-white/20 px-4 py-2.5">
+      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-secondary-500/30">
         <Icon className="h-4 w-4 text-secondary-300" />
       </div>
-      <span className="text-sm font-medium text-white/90">{label}</span>
+      <span className="text-sm font-medium text-white">{label}</span>
     </div>
   );
 }
@@ -45,7 +32,7 @@ function FeaturePill({ icon: Icon, label }) {
 // ── Decorative floating card ──────────────────────────────────────────────────
 function FloatingCard({ className = '' }) {
   return (
-    <div className={`absolute rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl ${className}`}>
+    <div className={`absolute rounded-2xl bg-white/[.15] backdrop-blur-md border border-white/30 shadow-xl ${className}`}>
       <div className="p-4">
         <div className="mb-3 flex items-center gap-2">
           <div className="h-2 w-2 rounded-full bg-secondary-400" />
@@ -99,13 +86,13 @@ export default function LoginPage() {
     <div className="flex min-h-screen">
 
       {/* ── Left panel (hidden on mobile) ─────────────────────────────────── */}
-      <div className="relative hidden lg:flex lg:w-[52%] flex-col justify-between overflow-hidden bg-primary-900 p-12">
+      <div className="relative hidden lg:flex lg:w-[52%] flex-col justify-between overflow-hidden bg-primary-500 p-12">
 
         {/* Background gradient blobs */}
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-primary-700/50 blur-3xl" />
-          <div className="absolute bottom-0 right-0 h-80 w-80 rounded-full bg-secondary-500/20 blur-3xl" />
-          <div className="absolute top-1/2 left-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-600/40 blur-2xl" />
+          <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-primary-400/40 blur-3xl" />
+          <div className="absolute bottom-0 right-0 h-80 w-80 rounded-full bg-secondary-500/25 blur-3xl" />
+          <div className="absolute top-1/2 left-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-600/30 blur-2xl" />
         </div>
 
         {/* Decorative floating cards */}
@@ -123,9 +110,9 @@ export default function LoginPage() {
 
         {/* Top — logo */}
         <div className="relative flex items-center gap-3">
-          <StatifyLogo size={44} />
+          <StatifyLogo size={48} variant="white" />
           <div>
-            <span className="text-xl font-bold text-white">Statify</span>
+            <span className="text-xl font-bold text-white tracking-wide">STATIFY</span>
             <span className="ml-1 text-xl font-light text-secondary-400">POS</span>
           </div>
         </div>
@@ -136,7 +123,7 @@ export default function LoginPage() {
             Sell smarter.<br />
             <span className="text-secondary-400">Grow faster.</span>
           </h2>
-          <p className="mt-4 max-w-sm text-base leading-relaxed text-white/60">
+          <p className="mt-4 max-w-sm text-base leading-relaxed text-white/80">
             A complete point-of-sale platform built for modern multi-branch businesses.
             Real-time inventory, loyalty, reports and more — all in one place.
           </p>
@@ -150,7 +137,7 @@ export default function LoginPage() {
         </div>
 
         {/* Bottom — tagline */}
-        <p className="relative text-xs text-white/30">
+        <p className="relative text-xs text-white/50">
           © {new Date().getFullYear()} Statify · Multi-Tenant Point of Sale
         </p>
       </div>
@@ -160,9 +147,9 @@ export default function LoginPage() {
 
         {/* Mobile logo (shown only below lg) */}
         <div className="mb-8 flex items-center gap-3 lg:hidden">
-          <StatifyLogo size={40} />
+          <StatifyLogo size={44} variant="color" />
           <div>
-            <span className="text-xl font-bold text-primary-900">Statify</span>
+            <span className="text-xl font-bold text-primary-900 tracking-wide">STATIFY</span>
             <span className="ml-1 text-xl font-light text-secondary-500">POS</span>
           </div>
         </div>
@@ -257,10 +244,10 @@ export default function LoginPage() {
               disabled={loading}
               className={[
                 'relative flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3',
-                'bg-primary-900 text-sm font-semibold text-white transition-all',
-                'hover:bg-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                'bg-primary-500 text-sm font-semibold text-white transition-all',
+                'hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-2',
                 'disabled:opacity-60 disabled:cursor-not-allowed',
-                'shadow-md shadow-primary-900/30',
+                'shadow-md shadow-primary-500/30',
               ].join(' ')}
             >
               {loading ? (

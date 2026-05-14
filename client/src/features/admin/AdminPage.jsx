@@ -1701,13 +1701,13 @@ export default function AdminPage() {
           <h1 className="text-xl font-bold text-gray-900">Platform Admin</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage all tenants, subscriptions, and platform data</p>
         </div>
-        <button onClick={() => qc.invalidateQueries({ queryKey: ['platform-stats'] })}
-          className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50 transition-colors">
-          <RefreshCw className="h-3.5 w-3.5" /> Refresh stats
-        </button>
+        {activeTab === 'companies' && (
+          <button onClick={() => qc.invalidateQueries({ queryKey: ['platform-stats'] })}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50 transition-colors">
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh stats
+          </button>
+        )}
       </div>
-
-      <PlatformStats />
 
       {/* Tabs */}
       <div className="flex flex-wrap border-b border-gray-200 gap-0">
@@ -1724,7 +1724,7 @@ export default function AdminPage() {
       </div>
 
       {/* Tab panels */}
-      {activeTab === 'companies' && <CompaniesPanel plans={plans} />}
+      {activeTab === 'companies' && <><PlatformStats /><CompaniesPanel plans={plans} /></>}
       {activeTab === 'plans'     && <PlansPanel />}
       {activeTab === 'users'     && <UsersPanel companies={companiesForFilter} />}
       {activeTab === 'branches'  && <BranchesPanel companies={companiesForFilter} />}

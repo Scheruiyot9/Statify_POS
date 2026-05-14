@@ -21,8 +21,14 @@ const returnsRoutes = require('./modules/returns/returns.routes');
 const posRoutes = require('./modules/pos/pos.routes');
 const reportsRoutes = require('./modules/reports/reports.routes');
 const platformRoutes = require('./modules/platform/platform.routes');
-const taxRoutes      = require('./modules/tax/tax.routes');
-const mpesaRoutes    = require('./modules/mpesa/mpesa.routes');
+const taxRoutes          = require('./modules/tax/tax.routes');
+const mpesaRoutes        = require('./modules/mpesa/mpesa.routes');
+const accountsRoutes     = require('./modules/accounts/accounts.routes');
+const bankAccountsRoutes = require('./modules/bank-accounts/bank-accounts.routes');
+const suppliersRoutes    = require('./modules/suppliers/suppliers.routes');
+const purchasesRoutes    = require('./modules/purchases/purchases.routes');
+const grnsRoutes         = require('./modules/purchases/grns.routes');
+const paymentsRoutes     = require('./modules/payments/payments.routes');
 
 const app = express();
 
@@ -65,8 +71,14 @@ app.use(`${API}/returns`, returnsRoutes);
 app.use(`${API}/pos`, posRoutes);
 app.use(`${API}/reports`, reportsRoutes);
 app.use(`${API}/platform`, platformRoutes);
-app.use(`${API}/tax-rates`, taxRoutes);
-app.use(`${API}/mpesa`,    mpesaRoutes);
+app.use(`${API}/tax-rates`,    taxRoutes);
+app.use(`${API}/mpesa`,        mpesaRoutes);
+app.use(`${API}/accounts`,     accountsRoutes);
+app.use(`${API}/bank-accounts`,bankAccountsRoutes);
+app.use(`${API}/suppliers`,    suppliersRoutes);
+app.use(`${API}/purchases`,        purchasesRoutes);
+app.use(`${API}/grns`,             grnsRoutes);
+app.use(`${API}/supplier-payments`, paymentsRoutes);
 
 // ── 404 + global error handler ────────────────────────────────────────────────
 app.use(notFound);
