@@ -1,8 +1,12 @@
 /**
- * Seed script — run once to populate dev database with sample data.
+ * Dev/staging seed script — populates the database with demo data.
+ * Run AFTER migrate.js and 01_subscription_plans.sql.
+ *
  * Usage:  node src/scripts/seed.js
  *
- * Login credentials created:
+ * NOT for production use.
+ *
+ * Login credentials created (all use Password@123):
  * ┌─────────────────────────────┬──────────────┬─────────────────┐
  * │ Email                       │ Password     │ Role            │
  * ├─────────────────────────────┼──────────────┼─────────────────┤
@@ -31,20 +35,20 @@ async function seed() {
     await client.query('BEGIN');
     console.log('🌱 Seeding database…');
 
-    // ── 1. Subscription Plans ───────────────────────────────────────────────
-    const plans = await client.query(`
-      INSERT INTO subscription_plans
-        (plan_id, plan_name, price, annual_price, billing_cycle, max_users, max_branches, features_json, trial_days)
-      VALUES
-        (gen_random_uuid(), 'Basic',        999,   9990,  'monthly', 5,  1,  '{"reports":false,"api":false}',         14),
-        (gen_random_uuid(), 'Professional', 2999,  29990, 'monthly', 25, 5,  '{"reports":true,"api":false}',          14),
-        (gen_random_uuid(), 'Enterprise',   7999,  79990, 'monthly', -1, -1, '{"reports":true,"api":true,"custom":true}', 30)
-      ON CONFLICT (plan_name) DO UPDATE SET price = EXCLUDED.price
-      RETURNING plan_id, plan_name
-    `);
+    // ── 1. Resolve canonical plan IDs ───────────────────────────────────────
+    // Expects 01_subscription_plans.sql to have been run already.
+    const plans = await client.query(
+      `SELECT plan_id, plan_name FROM subscription_plans WHERE plan_name IN ('Growth','Starter') AND is_active = TRUE`
+    );
 
     const planMap = Object.fromEntries(plans.rows.map(r => [r.plan_name, r.plan_id]));
-    console.log('  ✓ Subscription plans');
+
+    if (!planMap['Growth'] || !planMap['Starter']) {
+      throw new Error(
+        'Required subscription plans not found. Run schema/seed/01_subscription_plans.sql first.'
+      );
+    }
+    console.log('  ✓ Subscription plans resolved');
 
     // ── 2. Companies ────────────────────────────────────────────────────────
     const companies = await client.query(`
@@ -60,7 +64,7 @@ async function seed() {
          'CBD, Nairobi', 'KES', 'Kenya')
       ON CONFLICT DO NOTHING
       RETURNING company_id, company_name
-    `, [planMap['Professional'], planMap['Basic']]);
+    `, [planMap['Growth'], planMap['Starter']]);
 
     const [freshmart, techzone] = companies.rows;
     console.log('  ✓ Companies');
@@ -70,16 +74,16 @@ async function seed() {
       INSERT INTO branches
         (branch_id, company_id, branch_name, branch_code, address, phone, is_headquarters)
       VALUES
-        (gen_random_uuid(), $1, 'Westlands HQ',     'FM-WL', 'Westlands, Nairobi',   '+254700111222', TRUE),
-        (gen_random_uuid(), $1, 'Kilimani Branch',  'FM-KL', 'Kilimani, Nairobi',    '+254700111223', FALSE),
-        (gen_random_uuid(), $1, 'Thika Road Branch','FM-TR', 'Thika Rd, Nairobi',    '+254700111224', FALSE),
-        (gen_random_uuid(), $2, 'CBD Store',        'TZ-CB', 'CBD, Nairobi',          '+254700333444', TRUE)
+        (gen_random_uuid(), $1, 'Westlands HQ',      'FM-WL', 'Westlands, Nairobi',  '+254700111222', TRUE),
+        (gen_random_uuid(), $1, 'Kilimani Branch',   'FM-KL', 'Kilimani, Nairobi',   '+254700111223', FALSE),
+        (gen_random_uuid(), $1, 'Thika Road Branch', 'FM-TR', 'Thika Rd, Nairobi',   '+254700111224', FALSE),
+        (gen_random_uuid(), $2, 'CBD Store',         'TZ-CB', 'CBD, Nairobi',         '+254700333444', TRUE)
       RETURNING branch_id, branch_name, company_id
     `, [freshmart.company_id, techzone.company_id]);
 
     const fmBranches = branches.rows.filter(b => b.company_id === freshmart.company_id);
     const tzBranches = branches.rows.filter(b => b.company_id === techzone.company_id);
-    const [fmHQ, fmKilimani, fmThika] = fmBranches;
+    const [fmHQ, fmKilimani] = fmBranches;
     const [tzCBD] = tzBranches;
     console.log('  ✓ Branches');
 
@@ -87,15 +91,15 @@ async function seed() {
     const roles = await client.query(`
       INSERT INTO roles (role_id, company_id, role_name, is_system_role)
       VALUES
-        (gen_random_uuid(), NULL,               'super_admin',        TRUE),
-        (gen_random_uuid(), $1,                 'company_admin',      TRUE),
-        (gen_random_uuid(), $1,                 'branch_manager',     TRUE),
-        (gen_random_uuid(), $1,                 'cashier',            TRUE),
-        (gen_random_uuid(), $1,                 'inventory_manager',  TRUE),
-        (gen_random_uuid(), $1,                 'accountant',         TRUE),
-        (gen_random_uuid(), $1,                 'sales_staff',        TRUE),
-        (gen_random_uuid(), $2,                 'company_admin',      TRUE),
-        (gen_random_uuid(), $2,                 'cashier',            TRUE)
+        (gen_random_uuid(), NULL, 'super_admin',       TRUE),
+        (gen_random_uuid(), $1,  'company_admin',      TRUE),
+        (gen_random_uuid(), $1,  'branch_manager',     TRUE),
+        (gen_random_uuid(), $1,  'cashier',            TRUE),
+        (gen_random_uuid(), $1,  'inventory_manager',  TRUE),
+        (gen_random_uuid(), $1,  'accountant',         TRUE),
+        (gen_random_uuid(), $1,  'sales_staff',        TRUE),
+        (gen_random_uuid(), $2,  'company_admin',      TRUE),
+        (gen_random_uuid(), $2,  'cashier',            TRUE)
       ON CONFLICT (company_id, role_name) DO NOTHING
       RETURNING role_id, role_name, company_id
     `, [freshmart.company_id, techzone.company_id]);
@@ -136,20 +140,20 @@ async function seed() {
     console.log('  ✓ Permissions');
 
     // ── 6. Role Permissions ─────────────────────────────────────────────────
-    const cashierPerms  = ['view_sales','create_transaction','void_transaction','apply_discount','view_products','view_customers','view_inventory','open_pos_session'];
-    const managerPerms  = [...cashierPerms, 'process_refund','adjust_stock','transfer_stock','view_reports','manage_customers'];
-    const adminPerms    = [...managerPerms, 'manage_products','manage_users','manage_settings','view_all_branches','export_reports'];
-    const invMgrPerms   = ['view_inventory','adjust_stock','transfer_stock','view_products','view_reports'];
+    const cashierPerms = ['view_sales','create_transaction','void_transaction','apply_discount',
+                          'view_products','view_customers','view_inventory','open_pos_session'];
+    const managerPerms = [...cashierPerms, 'process_refund','adjust_stock','transfer_stock',
+                          'view_reports','manage_customers'];
+    const adminPerms   = [...managerPerms, 'manage_products','manage_users','manage_settings',
+                          'view_all_branches','export_reports'];
+    const invMgrPerms  = ['view_inventory','adjust_stock','transfer_stock','view_products','view_reports'];
 
-    const buildRolePerms = (roleId, codes) =>
-      codes.map(code => `('${gen_random_uuid_placeholder()}', '${roleId}', '${permMap[code]}', TRUE, TRUE, TRUE, TRUE, TRUE)`);
-
-    // Use a helper function instead
     const insertRolePerms = async (roleId, codes) => {
       for (const code of codes) {
         if (!permMap[code]) continue;
         await client.query(`
-          INSERT INTO role_permissions (role_permission_id, role_id, permission_id, can_create, can_read, can_update, can_delete, can_export)
+          INSERT INTO role_permissions
+            (role_permission_id, role_id, permission_id, can_create, can_read, can_update, can_delete, can_export)
           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)
           ON CONFLICT DO NOTHING
         `, [roleId, permMap[code], true, true, true, false, true]);
@@ -164,13 +168,13 @@ async function seed() {
     const tzAdminId    = roleByName('company_admin',     techzone.company_id);
     const tzCashierId  = roleByName('cashier',           techzone.company_id);
 
-    await insertRolePerms(fmCashierId, cashierPerms);
-    await insertRolePerms(fmManagerId, managerPerms);
-    await insertRolePerms(fmAdminId,   adminPerms);
-    await insertRolePerms(fmInvMgrId,  invMgrPerms);
+    await insertRolePerms(fmCashierId,  cashierPerms);
+    await insertRolePerms(fmManagerId,  managerPerms);
+    await insertRolePerms(fmAdminId,    adminPerms);
+    await insertRolePerms(fmInvMgrId,   invMgrPerms);
     await insertRolePerms(superAdminId, adminPerms);
-    await insertRolePerms(tzAdminId,   adminPerms);
-    await insertRolePerms(tzCashierId, cashierPerms);
+    await insertRolePerms(tzAdminId,    adminPerms);
+    await insertRolePerms(tzCashierId,  cashierPerms);
     console.log('  ✓ Role permissions');
 
     // ── 7. Users ────────────────────────────────────────────────────────────
@@ -180,15 +184,15 @@ async function seed() {
       INSERT INTO users
         (user_id, company_id, username, email, password_hash, first_name, last_name, phone)
       VALUES
-        (gen_random_uuid(), NULL,                   'superadmin',  'super@statify.com',         $1, 'System',  'Admin',    NULL),
-        (gen_random_uuid(), $2,                     'fmadmin',     'admin@freshmart.com',        $1, 'Jane',    'Kamau',    '+254711000001'),
-        (gen_random_uuid(), $2,                     'fmmanager',   'manager@freshmart.com',      $1, 'David',   'Mwangi',   '+254711000002'),
-        (gen_random_uuid(), $2,                     'fmcashier',   'cashier@freshmart.com',      $1, 'Grace',   'Atieno',   '+254711000003'),
-        (gen_random_uuid(), $2,                     'fminventory', 'inventory@freshmart.com',    $1, 'Peter',   'Ochieng',  '+254711000004'),
-        (gen_random_uuid(), $3,                     'tzadmin',     'admin@techzone.com',         $1, 'Ali',     'Hassan',   '+254711000005'),
-        (gen_random_uuid(), $3,                     'tzcashier',   'cashier@techzone.com',       $1, 'Fatuma',  'Omar',     '+254711000006')
+        (gen_random_uuid(), NULL,  'superadmin',  'super@statify.com',       $1, 'System',  'Admin',   NULL),
+        (gen_random_uuid(), $2,   'fmadmin',     'admin@freshmart.com',      $1, 'Jane',    'Kamau',   '+254711000001'),
+        (gen_random_uuid(), $2,   'fmmanager',   'manager@freshmart.com',    $1, 'David',   'Mwangi',  '+254711000002'),
+        (gen_random_uuid(), $2,   'fmcashier',   'cashier@freshmart.com',    $1, 'Grace',   'Atieno',  '+254711000003'),
+        (gen_random_uuid(), $2,   'fminventory', 'inventory@freshmart.com',  $1, 'Peter',   'Ochieng', '+254711000004'),
+        (gen_random_uuid(), $3,   'tzadmin',     'admin@techzone.com',       $1, 'Ali',     'Hassan',  '+254711000005'),
+        (gen_random_uuid(), $3,   'tzcashier',   'cashier@techzone.com',     $1, 'Fatuma',  'Omar',    '+254711000006')
       ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash
-      RETURNING user_id, email, first_name, company_id
+      RETURNING user_id, email, company_id
     `, [pwdHash, freshmart.company_id, techzone.company_id]);
 
     const userMap = Object.fromEntries(users.rows.map(r => [r.email, r.user_id]));
@@ -207,19 +211,12 @@ async function seed() {
         (gen_random_uuid(), $14, $15, $16)
       ON CONFLICT DO NOTHING
     `, [
-      // $1  $2
       userMap['super@statify.com'],       superAdminId,
-      // $3  $4
       userMap['admin@freshmart.com'],     fmAdminId,
-      // $5  $6  $7
       userMap['manager@freshmart.com'],   fmManagerId,   fmHQ.branch_id,
-      // $8  $9  ($7 reused for HQ branch)
       userMap['cashier@freshmart.com'],   fmCashierId,
-      // $10 $11 ($7 reused)
       userMap['inventory@freshmart.com'], fmInvMgrId,
-      // $12 $13
       userMap['admin@techzone.com'],      tzAdminId,
-      // $14 $15 $16
       userMap['cashier@techzone.com'],    tzCashierId,   tzCBD.branch_id,
     ]);
     console.log('  ✓ User roles');
@@ -236,15 +233,10 @@ async function seed() {
         (gen_random_uuid(), $7, $8, TRUE)
       ON CONFLICT DO NOTHING
     `, [
-      // $1  $2
       userMap['manager@freshmart.com'],    fmHQ.branch_id,
-      // $3  ($2 reused for HQ)  $4
       userMap['cashier@freshmart.com'],    fmKilimani.branch_id,
-      // $5  ($2 reused)
       userMap['inventory@freshmart.com'],
-      // $6  ($2 reused)
       userMap['admin@freshmart.com'],
-      // $7  $8
       userMap['cashier@techzone.com'],     tzCBD.branch_id,
     ]);
     console.log('  ✓ User branch assignments');
@@ -279,23 +271,22 @@ async function seed() {
 
     const catMap = Object.fromEntries(cats.rows.map(r => [r.category_name, r.category_id]));
 
-    // $1=freshmart $2=techzone $3=Fresh Produce $4=Dairy $5=Beverages $6=Household $7=Smartphones $8=Accessories
     const prods = await client.query(`
       INSERT INTO products
         (product_id, company_id, sku, product_name, category_id, base_price, cost_price, unit_of_measure)
       VALUES
-        (gen_random_uuid(),$1,'FM-001','Tomatoes (1kg)',       $3,  120,   60, 'kg'),
-        (gen_random_uuid(),$1,'FM-002','Milk 500ml',           $4,   75,   45, 'unit'),
-        (gen_random_uuid(),$1,'FM-003','Coca-Cola 500ml',      $5,   65,   40, 'unit'),
-        (gen_random_uuid(),$1,'FM-004','Bread (White)',        $4,  110,   70, 'unit'),
-        (gen_random_uuid(),$1,'FM-005','Eggs (Tray of 30)',   $4,  450,  330, 'tray'),
-        (gen_random_uuid(),$1,'FM-006','Sugar (2kg)',          $6,  230,  180, 'unit'),
-        (gen_random_uuid(),$1,'FM-007','Cooking Oil 1L',      $6,  280,  210, 'unit'),
-        (gen_random_uuid(),$1,'FM-008','Spinach (Bunch)',      $3,   30,   15, 'bunch'),
-        (gen_random_uuid(),$2,'TZ-001','iPhone 15 (128GB)',    $7, 145000, 110000, 'unit'),
-        (gen_random_uuid(),$2,'TZ-002','Samsung Galaxy A55',  $7,  62000,  48000, 'unit'),
-        (gen_random_uuid(),$2,'TZ-003','USB-C Cable',         $8,   1200,    600, 'unit'),
-        (gen_random_uuid(),$2,'TZ-004','Screen Protector',    $8,    800,    300, 'unit')
+        (gen_random_uuid(),$1,'FM-001','Tomatoes (1kg)',      $3,  120,    60, 'kg'),
+        (gen_random_uuid(),$1,'FM-002','Milk 500ml',          $4,   75,    45, 'unit'),
+        (gen_random_uuid(),$1,'FM-003','Coca-Cola 500ml',     $5,   65,    40, 'unit'),
+        (gen_random_uuid(),$1,'FM-004','Bread (White)',       $4,  110,    70, 'unit'),
+        (gen_random_uuid(),$1,'FM-005','Eggs (Tray of 30)',  $4,  450,   330, 'tray'),
+        (gen_random_uuid(),$1,'FM-006','Sugar (2kg)',         $6,  230,   180, 'unit'),
+        (gen_random_uuid(),$1,'FM-007','Cooking Oil 1L',     $6,  280,   210, 'unit'),
+        (gen_random_uuid(),$1,'FM-008','Spinach (Bunch)',     $3,   30,    15, 'bunch'),
+        (gen_random_uuid(),$2,'TZ-001','iPhone 15 (128GB)',   $7, 145000, 110000, 'unit'),
+        (gen_random_uuid(),$2,'TZ-002','Samsung Galaxy A55', $7,  62000,  48000, 'unit'),
+        (gen_random_uuid(),$2,'TZ-003','USB-C Cable',        $8,   1200,    600, 'unit'),
+        (gen_random_uuid(),$2,'TZ-004','Screen Protector',   $8,    800,    300, 'unit')
       ON CONFLICT (company_id, sku) DO NOTHING
       RETURNING product_id, sku, company_id
     `, [
@@ -304,16 +295,16 @@ async function seed() {
       catMap['Smartphones'],   catMap['Accessories'],
     ]);
 
-    // Inventory for each FM product across all FM branches
     const fmProds = prods.rows.filter(p => p.company_id === freshmart.company_id);
     const tzProds = prods.rows.filter(p => p.company_id === techzone.company_id);
 
     for (const prod of fmProds) {
       for (const branch of fmBranches) {
         await client.query(`
-          INSERT INTO product_branch_inventory (inventory_id, product_id, branch_id, quantity_available, reorder_level)
-          VALUES (gen_random_uuid(), $1, $2, $3, $4) ON CONFLICT DO NOTHING
-        `, [prod.product_id, branch.branch_id, Math.floor(Math.random() * 100) + 10, 5]);
+          INSERT INTO product_branch_inventory
+            (inventory_id, product_id, branch_id, quantity_available, reorder_level)
+          VALUES (gen_random_uuid(), $1, $2, $3, 5) ON CONFLICT DO NOTHING
+        `, [prod.product_id, branch.branch_id, Math.floor(Math.random() * 100) + 10]);
 
         await client.query(`
           INSERT INTO product_branch_pricing (pricing_id, product_id, branch_id, selling_price)
@@ -325,7 +316,8 @@ async function seed() {
 
     for (const prod of tzProds) {
       await client.query(`
-        INSERT INTO product_branch_inventory (inventory_id, product_id, branch_id, quantity_available, reorder_level)
+        INSERT INTO product_branch_inventory
+          (inventory_id, product_id, branch_id, quantity_available, reorder_level)
         VALUES (gen_random_uuid(), $1, $2, $3, 2) ON CONFLICT DO NOTHING
       `, [prod.product_id, tzCBD.branch_id, Math.floor(Math.random() * 20) + 2]);
 
@@ -344,18 +336,18 @@ async function seed() {
       `SELECT payment_method_id FROM payment_methods WHERE company_id = $1 AND method_name = 'Cash' LIMIT 1`,
       [freshmart.company_id]
     );
-    const cashPmId = pmResult.rows[0]?.payment_method_id;
+    const cashPmId  = pmResult.rows[0]?.payment_method_id;
     const fmProdIds = fmProds.map(p => p.product_id);
 
     for (let d = 30; d >= 0; d--) {
-      const txDate = new Date();
+      const txDate  = new Date();
       txDate.setDate(txDate.getDate() - d);
-      const numTxn = d === 0 ? 8 : Math.floor(Math.random() * 15) + 5;
+      const numTxn  = d === 0 ? 8 : Math.floor(Math.random() * 15) + 5;
 
       for (let t = 0; t < numTxn; t++) {
-        const txnNum = `FM-${String(Date.now()).slice(-8)}-${t}`;
-        const prodId = fmProdIds[Math.floor(Math.random() * fmProdIds.length)];
-        const qty = Math.floor(Math.random() * 5) + 1;
+        const txnNum  = `FM-${String(Date.now()).slice(-8)}-${t}`;
+        const prodId  = fmProdIds[Math.floor(Math.random() * fmProdIds.length)];
+        const qty     = Math.floor(Math.random() * 5) + 1;
 
         const priceRes = await client.query(
           `SELECT base_price FROM products WHERE product_id = $1`, [prodId]
@@ -368,8 +360,7 @@ async function seed() {
             (transaction_id, company_id, branch_id, transaction_number, transaction_date,
              cashier_user_id, subtotal, tax_amount, discount_amount, total_amount,
              amount_paid, change_total, status)
-          VALUES
-            (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 0, 0, $6, $6, 0, 'completed')
+          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 0, 0, $6, $6, 0, 'completed')
           RETURNING transaction_id
         `, [freshmart.company_id, fmHQ.branch_id, txnNum, txDate, cashierUserId, lineTotal]);
 
@@ -397,11 +388,11 @@ async function seed() {
     console.log('\n✅ Seed complete!\n');
     console.log('Login credentials (all use Password@123):');
     console.log('  super@statify.com        → super_admin');
-    console.log('  admin@freshmart.com      → company_admin  (FreshMart)');
+    console.log('  admin@freshmart.com      → company_admin  (FreshMart / Growth plan)');
     console.log('  manager@freshmart.com    → branch_manager (FreshMart HQ)');
     console.log('  cashier@freshmart.com    → cashier        (FreshMart HQ)');
     console.log('  inventory@freshmart.com  → inventory_mgr  (FreshMart HQ)');
-    console.log('  admin@techzone.com       → company_admin  (TechZone)');
+    console.log('  admin@techzone.com       → company_admin  (TechZone / Starter plan)');
 
   } catch (err) {
     await client.query('ROLLBACK');
@@ -413,8 +404,5 @@ async function seed() {
     await pool.end();
   }
 }
-
-// Helper used in comments — actual UUIDs are generated by PostgreSQL
-function gen_random_uuid_placeholder() { return 'gen_random_uuid()'; }
 
 seed();
