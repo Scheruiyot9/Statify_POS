@@ -43,10 +43,10 @@ function ReceiptBody({ txn, company }) {
       {/* Items */}
       <div className="space-y-1 mb-2">
         {txn.items?.map((item, i) => {
-          const qty  = parseFloat(item.quantity);
+          const qty = parseFloat(item.quantity);
           const price = parseFloat(item.unit_price);
           const disc = parseFloat(item.discount_amount) || 0;
-          const tax  = parseFloat(item.tax_amount) || 0;
+          const tax = parseFloat(item.tax_amount) || 0;
           const line = parseFloat(item.line_total);
           return (
             <div key={item.item_id ?? i}>
@@ -57,7 +57,7 @@ function ReceiptBody({ txn, company }) {
               <div className="text-gray-500 pl-2">
                 {qty} × {formatCurrency(price)}
                 {disc > 0 && <span className="ml-2">disc -{formatCurrency(disc)}</span>}
-                {tax  > 0 && <span className="ml-2">incl. VAT {formatCurrency(tax)}</span>}
+                {tax > 0 && <span className="ml-2">incl. VAT {formatCurrency(tax)}</span>}
               </div>
             </div>
           );
@@ -81,8 +81,8 @@ function ReceiptBody({ txn, company }) {
         </div>
         {/* VAT is informational — embedded in prices, shown after total for compliance */}
         {parseFloat(txn.tax_amount) > 0 && (
-          <div className="flex justify-between text-gray-500" style={{fontSize:'10px'}}>
-            <span>of which VAT (incl.)</span><span>{formatCurrency(txn.tax_amount)}</span>
+          <div className="flex justify-between text-gray-500" style={{ fontSize: '10px' }}>
+            <span>VAT (incl.)</span><span>{formatCurrency(txn.tax_amount)}</span>
           </div>
         )}
       </div>
@@ -107,8 +107,6 @@ function ReceiptBody({ txn, company }) {
       {/* Footer */}
       <div className="text-center text-gray-500 text-xs mt-2 space-y-0.5">
         <p>Thank you for your business!</p>
-        {company?.tax_id && <p>Tax Invoice — {company.tax_id}</p>}
-        <p className="text-gray-400">{new Date().toLocaleDateString()}</p>
       </div>
     </div>
   );
@@ -119,8 +117,8 @@ export default function ReceiptModal({ open, onClose, txn }) {
 
   const { data: company } = useQuery({
     queryKey: ['company-mine'],
-    queryFn:  () => api.get('/companies/mine').then((r) => r.data.data),
-    enabled:  open,
+    queryFn: () => api.get('/companies/mine').then((r) => r.data.data),
+    enabled: open,
     staleTime: 10 * 60 * 1000,
   });
 
