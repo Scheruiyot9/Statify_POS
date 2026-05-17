@@ -154,6 +154,19 @@ function CreateCompanyModal({ plans, onClose }) {
                 <option value="">No plan (trial)</option>
                 {plans.map((p) => <option key={p.plan_id} value={p.plan_id}>{p.plan_name} — {formatCurrency(p.price)}/mo</option>)}
               </select>
+              {form.subscription_plan_id && (() => {
+                const p = plans.find((x) => x.plan_id === form.subscription_plan_id);
+                return p ? (
+                  <div className="mt-1.5 flex gap-2">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${p.has_finance ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                      {p.has_finance ? '✓ Finance' : '✗ Finance'}
+                    </span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${p.has_api_access ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                      {p.has_api_access ? '✓ API / M-Pesa' : '✗ API / M-Pesa'}
+                    </span>
+                  </div>
+                ) : null;
+              })()}
             </Field>
             <Field label="Currency">
               <select value={form.currency} onChange={(e) => set('currency', e.target.value)} className={sel}>
@@ -254,7 +267,9 @@ function CompanyEditModal({ company, plans, onClose }) {
     onClose();
   };
 
-  const currentPlan = plans.find((p) => p.plan_id === (form.subscription_plan_id || company.subscription_plan_id));
+  const currentPlan    = plans.find((p) => p.plan_id === (form.subscription_plan_id || company.subscription_plan_id));
+  const planHasFinance = currentPlan?.has_finance    ?? false;
+  const planHasApi     = currentPlan?.has_api_access ?? false;
 
   return (
     <>
@@ -281,6 +296,16 @@ function CompanyEditModal({ company, plans, onClose }) {
                 <option value="">No plan (trial)</option>
                 {plans.map((p) => <option key={p.plan_id} value={p.plan_id}>{p.plan_name} — {formatCurrency(p.price)}/mo</option>)}
               </select>
+              {form.subscription_plan_id && (
+                <div className="mt-1.5 flex gap-2">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${planHasFinance ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                    {planHasFinance ? '✓ Finance' : '✗ Finance'}
+                  </span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${planHasApi ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                    {planHasApi ? '✓ API / M-Pesa' : '✗ API / M-Pesa'}
+                  </span>
+                </div>
+              )}
             </Field>
             <Field label="Currency">
               <select value={form.currency} onChange={(e) => set('currency', e.target.value)} className={sel}>
@@ -302,7 +327,7 @@ function CompanyEditModal({ company, plans, onClose }) {
           </div>
 
           {/* Stats row */}
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-5 gap-3">
             <div className="rounded-xl bg-gray-50 p-3 text-center">
               <p className="text-xs text-gray-500">Branches</p>
               <p className="text-lg font-bold text-gray-800">{company.branch_count}{company.max_branches ? <span className="text-xs text-gray-400 font-normal"> /{company.max_branches}</span> : ''}</p>
@@ -313,7 +338,11 @@ function CompanyEditModal({ company, plans, onClose }) {
             </div>
             <div className="rounded-xl bg-gray-50 p-3 text-center">
               <p className="text-xs text-gray-500">Finance</p>
-              <p className="text-sm font-semibold mt-1">{currentPlan?.has_finance ? <span className="text-green-600">Enabled</span> : <span className="text-gray-400">Disabled</span>}</p>
+              <p className="text-sm font-semibold mt-1">{planHasFinance ? <span className="text-green-600">Enabled</span> : <span className="text-gray-400">Disabled</span>}</p>
+            </div>
+            <div className="rounded-xl bg-gray-50 p-3 text-center">
+              <p className="text-xs text-gray-500">API / M-Pesa</p>
+              <p className="text-sm font-semibold mt-1">{planHasApi ? <span className="text-green-600">Enabled</span> : <span className="text-gray-400">Disabled</span>}</p>
             </div>
             <div className="rounded-xl bg-gray-50 p-3 text-center">
               <p className="text-xs text-gray-500">Created</p>
@@ -388,9 +417,14 @@ function CompanyEditModal({ company, plans, onClose }) {
           <div className="rounded-xl border border-gray-100 p-4">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">M-Pesa Configurations</p>
-              <Button size="xs" icon={<Plus className="h-3 w-3" />} onClick={() => setMpesaConfigOpen(true)}>Add Config</Button>
+              {planHasApi
+                ? <Button size="xs" icon={<Plus className="h-3 w-3" />} onClick={() => setMpesaConfigOpen(true)}>Add Config</Button>
+                : <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">API not included in plan</span>
+              }
             </div>
-            {mpesaLoading ? (
+            {!planHasApi ? (
+              <p className="text-xs text-amber-600 py-1">Upgrade to Enterprise to enable M-Pesa / API access for this company.</p>
+            ) : mpesaLoading ? (
               <div className="space-y-2">
                 {[1, 2].map((i) => <div key={i} className="h-8 animate-pulse rounded-lg bg-gray-100" />)}
               </div>
@@ -913,8 +947,9 @@ function CompaniesPanel({ plans }) {
 // ── User Modal (Create / Edit) ────────────────────────────────────────────────
 
 const FINANCE_ROLES = ['accountant'];
+const API_ROLES     = ['mpesa_operator']; // future-proof: hide if plan has no API access
 
-function UserModal({ companyId, user, onClose, hasFinance }) {
+function UserModal({ companyId, user, onClose, hasFinance, hasApiAccess }) {
   const qc     = useQueryClient();
   const isEdit = !!user;
 
@@ -930,7 +965,11 @@ function UserModal({ companyId, user, onClose, hasFinance }) {
   const set = (k, v) => setFormState((f) => ({ ...f, [k]: v }));
 
   const { data: allRoles = [] } = useQuery({ queryKey: ['co-roles', companyId], queryFn: () => api.get('/users/roles', withCo(companyId)).then((r) => r.data.data), enabled: !!companyId });
-  const roles    = hasFinance ? allRoles : allRoles.filter((r) => !FINANCE_ROLES.includes(r.role_name));
+  const roles = allRoles.filter((r) => {
+    if (!hasFinance   && FINANCE_ROLES.includes(r.role_name)) return false;
+    if (!hasApiAccess && API_ROLES.includes(r.role_name))     return false;
+    return true;
+  });
   const { data: branches = [] } = useQuery({ queryKey: ['co-branches', companyId], queryFn: () => api.get('/branches',    withCo(companyId)).then((r) => r.data.data), enabled: !!companyId });
 
   const invalidate = () => {
@@ -1004,7 +1043,8 @@ function UsersPanel({ companies }) {
   const [editTarget, setEditTarget] = useState(null);
 
   const selectedCompany = companies.find((c) => c.company_id === companyId);
-  const hasFinance   = selectedCompany?.has_finance   ?? false;
+  const hasFinance      = selectedCompany?.has_finance    ?? false;
+  const hasApiAccess    = selectedCompany?.has_api_access ?? false;
 
   const { data, isLoading } = useQuery({
     queryKey: ['platform-users', { search, companyId, page }],
@@ -1063,8 +1103,8 @@ function UsersPanel({ companies }) {
         )}
         <Pagination page={page} pages={pages} total={total} onPage={setPage} />
       </div>
-      {createOpen && <UserModal companyId={companyId} hasFinance={hasFinance} onClose={() => setCreateOpen(false)} />}
-      {editTarget  && <UserModal companyId={companyId} hasFinance={hasFinance} user={editTarget} onClose={() => setEditTarget(null)} />}
+      {createOpen && <UserModal companyId={companyId} hasFinance={hasFinance} hasApiAccess={hasApiAccess} onClose={() => setCreateOpen(false)} />}
+      {editTarget  && <UserModal companyId={companyId} hasFinance={hasFinance} hasApiAccess={hasApiAccess} user={editTarget} onClose={() => setEditTarget(null)} />}
     </div>
   );
 }
