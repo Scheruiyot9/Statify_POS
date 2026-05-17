@@ -467,8 +467,7 @@ function PlansPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{plans.length} plan{plans.length !== 1 ? 's' : ''} configured</p>
+      <div className="flex justify-end">
         <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>New Plan</Button>
       </div>
 
@@ -782,6 +781,7 @@ function BranchModal({ companyId, branch, onClose }) {
     branch_code: branch?.branch_code ?? '',
     address:     branch?.address     ?? '',
     phone:       branch?.phone       ?? '',
+    is_active:   branch?.is_active   ?? true,
   });
   const set = (k, v) => setFormState((f) => ({ ...f, [k]: v }));
 
@@ -810,6 +810,14 @@ function BranchModal({ companyId, branch, onClose }) {
         </Field>
         <div className="col-span-2"><Field label="Address"><textarea value={form.address} onChange={(e) => set('address', e.target.value)} rows={2} className={`${inp} resize-none`} placeholder="Street, City, Country" /></Field></div>
         <Field label="Phone"><input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="+254…" className={inp} /></Field>
+        {isEdit && (
+          <Field label="Status">
+            <select value={form.is_active ? 'true' : 'false'} onChange={(e) => set('is_active', e.target.value === 'true')} className={`${inp} bg-white`}>
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+          </Field>
+        )}
       </div>
     </Modal>
   );
@@ -1695,19 +1703,14 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Platform Admin</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Manage all tenants, subscriptions, and platform data</p>
-        </div>
-        {activeTab === 'companies' && (
+      {activeTab === 'companies' && (
+        <div className="flex justify-end">
           <button onClick={() => qc.invalidateQueries({ queryKey: ['platform-stats'] })}
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50 transition-colors">
             <RefreshCw className="h-3.5 w-3.5" /> Refresh stats
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex flex-wrap border-b border-gray-200 gap-0">

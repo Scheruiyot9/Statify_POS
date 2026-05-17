@@ -195,31 +195,6 @@ export default function ProductsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Products</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{total} products</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" size="sm" icon={<Download className="h-4 w-4" />}
-            onClick={() => exportToExcel('products', products, [
-              'product_name','sku','barcode','category_name','base_price','is_active',
-            ], ['Product Name','SKU','Barcode','Category','Price','Active'])}>
-            Export
-          </Button>
-          {canManageProducts && (
-            <>
-              <Button variant="secondary" size="sm" onClick={() => setModal('category')} icon={<Plus className="h-4 w-4" />}>
-                Category
-              </Button>
-              <Button variant="primary" size="sm" onClick={() => setModal('create')} icon={<Plus className="h-4 w-4" />}>
-                Add Product
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-
       <div className="flex gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -232,6 +207,22 @@ export default function ProductsPage() {
           <option value="">All Categories</option>
           {categories.map((c) => <option key={c.category_id} value={c.category_id}>{c.category_name}</option>)}
         </select>
+        <Button variant="secondary" size="sm" icon={<Download className="h-4 w-4" />}
+          onClick={() => exportToExcel('products', products, [
+            'product_name','sku','barcode','category_name','base_price','is_active',
+          ], ['Product Name','SKU','Barcode','Category','Price','Active'])}>
+          Export
+        </Button>
+        {canManageProducts && (
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setModal('category')} icon={<Plus className="h-4 w-4" />}>
+              Category
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => setModal('create')} icon={<Plus className="h-4 w-4" />}>
+              Add Product
+            </Button>
+          </>
+        )}
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">

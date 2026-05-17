@@ -328,21 +328,6 @@ export default function PaymentsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-100">
-            <CreditCard className="h-5 w-5 text-primary-600" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">AP Payments</h1>
-            <p className="text-sm text-gray-500">Record and track supplier payments</p>
-          </div>
-        </div>
-        <Button onClick={() => setShowModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />Record Payment
-        </Button>
-      </div>
-
       <APSummary suppliers={suppliers} />
 
       {/* Filters */}
@@ -361,6 +346,9 @@ export default function PaymentsPage() {
             <option key={s.supplier_id} value={s.supplier_id}>{s.supplier_name}</option>
           ))}
         </select>
+        <Button size="sm" onClick={() => setShowModal(true)}>
+          <Plus className="h-4 w-4 mr-1" />Record Payment
+        </Button>
       </div>
 
       {/* Table */}

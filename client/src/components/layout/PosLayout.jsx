@@ -8,7 +8,11 @@ export default function PosLayout({ children }) {
   return (
     <div className="flex h-screen flex-col bg-gray-100">
       {/* Slim POS header */}
-      <header className="flex items-center justify-between bg-primary-500 px-4 py-2 text-white shadow-md">
+      <header
+        className="relative flex items-center justify-between px-4 py-2 text-white"
+        style={{ background: 'linear-gradient(90deg, #011920 0%, #01303d 50%, #024A59 100%)' }}
+      >
+        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-secondary-500/60 to-transparent" />
         <div className="flex items-center gap-3">
           <Link
             to="/app/dashboard"

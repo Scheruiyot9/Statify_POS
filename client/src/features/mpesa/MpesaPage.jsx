@@ -265,46 +265,34 @@ export default function MpesaPage() {
 
   return (
     <div className="space-y-4">
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <Smartphone className="h-5 w-5 text-green-600" />
-            M-Pesa Transactions
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">{total} records</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" size="sm"
-            icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
-            onClick={() => refetch()}>
-            Refresh
-          </Button>
-          {isAdmin && (
-            <Button variant="secondary" size="sm" icon={<Settings className="h-4 w-4" />}
-              onClick={() => { setEditConfig(null); setShowConfig(true); }}>
-              Add Config
-            </Button>
-          )}
-          <Button variant="secondary" size="sm" icon={<Download className="h-4 w-4" />}
-            onClick={() => exportToExcel('mpesa-transactions', transactions, [
-              'payment_mode','phone_number','amount','mpesa_receipt_number',
-              'account_reference','status','initiated_at','completed_at','branch_name','sale_number',
-            ], [
-              'Mode','Phone','Amount','Receipt #','Account Ref',
-              'Status','Initiated','Completed','Branch','Sale #',
-            ])}>
-            Export
-          </Button>
-        </div>
-      </div>
 
       {/* ── Branch configs list (admin only) ── */}
       {isAdmin && (
         <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <p className="text-sm font-semibold text-gray-700">M-Pesa Configurations</p>
-            <span className="text-xs text-gray-400">{configs.length} configured</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400 mr-1">{configs.length} configured</span>
+              <Button variant="secondary" size="sm"
+                icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
+                onClick={() => refetch()}>
+                Refresh
+              </Button>
+              <Button variant="secondary" size="sm" icon={<Settings className="h-4 w-4" />}
+                onClick={() => { setEditConfig(null); setShowConfig(true); }}>
+                Add Config
+              </Button>
+              <Button variant="secondary" size="sm" icon={<Download className="h-4 w-4" />}
+                onClick={() => exportToExcel('mpesa-transactions', transactions, [
+                  'payment_mode','phone_number','amount','mpesa_receipt_number',
+                  'account_reference','status','initiated_at','completed_at','branch_name','sale_number',
+                ], [
+                  'Mode','Phone','Amount','Receipt #','Account Ref',
+                  'Status','Initiated','Completed','Branch','Sale #',
+                ])}>
+                Export
+              </Button>
+            </div>
           </div>
           {configs.length === 0 ? (
             <div className="flex items-center gap-3 px-4 py-4">

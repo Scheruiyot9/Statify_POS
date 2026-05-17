@@ -422,18 +422,6 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-xs text-gray-400">{today}</p>
-        </div>
-        {user?.role && (
-          <span className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium capitalize text-gray-600">
-            {user.role.replace('_', ' ')}
-          </span>
-        )}
-      </div>
 
       {/* Platform banner (super_admin only) */}
       {data?.platform && <PlatformBanner platform={data.platform} />}

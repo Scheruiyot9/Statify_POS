@@ -693,10 +693,6 @@ export default function JournalPage() {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-50">
             <ScrollText className="h-5 w-5 text-primary-600" />
           </div>
-          <div>
-            <h1 className="text-lg font-semibold text-gray-900">Journals</h1>
-            <p className="text-xs text-gray-500">Manual journal entries — create, review, and post to the ledger</p>
-          </div>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={downloadTemplate}

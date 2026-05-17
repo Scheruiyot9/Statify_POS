@@ -256,18 +256,6 @@ export default function ReturnsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Returns</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{total} return{total !== 1 ? 's' : ''}</p>
-        </div>
-        {canProcess && (
-          <Button icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
-            New Return
-          </Button>
-        )}
-      </div>
-
       {/* Filters */}
       <div className="flex flex-wrap gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
         <div className="relative flex-1 min-w-48">
@@ -292,6 +280,11 @@ export default function ReturnsPage() {
         {(search || status || startDate || endDate) && (
           <button onClick={() => { setSearch(''); setStatus(''); setStartDate(''); setEndDate(''); setPage(1); }}
             className="text-xs text-gray-400 hover:text-gray-600 px-2">Clear</button>
+        )}
+        {canProcess && (
+          <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
+            New Return
+          </Button>
         )}
       </div>
 

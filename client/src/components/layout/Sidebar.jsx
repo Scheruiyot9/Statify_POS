@@ -17,13 +17,10 @@ const COLLAPSED_THRESHOLD = 72; // <= this → icon-only mode
 
 // ── NavItem ───────────────────────────────────────────────────────────────────
 
-// Active:  solid white-tinted bg + gold left-border accent
-// Hover:   clearly visible white tint (14%)
-// Regular: full-brightness white text at 80% opacity
 const navBase = 'flex items-center rounded-lg text-sm font-medium transition-all duration-150';
-const navActive = 'bg-white/[.18] text-white font-semibold border-l-2 border-secondary-400';
-const navHover = 'text-white/80 hover:bg-white/[.14] hover:text-white border-l-2 border-transparent';
-const navLocked = 'text-white/35 cursor-not-allowed border-l-2 border-transparent';
+const navActive = 'bg-secondary-500/[.14] text-white font-semibold border-l-2 border-secondary-400';
+const navHover = 'text-white/60 hover:bg-secondary-500/[.09] hover:text-white border-l-2 border-transparent hover:border-secondary-400/30';
+const navLocked = 'text-white/30 cursor-not-allowed border-l-2 border-transparent';
 
 function NavItem({ to, label, Icon, collapsed, locked, isAdmin, search }) {
   const navigate = useNavigate();
@@ -96,7 +93,7 @@ function NavGroup({ id, label, collapsed, defaultOpen = true, children }) {
     <div className="space-y-1">
       <button
         onClick={toggle}
-        className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-xs font-semibold uppercase tracking-widest text-white/60 hover:text-white/90 transition-colors"
+        className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-xs font-semibold uppercase tracking-widest text-secondary-400/55 hover:text-secondary-400/90 transition-colors"
       >
         <span>{label}</span>
         {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -284,12 +281,12 @@ export default function Sidebar() {
   return (
     <aside
       ref={sidebarRef}
-      style={{ width }}
-      className="relative flex h-full flex-col bg-primary-500 text-white flex-shrink-0"
+      style={{ width, background: 'linear-gradient(180deg, #011920 0%, #012b38 28%, #024A59 62%, #012e3a 100%)' }}
+      className="relative flex h-full flex-col text-white flex-shrink-0 border-r border-secondary-400/15"
     >
       {/* Logo + collapse toggle */}
       <div className={[
-        'flex items-center border-b border-white/20 flex-shrink-0',
+        'flex items-center border-b border-secondary-400/20 flex-shrink-0',
         collapsed ? 'flex-col gap-3 px-0 py-3' : 'justify-between px-4 py-3',
       ].join(' ')}>
         <div className="flex items-center gap-2 overflow-hidden">

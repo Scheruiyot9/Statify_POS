@@ -254,19 +254,8 @@ export default function SuppliersPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Suppliers</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{total} suppliers</p>
-        </div>
-        <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
-          Add Supplier
-        </Button>
-      </div>
-
-      {/* Search */}
-      <div className="flex gap-2">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+        <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input type="text" value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -274,10 +263,13 @@ export default function SuppliersPage() {
             placeholder="Search suppliers…"
             className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none" />
         </div>
-        <Button variant="secondary" onClick={() => { setSubmitted(search); setPage(1); }}>Search</Button>
+        <Button variant="secondary" size="sm" onClick={() => { setSubmitted(search); setPage(1); }}>Search</Button>
         {submitted && (
-          <Button variant="secondary" onClick={() => { setSearch(''); setSubmitted(''); setPage(1); }}>Clear</Button>
+          <Button variant="secondary" size="sm" onClick={() => { setSearch(''); setSubmitted(''); setPage(1); }}>Clear</Button>
         )}
+        <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
+          Add Supplier
+        </Button>
       </div>
 
       {/* Table */}

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Outlet, Link, useNavigate } from 'react-router-dom';
+import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { LogOut, KeyRound, User, ChevronDown, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -93,6 +93,28 @@ function ChangePasswordModal({ onClose }) {
   );
 }
 
+// ── Route → page title map ────────────────────────────────────────────────────
+const ROUTE_TITLES = {
+  '/app/dashboard':     'Dashboard',
+  '/app/sales':         'Sales History',
+  '/app/returns':       'Returns',
+  '/app/shifts':        'Shifts',
+  '/app/mpesa':         'M-Pesa Transactions',
+  '/app/products':      'Products',
+  '/app/inventory':     'Inventory',
+  '/app/customers':     'Customers',
+  '/app/suppliers':     'Suppliers',
+  '/app/purchases':     'Purchases',
+  '/app/payments':      'Payments',
+  '/app/accounts':      'Chart of Accounts',
+  '/app/bank-accounts': 'Bank Accounts',
+  '/app/journal':       'Journal',
+  '/app/reports':       'Sales Reports',
+  '/app/users':         'Users & Roles',
+  '/app/settings':      'Settings',
+  '/app/admin':         'Admin Panel',
+};
+
 // ── App Layout ────────────────────────────────────────────────────────────────
 export default function AppLayout() {
   const user               = useAuthStore((s) => s.user);
@@ -101,6 +123,9 @@ export default function AppLayout() {
   const activeCompanyName  = useAuthStore((s) => s.activeCompanyName);
   const clearActiveCompany = useAuthStore((s) => s.clearActiveCompany);
   const navigate           = useNavigate();
+  const location           = useLocation();
+
+  const pageTitle = ROUTE_TITLES[location.pathname] ?? 'Statify POS';
 
   const [dropdownOpen,  setDropdownOpen]  = useState(false);
   const [changePwdOpen, setChangePwdOpen] = useState(false);
@@ -146,41 +171,62 @@ export default function AppLayout() {
 
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top bar */}
-        <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3 shadow-sm">
-          {/* Left: Statify logo (light bg version) + optional tenant name */}
-          <div className="flex items-center gap-3">
-            <img
-              src="/statify-logo.svg"
-              alt="Statify"
-              className="h-10 w-auto"
-            />
-            {myCompany?.company_name && (
-              <>
-                <div className="h-5 w-px bg-gray-200" />
-                <span className="text-sm font-semibold text-gray-600">{myCompany.company_name}</span>
-              </>
-            )}
+        <header
+          className="relative flex items-center justify-between px-6 py-3"
+          style={{ background: 'linear-gradient(90deg, #011920 0%, #01303d 50%, #024A59 100%)' }}
+        >
+          {/* Amber accent line at bottom */}
+          <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-secondary-500/60 to-transparent" />
+
+          {/* Left: current page title + date */}
+          <div>
+            <h1 className="text-base font-bold tracking-wide text-white leading-tight">{pageTitle}</h1>
+            <p className="text-[11px] text-white/40 leading-tight">
+              {new Date().toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
           </div>
 
-          {/* Right: profile dropdown */}
-          <div className="relative" ref={dropdownRef}>
+          {/* Right: company branding + profile dropdown */}
+          <div className="flex items-center gap-3">
+
+            {/* Company logo (tenant) or Statify logo (super-admin) */}
+            {isSuperAdmin ? (
+              <img src="/statify-logo-white.svg" alt="Statify" className="h-8 w-auto" />
+            ) : myCompany?.company_name ? (
+              <div className="flex items-center gap-2">
+                {myCompany.logo_url && (
+                  <img
+                    src={myCompany.logo_url}
+                    alt={myCompany.company_name}
+                    className="h-7 w-7 rounded-md object-contain"
+                  />
+                )}
+                <span className="text-sm font-semibold text-white/80">{myCompany.company_name}</span>
+              </div>
+            ) : null}
+
+            {/* Separator */}
+            <div className="h-6 w-px bg-white/20" />
+
+            {/* Profile dropdown trigger */}
+            <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setDropdownOpen((v) => !v)}
-              className="flex items-center gap-2.5 rounded-xl border border-transparent px-2 py-1.5 hover:border-gray-200 hover:bg-gray-50 transition-all"
+              className="flex items-center gap-2.5 rounded-xl border border-transparent px-2 py-1.5 hover:border-white/15 hover:bg-white/10 transition-all"
             >
               {/* Avatar */}
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary-500 text-xs font-bold text-black">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary-500 text-xs font-bold text-primary-900">
                 {initials || <User className="h-4 w-4" />}
               </div>
               <div className="text-left hidden sm:block">
-                <p className="text-sm font-medium text-gray-900 leading-tight">
+                <p className="text-sm font-medium text-white leading-tight">
                   {user?.firstName} {user?.lastName}
                 </p>
-                <p className="text-xs text-gray-400 capitalize leading-tight">
+                <p className="text-xs text-white/50 capitalize leading-tight">
                   {user?.role?.replace(/_/g, ' ')}
                 </p>
               </div>
-              <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`h-3.5 w-3.5 text-white/50 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {/* Dropdown menu */}
@@ -215,7 +261,8 @@ export default function AppLayout() {
                 </div>
               </div>
             )}
-          </div>
+            </div>{/* end dropdown wrapper */}
+          </div>{/* end right-side flex */}
         </header>
 
         {/* Super-admin company context banner */}

@@ -95,12 +95,7 @@ function PayModesTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">Payment Methods</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Configure payment modes available at your POS counters.
-          </p>
-        </div>
+        <h2 className="text-base font-semibold text-gray-900">Payment Methods</h2>
         <Button icon={<Plus className="h-4 w-4" />} size="sm" onClick={() => setAddOpen(true)}>
           Add Pay Mode
         </Button>
@@ -296,12 +291,7 @@ function TerminalsTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">POS Terminals</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Terminals are the physical or virtual tills cashiers log into for each shift.
-          </p>
-        </div>
+        <h2 className="text-base font-semibold text-gray-900">POS Terminals</h2>
         <Button icon={<Plus className="h-4 w-4" />} size="sm" onClick={() => setAddOpen(true)}>
           Add Terminal
         </Button>
@@ -433,10 +423,7 @@ function LoyaltyTab() {
 
   return (
     <div className="space-y-6 max-w-lg">
-      <div>
-        <h2 className="text-base font-semibold text-gray-900">Loyalty Points</h2>
-        <p className="text-sm text-gray-500 mt-0.5">Configure how customers earn and redeem loyalty points.</p>
-      </div>
+      <h2 className="text-base font-semibold text-gray-900">Loyalty Points</h2>
 
       {isLoading ? <PageSpinner /> : (
         <>
@@ -537,10 +524,7 @@ function CategoriesTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">Product Categories</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Organise products into categories for easier browsing.</p>
-        </div>
+        <h2 className="text-base font-semibold text-gray-900">Product Categories</h2>
         <Button icon={<Plus className="h-4 w-4" />} size="sm" onClick={openAdd}>Add Category</Button>
       </div>
       {isLoading ? <PageSpinner /> : (
@@ -1297,7 +1281,6 @@ export default function SettingsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-bold text-gray-900">Settings</h1>
         <p className="text-sm text-gray-500 mt-0.5">Configure your POS system</p>
       </div>
 

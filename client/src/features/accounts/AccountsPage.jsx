@@ -692,10 +692,20 @@ export default function AccountsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Chart of Accounts</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{accounts.length} accounts</p>
+      {/* Tab bar + action buttons on same row */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-1 rounded-xl bg-gray-100 p-1">
+          {[
+            { id: 'accounts',      label: 'Accounts',      icon: BookOpen },
+            { id: 'trial-balance', label: 'Trial Balance', icon: Scale    },
+          ].map(({ id, label, icon: Icon }) => (
+            <button key={id} onClick={() => setActiveTab(id)}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === id ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+              }`}>
+              <Icon className="h-4 w-4" />{label}
+            </button>
+          ))}
         </div>
         {activeTab === 'accounts' && (
           <div className="flex items-center gap-2">
@@ -716,21 +726,6 @@ export default function AccountsPage() {
             </Button>
           </div>
         )}
-      </div>
-
-      {/* Top-level tab bar */}
-      <div className="flex flex-wrap gap-1 rounded-xl bg-gray-100 p-1 w-fit">
-        {[
-          { id: 'accounts',      label: 'Accounts',      icon: BookOpen },
-          { id: 'trial-balance', label: 'Trial Balance', icon: Scale    },
-        ].map(({ id, label, icon: Icon }) => (
-          <button key={id} onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-              activeTab === id ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-            }`}>
-            <Icon className="h-4 w-4" />{label}
-          </button>
-        ))}
       </div>
 
       {/* Trial Balance */}

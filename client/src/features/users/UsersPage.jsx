@@ -378,24 +378,21 @@ function UsersListTab({ canManageUsers }) {
 
   return (
     <div className="space-y-4">
-      {/* Sub-header */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{data?.total ?? 0} users in your company</p>
+      {/* Search */}
+      <div className="flex gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or email…"
+            className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          />
+        </div>
         {canManageUsers && (
-          <Button icon={<Plus className="h-4 w-4" />} onClick={() => setFormUser(false)}>
+          <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setFormUser(false)}>
             New User
           </Button>
         )}
-      </div>
-
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-        <input
-          value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name or email…"
-          className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-        />
       </div>
 
       {/* Table */}
@@ -492,7 +489,6 @@ export default function UsersPage() {
     <div className="space-y-4">
       {/* Header */}
       <div>
-        <h1 className="text-xl font-bold text-gray-900">Users & Roles</h1>
         <p className="text-sm text-gray-500 mt-0.5">Manage team members and view role permissions</p>
       </div>
 

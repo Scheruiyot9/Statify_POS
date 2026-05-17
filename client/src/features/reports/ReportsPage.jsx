@@ -890,13 +890,6 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Reports</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Business analytics and financial statements</p>
-        </div>
-      </div>
-
       {/* Tab bar */}
       <div className="flex flex-wrap gap-1 border-b border-gray-200 -mx-1 px-1">
         {visibleTabs.map(({ id, label, icon: Icon }) => (

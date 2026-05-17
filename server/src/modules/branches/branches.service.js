@@ -47,17 +47,17 @@ async function createBranch(companyId, data) {
 }
 
 async function updateBranch(companyId, branchId, data) {
-  const { branch_name, address, phone } = data;
+  const { branch_name, address, phone, is_active } = data;
 
   const { rows } = await query(`
     UPDATE branches
     SET branch_name = COALESCE($3, branch_name),
         address     = COALESCE($4, address),
         phone       = COALESCE($5, phone),
-        updated_at  = now()
+        is_active   = COALESCE($6, is_active)
     WHERE company_id = $1 AND branch_id = $2 AND deleted_at IS NULL
     RETURNING branch_id, branch_name, branch_code, address, phone, is_headquarters, is_active
-  `, [companyId, branchId, branch_name ?? null, address ?? null, phone ?? null]);
+  `, [companyId, branchId, branch_name ?? null, address ?? null, phone ?? null, is_active ?? null]);
 
   if (!rows.length) throw AppError.notFound('Branch');
   return rows[0];
@@ -83,7 +83,7 @@ async function deleteBranch(companyId, branchId, deletedBy) {
 
   await query(`
     UPDATE branches
-    SET deleted_at = now(), deleted_by = $3, is_active = FALSE, updated_at = now()
+    SET deleted_at = now(), deleted_by = $3, is_active = FALSE
     WHERE company_id = $1 AND branch_id = $2 AND deleted_at IS NULL
   `, [companyId, branchId, deletedBy]);
 }

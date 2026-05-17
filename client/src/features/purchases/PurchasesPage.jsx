@@ -793,22 +793,6 @@ export default function PurchasesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-100">
-            <ShoppingCart className="h-5 w-5 text-primary-600" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Purchases</h1>
-            <p className="text-sm text-gray-500">Purchase orders, goods received and reports</p>
-          </div>
-        </div>
-        {tab === 'po' && (
-          <Button onClick={() => setShowPOModal(true)}>
-            <Plus className="h-4 w-4 mr-2" />New PO
-          </Button>
-        )}
-      </div>
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 rounded-xl bg-gray-100 p-1 w-fit">
@@ -832,11 +816,16 @@ export default function PurchasesPage() {
               value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           {tab === 'po' && (
-            <select className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none"
-              value={statusFilt} onChange={(e) => setStatusFilt(e.target.value)}>
-              <option value="">All statuses</option>
-              {PO_STATUSES.map((s) => <option key={s} value={s}>{STATUS_META[s]?.label ?? s}</option>)}
-            </select>
+            <>
+              <select className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none"
+                value={statusFilt} onChange={(e) => setStatusFilt(e.target.value)}>
+                <option value="">All statuses</option>
+                {PO_STATUSES.map((s) => <option key={s} value={s}>{STATUS_META[s]?.label ?? s}</option>)}
+              </select>
+              <Button onClick={() => setShowPOModal(true)} size="sm">
+                <Plus className="h-4 w-4 mr-1" />New PO
+              </Button>
+            </>
           )}
         </div>
       )}

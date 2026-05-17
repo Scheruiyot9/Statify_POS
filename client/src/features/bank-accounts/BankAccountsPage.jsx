@@ -436,11 +436,7 @@ export default function BankAccountsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Bank Accounts</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{accounts.length} accounts</p>
-        </div>
+      <div className="flex justify-end">
         <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
           Add Bank Account
         </Button>

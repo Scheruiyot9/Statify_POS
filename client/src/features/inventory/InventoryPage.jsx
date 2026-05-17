@@ -97,19 +97,6 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Inventory</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{total} records</p>
-        </div>
-        {lowCount > 0 && (
-          <div className="flex items-center gap-1.5 rounded-lg bg-red-50 border border-red-200 px-3 py-1.5 text-sm text-red-700">
-            <AlertTriangle className="h-4 w-4" />
-            {lowCount} low stock item{lowCount !== 1 ? 's' : ''}
-          </div>
-        )}
-      </div>
-
       <div className="flex gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -122,6 +109,12 @@ export default function InventoryPage() {
             className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
           Low stock only
         </label>
+        {lowCount > 0 && (
+          <div className="flex items-center gap-1.5 rounded-lg bg-red-50 border border-red-200 px-3 py-1.5 text-sm text-red-700">
+            <AlertTriangle className="h-4 w-4" />
+            {lowCount} low stock
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">

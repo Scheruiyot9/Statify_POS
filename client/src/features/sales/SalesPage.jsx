@@ -176,22 +176,6 @@ export default function SalesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Sales History</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{total} transactions</p>
-        </div>
-        <Button variant="secondary" size="sm" icon={<Download className="h-4 w-4" />}
-          onClick={() => exportToExcel('sales-transactions', transactions, [
-            'transaction_number','transaction_date','customer_name','cashier_name',
-            'branch_name','payment_method','subtotal','tax_amount','discount_amount','total_amount','status',
-          ], [
-            'TXN #','Date','Customer','Cashier','Branch','Payment','Subtotal','Tax','Discount','Total','Status',
-          ])}>
-          Export Excel
-        </Button>
-      </div>
-
       <div className="flex flex-wrap gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -225,6 +209,15 @@ export default function SalesPage() {
           <button onClick={() => { setSearch(''); setStartDate(''); setEndDate(''); setPaymentMethod(''); setMinAmount(''); setMaxAmount(''); setPage(1); }}
             className="text-xs text-gray-400 hover:text-gray-600 px-2">Clear</button>
         )}
+        <Button variant="secondary" size="sm" icon={<Download className="h-4 w-4" />}
+          onClick={() => exportToExcel('sales-transactions', transactions, [
+            'transaction_number','transaction_date','customer_name','cashier_name',
+            'branch_name','payment_method','subtotal','tax_amount','discount_amount','total_amount','status',
+          ], [
+            'TXN #','Date','Customer','Cashier','Branch','Payment','Subtotal','Tax','Discount','Total','Status',
+          ])}>
+          Export
+        </Button>
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">

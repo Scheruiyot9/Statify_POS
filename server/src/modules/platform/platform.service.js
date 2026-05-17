@@ -90,7 +90,7 @@ async function listAllUsers({ search, companyId, role, page, limit } = {}) {
 
 async function listAllBranches({ search, companyId, page, limit } = {}) {
   const qb    = new QueryBuilder();
-  const conds = ['b.is_active = TRUE'];
+  const conds = ['b.deleted_at IS NULL'];
 
   if (companyId) conds.push(`b.company_id = $${qb.add(companyId)}`);
   if (search) {

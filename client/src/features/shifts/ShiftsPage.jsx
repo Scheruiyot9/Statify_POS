@@ -305,14 +305,6 @@ export default function ShiftsPage() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Shifts</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{total} sessions total</p>
-        </div>
-      </div>
-
       {/* Filters */}
       <div className="flex flex-wrap gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
         <select
