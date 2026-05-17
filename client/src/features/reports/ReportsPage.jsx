@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/app/store';
-import { formatCurrency } from '@/utils/formatters';
+import { formatCurrency, formatDate } from '@/utils/formatters';
 import { PageSpinner } from '@/components/ui/Spinner';
 
 // ── Shared utilities ──────────────────────────────────────────────────────────
@@ -574,12 +574,13 @@ function CashFlowTab() {
     setStart(toISO(start)); setEnd(toISO(end)); setPreset(p.label);
   };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['reports-cashflow', startDate, endDate],
     queryFn:  () => api.get('/reports/cash-flow', { params: { startDate, endDate } }).then((r) => r.data.data),
   });
 
   if (isLoading) return <PageSpinner />;
+  if (isError || !data) return <p className="py-12 text-center text-gray-400">Failed to load Cash Flow statement. Please try again.</p>;
   const d = data ?? {};
   const op = d.operating ?? {};
   const fi = d.financing ?? {};

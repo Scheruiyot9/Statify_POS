@@ -2726,13 +2726,36 @@ function extractReportData(reportId, data) {
     case 'ap-aging':
       return { summary: data.totals ?? {}, rows: data.suppliers ?? [] };
     case 'balance-sheet':
-      return { summary: {}, rows: [ ...(data.assets ?? []).map((r) => ({ section: 'Assets', ...r })), ...(data.liabilities ?? []).map((r) => ({ section: 'Liabilities', ...r })), ...(data.equity ?? []).map((r) => ({ section: 'Equity', ...r })) ] };
+      return {
+        summary: { totalAssets: data.assets?.total, totalLiabilities: data.liabilities?.total, equity: data.equity },
+        rows: [
+          { section: 'Assets',      item: 'Cash & Bank',       amount: data.assets?.cashAndBank?.total },
+          { section: 'Assets',      item: 'Inventory',         amount: data.assets?.inventory?.total },
+          { section: 'Assets',      item: 'Total Assets',      amount: data.assets?.total },
+          { section: 'Liabilities', item: 'Accounts Payable',  amount: data.liabilities?.accountsPayable?.total },
+          { section: 'Liabilities', item: 'Total Liabilities', amount: data.liabilities?.total },
+          { section: 'Equity',      item: 'Net Equity',        amount: data.equity },
+        ],
+      };
     case 'purchases-summary':
       return { summary: { totalOrders: data.orders?.count, orderTotal: data.orders?.total, paidTotal: data.payments?.total }, rows: data.bySupplier ?? [] };
     case 'trial-balance':
       return { summary: { totalDebits: data.totalDebits, totalCredits: data.totalCredits, difference: data.difference }, rows: data.rows ?? [] };
     case 'cash-flow':
-      return { summary: { netCashChange: data.netCashChange, openingBalance: data.openingBalance, closingBalance: data.closingBalance }, rows: [ ...(data.operating ?? []).map((r) => ({ section: 'Operating', ...r })), ...(data.financing ?? []).map((r) => ({ section: 'Financing', ...r })), ...(data.other ?? []).map((r) => ({ section: 'Other', ...r })) ] };
+      return {
+        summary: { netCashChange: data.netCashChange, openingBalance: data.openingBalance, closingBalance: data.closingBalance },
+        rows: [
+          { section: 'Operating', item: 'Receipts from customers',    amount: data.operating?.receiptsFromCustomers },
+          { section: 'Operating', item: 'AR collections',             amount: data.operating?.arCollections },
+          { section: 'Operating', item: 'Refunds to customers',       amount: data.operating?.refundsToCustomers },
+          { section: 'Operating', item: 'Payments to suppliers',      amount: data.operating?.paymentsToSuppliers },
+          { section: 'Operating', item: 'Supplier payment reversals', amount: data.operating?.supplierPaymentVoids },
+          { section: 'Operating', item: 'Net Operating',              amount: data.operating?.net },
+          { section: 'Financing', item: 'Opening equity deposits',    amount: data.financing?.openingDeposits },
+          { section: 'Financing', item: 'Net Financing',              amount: data.financing?.net },
+          { section: 'Other',     item: 'Net Other',                  amount: data.other?.net },
+        ].filter((r) => r.amount != null && r.amount !== 0),
+      };
     default:
       return { summary: {}, rows: [] };
   }

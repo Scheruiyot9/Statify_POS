@@ -239,6 +239,42 @@ async function createCompany(data) {
       `, [company.company_id, pm.name, pm.ref]);
     }
 
+    // 9. Seed default Chart of Accounts (required for double-entry journals)
+    const DEFAULT_ACCOUNTS = [
+      { code: '1000', name: 'Cash on Hand',            type: 'asset',     subtype: 'current_asset',      system: true  },
+      { code: '1010', name: 'Bank - Main Account',      type: 'asset',     subtype: 'current_asset',      system: false },
+      { code: '1100', name: 'Accounts Receivable',      type: 'asset',     subtype: 'current_asset',      system: true  },
+      { code: '1200', name: 'Inventory',                type: 'asset',     subtype: 'current_asset',      system: true  },
+      { code: '1300', name: 'Prepaid Expenses',         type: 'asset',     subtype: 'current_asset',      system: false },
+      { code: '1500', name: 'Fixed Assets',             type: 'asset',     subtype: 'fixed_asset',        system: false },
+      { code: '1510', name: 'Accumulated Depreciation', type: 'asset',     subtype: 'fixed_asset',        system: false },
+      { code: '2000', name: 'Accounts Payable',         type: 'liability', subtype: 'current_liability',  system: true  },
+      { code: '2100', name: 'VAT Payable',              type: 'liability', subtype: 'current_liability',  system: false },
+      { code: '2200', name: 'PAYE Payable',             type: 'liability', subtype: 'current_liability',  system: false },
+      { code: '2300', name: 'Short-term Loans',         type: 'liability', subtype: 'current_liability',  system: false },
+      { code: '3000', name: "Owner's Capital",          type: 'equity',    subtype: null,                 system: false },
+      { code: '3100', name: 'Retained Earnings',        type: 'equity',    subtype: null,                 system: false },
+      { code: '4000', name: 'Sales Revenue',            type: 'revenue',   subtype: null,                 system: true  },
+      { code: '4100', name: 'Service Revenue',          type: 'revenue',   subtype: null,                 system: false },
+      { code: '4200', name: 'Other Income',             type: 'revenue',   subtype: null,                 system: false },
+      { code: '5000', name: 'Cost of Goods Sold',       type: 'expense',   subtype: null,                 system: true  },
+      { code: '5100', name: 'Salaries & Wages',         type: 'expense',   subtype: null,                 system: false },
+      { code: '5200', name: 'Rent',                     type: 'expense',   subtype: null,                 system: false },
+      { code: '5300', name: 'Utilities',                type: 'expense',   subtype: null,                 system: false },
+      { code: '5400', name: 'Marketing & Advertising',  type: 'expense',   subtype: null,                 system: false },
+      { code: '5500', name: 'Office Supplies',          type: 'expense',   subtype: null,                 system: false },
+      { code: '5600', name: 'Depreciation',             type: 'expense',   subtype: null,                 system: false },
+      { code: '5700', name: 'Bank Charges',             type: 'expense',   subtype: null,                 system: false },
+      { code: '5800', name: 'Other Expenses',           type: 'expense',   subtype: null,                 system: false },
+    ];
+    for (const a of DEFAULT_ACCOUNTS) {
+      await client.query(`
+        INSERT INTO accounts (company_id, account_code, account_name, account_type, account_subtype, is_system)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (company_id, account_code) DO NOTHING
+      `, [company.company_id, a.code, a.name, a.type, a.subtype, a.system]);
+    }
+
     return { company, branch, admin_user: adminUser };
   });
 }

@@ -357,7 +357,7 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
     query(`
       SELECT pm.method_name,
              COUNT(DISTINCT st.transaction_id)::int AS txn_count,
-             COALESCE(SUM(tp.amount), 0)::numeric   AS amount
+             COALESCE(SUM(tp.amount_applied), 0)::numeric   AS amount
       FROM transaction_payments tp
       JOIN payment_methods pm ON pm.payment_method_id = tp.payment_method_id
       JOIN sales_transactions st ON st.transaction_id = tp.transaction_id
@@ -892,7 +892,7 @@ async function getBalanceSheet(companyId) {
       JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
       JOIN accounts a         ON a.account_id        = jel.account_id
       WHERE je.company_id = $1 AND je.status = 'posted'
-        AND a.account_code IN ('1000', '1010', '1100', '1300', '2000', '2100')
+        AND a.account_code IN ('1000', '1010', '1100', '1200', '2000', '2100')
       GROUP BY a.account_code
     `, [companyId]),
 
@@ -944,9 +944,9 @@ async function getBalanceSheet(companyId) {
   // Accounts Receivable (1100): debit-normal
   const ar = Math.max(0, +(jeMap['1100'] || 0).toFixed(2));
 
-  // Inventory (1300): debit-normal; fallback to qty × cost_price
+  // Inventory (1200): debit-normal; fallback to qty × cost_price
   const inv            = inventoryRes.rows[0];
-  const jesInventory   = jeMap['1300'];
+  const jesInventory   = jeMap['1200'];
   const inventoryValue = hasJournalData && jesInventory !== undefined
     ? +Math.max(0, jesInventory).toFixed(2)
     : parseFloat(inv.inventory_value);
