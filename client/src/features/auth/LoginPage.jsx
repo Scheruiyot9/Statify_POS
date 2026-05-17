@@ -241,8 +241,8 @@ export default function LoginPage() {
                         autoFocus
                         className={[
                           'login-input block w-full rounded-xl border text-sm pl-10 pr-4 py-3 transition-colors',
-                          'bg-white/8 text-white placeholder-white/50',
-                          'focus:outline-none focus:ring-2 focus:ring-secondary-400/60 focus:border-secondary-400/60 focus:bg-white/12',
+                          'bg-[#011d26] text-white placeholder-white/50',
+                          'focus:outline-none focus:ring-2 focus:ring-secondary-400/60 focus:border-secondary-400/60',
                           errors.email ? 'border-red-400/50' : 'border-white/10 hover:border-white/20',
                         ].join(' ')}
                         {...register('email', {
@@ -266,8 +266,8 @@ export default function LoginPage() {
                         autoComplete="current-password"
                         className={[
                           'login-input block w-full rounded-xl border text-sm pl-10 pr-11 py-3 transition-colors',
-                          'bg-white/8 text-white placeholder-white/50',
-                          'focus:outline-none focus:ring-2 focus:ring-secondary-400/60 focus:border-secondary-400/60 focus:bg-white/12',
+                          'bg-[#011d26] text-white placeholder-white/50',
+                          'focus:outline-none focus:ring-2 focus:ring-secondary-400/60 focus:border-secondary-400/60',
                           errors.password ? 'border-red-400/50' : 'border-white/10 hover:border-white/20',
                         ].join(' ')}
                         {...register('password', {

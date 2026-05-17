@@ -17,7 +17,7 @@
 .login-input:-webkit-autofill:hover,
 .login-input:-webkit-autofill:focus,
 .login-input:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 1000px #023444 inset !important;
+  -webkit-box-shadow: 0 0 0 1000px #011d26 inset !important;
   -webkit-text-fill-color: #ffffff !important;
   caret-color: #ffffff;
 }
