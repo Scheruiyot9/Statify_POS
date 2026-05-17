@@ -1803,7 +1803,7 @@ function InventoryPanel({ companies }) {
   const [page,         setPage]         = useState(1);
   const { data, isLoading } = useQuery({
     queryKey: ['platform-inventory', { companyId, lowStockOnly, page }],
-    queryFn: () => api.get('/platform/inventory', { params: { companyId, lowStockOnly, page, limit: 25 } }).then((r) => r.data.data),
+    queryFn: () => api.get('/platform/inventory', { params: { companyId, lowStockOnly: lowStockOnly || undefined, page, limit: 25 } }).then((r) => r.data.data),
     placeholderData: (prev) => prev,
   });
   const rows  = data?.inventory ?? [];
@@ -1814,7 +1814,8 @@ function InventoryPanel({ companies }) {
       <div className="flex flex-wrap items-center gap-3">
         <CompanyFilter companies={companies} value={companyId} onChange={(v) => { setCompanyId(v); setPage(1); }} />
         <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
-          <input type="checkbox" checked={lowStockOnly} onChange={(e) => { setLowStockOnly(e.target.checked); setPage(1); }} className="rounded border-gray-300 text-primary-600" /> Low stock only
+          <input type="checkbox" checked={lowStockOnly} onChange={(e) => { setLowStockOnly(e.target.checked); setPage(1); }} className="rounded border-gray-300 text-primary-600" />
+          Low stock only
         </label>
       </div>
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
@@ -1826,7 +1827,7 @@ function InventoryPanel({ companies }) {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {rows.map((i) => {
-                  const isLow = i.quantity_available <= i.reorder_level;
+                  const isLow = Number(i.quantity_available) <= Number(i.reorder_level);
                   return (
                     <tr key={`${i.product_id}-${i.branch_id}`} className="hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium text-gray-900">{i.product_name}</td>

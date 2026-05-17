@@ -263,7 +263,7 @@ async function listAllInventory({ companyId, lowStockOnly, page, limit } = {}) {
   const conds = ['p.is_active = TRUE', 'b.is_active = TRUE'];
 
   if (companyId)   conds.push(`b.company_id = $${qb.add(companyId)}`);
-  if (lowStockOnly) conds.push('pbi.quantity_available <= pbi.reorder_level AND pbi.reorder_level > 0');
+  if (lowStockOnly) conds.push('(pbi.quantity_available <= pbi.reorder_level OR pbi.quantity_available <= 0)');
 
   const { pg, lm, offset } = paginate(page, limit);
   const limIdx = qb.add(lm);
