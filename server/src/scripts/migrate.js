@@ -33,6 +33,7 @@ const FILES_IN_ORDER = [
   '29_reconciliation.sql',         // is_reconciled columns on journal_entry_lines
   '30_ledger_rename.sql',          // rename journal_entry_lines → ledger_entry_lines + entity_type/entity_id
   '31_journals.sql',               // journals + journal_lines operational tables + journal_counter on companies
+  '32_company_subscriptions.sql',  // subscription history ledger + indexes
 ];
 
 async function migrate() {

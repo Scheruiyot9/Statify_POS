@@ -30,6 +30,10 @@ router.get('/branches',        ctrl.branches);
 router.get('/terminals',       ctrl.terminals);
 router.get('/sessions',        ctrl.sessions);
 router.get('/sales',           ctrl.sales);
+router.get('/mpesa',                      ctrl.mpesa);
+router.get('/mpesa-configs',              ctrl.mpesaConfigs);
+router.post('/mpesa-configs',             ctrl.saveMpesaConfig);
+router.patch('/mpesa-configs/:id/toggle', ctrl.toggleMpesaConfig);
 
 // ── Catalog ───────────────────────────────────────────────────────────────────
 router.get('/products',        ctrl.products);
@@ -38,5 +42,17 @@ router.get('/inventory',       ctrl.inventory);
 // ── CRM ──────────────────────────────────────────────────────────────────────
 router.get('/customers',       ctrl.customers);
 router.get('/payment-methods', ctrl.paymentMethods);
+
+// ── Finance ───────────────────────────────────────────────────────────────────
+router.get('/suppliers',       ctrl.suppliers);
+router.get('/purchases',       ctrl.purchases);
+router.get('/ap-payments',     ctrl.apPayments);
+router.get('/accounts',        ctrl.accounts);
+router.get('/bank-accounts',   ctrl.bankAccounts);
+router.get('/journals',        ctrl.journals);
+
+// ── Subscriptions ─────────────────────────────────────────────────────────────
+router.get('/subscriptions',   ctrl.listSubscriptions);
+router.post('/subscriptions',  ctrl.recordSubscription);
 
 module.exports = router;

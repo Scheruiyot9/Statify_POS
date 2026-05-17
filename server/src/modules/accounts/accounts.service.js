@@ -188,4 +188,54 @@ async function getAccountLedger(companyId, accountId, { startDate, endDate, page
   return getLedgerEntries(companyId, { accountId, startDate, endDate, page, limit });
 }
 
-module.exports = { listAccounts, getAccount, createAccount, updateAccount, deleteAccount, seedDefaults, getAccountBalance, getAccountLedger };
+// ── Single Journal Entry by journal_entry_id ──────────────────────────────────
+
+async function getJournalEntry(companyId, journalEntryId) {
+  const { rows: [header] } = await query(`
+    SELECT journal_entry_id, entry_number, entry_date, description, source_type,
+           source_id, status
+      FROM journal_entries
+     WHERE journal_entry_id = $1 AND company_id = $2
+  `, [journalEntryId, companyId]);
+
+  if (!header) throw AppError.notFound('Journal entry');
+
+  const { rows: lines } = await query(`
+    SELECT lel.line_id, lel.debit::numeric AS debit, lel.credit::numeric AS credit,
+           lel.description, lel.entity_type, lel.entity_id,
+           a.account_code, a.account_name,
+           CASE lel.entity_type
+             WHEN 'customer'     THEN c.customer_name
+             WHEN 'supplier'     THEN s.supplier_name
+             WHEN 'bank_account' THEN ba.account_name
+           END AS entity_name
+      FROM ledger_entry_lines lel
+      JOIN accounts     a  ON a.account_id        = lel.account_id
+      LEFT JOIN customers     c  ON lel.entity_type = 'customer'     AND c.customer_id      = lel.entity_id
+      LEFT JOIN suppliers     s  ON lel.entity_type = 'supplier'     AND s.supplier_id      = lel.entity_id
+      LEFT JOIN bank_accounts ba ON lel.entity_type = 'bank_account' AND ba.bank_account_id = lel.entity_id
+     WHERE lel.journal_entry_id = $1
+     ORDER BY lel.line_id
+  `, [journalEntryId]);
+
+  return {
+    journal_number: header.entry_number,
+    entry_date:     header.entry_date,
+    status:         header.status,
+    description:    header.description,
+    reference:      null,
+    source_type:    header.source_type,
+    lines: lines.map((l) => ({
+      lineId:      l.line_id,
+      accountCode: l.account_code,
+      accountName: l.account_name,
+      entityType:  l.entity_type,
+      entityName:  l.entity_name,
+      description: l.description,
+      debit:       parseFloat(l.debit),
+      credit:      parseFloat(l.credit),
+    })),
+  };
+}
+
+module.exports = { listAccounts, getAccount, createAccount, updateAccount, deleteAccount, seedDefaults, getAccountBalance, getAccountLedger, getJournalEntry };

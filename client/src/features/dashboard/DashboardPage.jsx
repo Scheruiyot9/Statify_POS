@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   TrendingUp, ShoppingCart, Users, Package,
   ArrowUpRight, AlertTriangle, Star, Building2,
+  GitBranch, UserCheck, Monitor, DollarSign,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/app/store';
@@ -364,24 +365,56 @@ function LowStockAlertCard({ count }) {
   );
 }
 
-// ── Platform summary (super_admin without tenant) ──────────────────────────────
-function PlatformBanner({ platform }) {
-  if (!platform) return null;
-  return (
-    <div className="rounded-xl border border-primary-200 bg-primary-50 px-5 py-3 flex items-center justify-between gap-4">
-      <div>
-        <p className="text-sm font-semibold text-primary-800">
-          Platform Overview · {platform.activeCompanies} active{' '}
-          {platform.activeCompanies === 1 ? 'company' : 'companies'} of {platform.totalCompanies} total
-        </p>
-        <p className="text-xs text-primary-600 mt-0.5">
-          Showing platform-wide totals. Select a company from Admin to view tenant-specific data.
-        </p>
+// ── Platform overview (super_admin dashboard) ─────────────────────────────────
+function PlatformOverview() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-stats'],
+    queryFn: () => api.get('/platform/stats').then((r) => r.data.data),
+    refetchInterval: 60_000,
+  });
+
+  const stats = [
+    { label: 'Total Companies', value: data?.total_companies     ?? '—', sub: `${data?.active_companies ?? 0} active · ${data?.trial_companies ?? 0} trial`, icon: Building2,    iconBg: 'bg-primary-100',  iconCl: 'text-primary-600',  valCl: 'text-primary-800' },
+    { label: 'Suspended',       value: data?.suspended_companies ?? '—', sub: 'companies suspended',                                                          icon: AlertTriangle, iconBg: 'bg-amber-100',    iconCl: 'text-amber-600',    valCl: 'text-amber-800'   },
+    { label: 'Total Users',     value: data?.total_users         ?? '—', sub: 'across all tenants',                                                            icon: Users,         iconBg: 'bg-purple-100',   iconCl: 'text-purple-600',   valCl: 'text-purple-800'  },
+    { label: 'Branches',        value: data?.total_branches      ?? '—', sub: 'active branches',                                                               icon: GitBranch,     iconBg: 'bg-indigo-100',   iconCl: 'text-indigo-600',   valCl: 'text-indigo-800'  },
+    { label: 'Products',        value: data?.total_products      ?? '—', sub: 'catalogue entries',                                                             icon: Package,       iconBg: 'bg-teal-100',     iconCl: 'text-teal-600',     valCl: 'text-teal-800'    },
+    { label: 'Customers',       value: data?.total_customers     ?? '—', sub: 'registered',                                                                    icon: UserCheck,     iconBg: 'bg-orange-100',   iconCl: 'text-orange-600',   valCl: 'text-orange-800'  },
+    { label: 'Open Sessions',   value: data?.open_sessions       ?? '—', sub: 'POS sessions live',                                                             icon: Monitor,       iconBg: 'bg-green-100',    iconCl: 'text-green-600',    valCl: 'text-green-800'   },
+    { label: "Today's Sales",   value: data?.today_sales != null ? formatCurrency(data.today_sales) : '—', sub: 'gross revenue today',                         icon: DollarSign,    iconBg: 'bg-amber-100',    iconCl: 'text-amber-600',    valCl: 'text-amber-800'   },
+  ];
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="rounded-xl border border-gray-100 bg-white shadow-sm p-4 flex items-start gap-3 animate-pulse">
+            <div className="h-10 w-10 rounded-lg bg-gray-100 flex-shrink-0" />
+            <div className="flex-1 space-y-2 pt-1">
+              <div className="h-3 w-20 rounded bg-gray-100" />
+              <div className="h-6 w-12 rounded bg-gray-100" />
+              <div className="h-2.5 w-24 rounded bg-gray-100" />
+            </div>
+          </div>
+        ))}
       </div>
-      <a href="/app/admin"
-        className="shrink-0 rounded-lg bg-primary-100 px-3 py-1.5 text-xs font-medium text-primary-700 hover:bg-primary-200 transition-colors">
-        Go to Admin
-      </a>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      {stats.map(({ label, value, sub, icon: Icon, iconBg, iconCl, valCl }) => (
+        <div key={label} className="rounded-xl border border-gray-100 bg-white shadow-sm p-4 flex items-start gap-3 hover:shadow-md transition-shadow">
+          <div className={`flex-shrink-0 rounded-lg p-2.5 ${iconBg}`}>
+            <Icon className={`h-5 w-5 ${iconCl}`} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-gray-500">{label}</p>
+            <p className={`text-2xl font-bold leading-tight mt-0.5 ${valCl}`}>{value}</p>
+            <p className="text-xs text-gray-400 mt-0.5 truncate">{sub}</p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -400,18 +433,31 @@ export default function DashboardPage() {
   });
 
   const { hasCapability, user } = usePermission();
+  const isSuperAdmin = user?.role === 'super_admin';
   const canViewSales = hasCapability('sales.view') || ['super_admin', 'company_admin', 'branch_manager', 'accountant'].includes(user?.role);
   const canViewInventory = hasCapability('inventory.view');
   const canViewCustomers = hasCapability('customers.view');
   const canCompareBranches = hasCapability('settings.manage') || hasCapability('platform.admin');
 
-  if (isLoading) return <PageSpinner />;
+  if (isLoading && !isSuperAdmin) return <PageSpinner />;
 
-  if (isError) {
+  if (isError && !isSuperAdmin) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
         <AlertTriangle className="h-10 w-10 text-red-400" />
         <p className="text-gray-500">Could not load dashboard. Check that the server is running.</p>
+      </div>
+    );
+  }
+
+  if (isSuperAdmin) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-lg font-bold text-gray-900">Platform Overview</h2>
+          <p className="text-sm text-gray-400 mt-0.5">Platform-wide totals across all tenants</p>
+        </div>
+        <PlatformOverview />
       </div>
     );
   }
@@ -422,9 +468,6 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-
-      {/* Platform banner (super_admin only) */}
-      {data?.platform && <PlatformBanner platform={data.platform} />}
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

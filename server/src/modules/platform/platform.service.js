@@ -1,6 +1,7 @@
 const { query } = require('../../config/database');
 const QueryBuilder = require('../../shared/qb');
 const AppError = require('../../shared/AppError');
+const mpesaSvc = require('../mpesa/mpesa.service');
 
 // ── Shared helpers ─────────────────────────────────────────────────────────────
 
@@ -448,14 +449,14 @@ async function deletePlan(planId) {
     `SELECT COUNT(*) AS cnt FROM companies WHERE subscription_plan_id = $1`, [planId]
   );
   if (parseInt(inUse[0].cnt) > 0)
-    throw AppError.conflict('Cannot deactivate a plan that is assigned to active companies');
+    throw AppError.conflict('Cannot delete a plan assigned to companies. Reassign those companies to another plan first.');
 
   const { rows } = await query(
-    `UPDATE subscription_plans SET is_active = FALSE WHERE plan_id = $1 RETURNING plan_id`,
+    `DELETE FROM subscription_plans WHERE plan_id = $1 RETURNING plan_id`,
     [planId]
   );
   if (!rows.length) throw AppError.notFound('Subscription plan');
-  return { plan_id: planId, is_active: false };
+  return { deleted: true, plan_id: planId };
 }
 
 // ── Company Management ────────────────────────────────────────────────────────
@@ -490,10 +491,381 @@ async function changeCompanyStatus(companyId, status) {
   return rows[0];
 }
 
+// ── Finance: Suppliers ────────────────────────────────────────────────────────
+
+async function listAllSuppliers({ search, companyId, page, limit } = {}) {
+  const qb    = new QueryBuilder();
+  const conds = [];
+
+  if (companyId) conds.push(`s.company_id = $${qb.add(companyId)}`);
+  if (search) {
+    const p = qb.add(`%${search}%`);
+    conds.push(`(s.supplier_name ILIKE $${p} OR s.email ILIKE $${p} OR s.phone ILIKE $${p})`);
+  }
+
+  const { pg, lm, offset } = paginate(page, limit);
+  const limIdx = qb.add(lm);
+  const offIdx = qb.add(offset);
+
+  const { rows } = await query(`
+    SELECT
+      s.supplier_id, s.supplier_name, s.contact_person, s.email, s.phone,
+      s.payment_terms, s.credit_limit::numeric, s.currency, s.is_active, s.created_at,
+      c.company_name, c.company_id,
+      COUNT(*) OVER() AS total_count
+    FROM suppliers s
+    JOIN companies c ON c.company_id = s.company_id
+    ${conds.length ? 'WHERE ' + conds.join(' AND ') : ''}
+    ORDER BY c.company_name, s.supplier_name
+    LIMIT $${limIdx} OFFSET $${offIdx}
+  `, qb.params);
+  return shape(rows, pg, lm, 'suppliers');
+}
+
+// ── Finance: Purchases ────────────────────────────────────────────────────────
+
+async function listAllPurchases({ search, companyId, status, page, limit } = {}) {
+  const qb    = new QueryBuilder();
+  const conds = [];
+
+  if (companyId) conds.push(`po.company_id = $${qb.add(companyId)}`);
+  if (status)    conds.push(`po.status = $${qb.add(status)}`);
+  if (search) {
+    const p = qb.add(`%${search}%`);
+    conds.push(`(po.po_number ILIKE $${p} OR s.supplier_name ILIKE $${p})`);
+  }
+
+  const { pg, lm, offset } = paginate(page, limit);
+  const limIdx = qb.add(lm);
+  const offIdx = qb.add(offset);
+
+  const { rows } = await query(`
+    SELECT
+      po.po_id, po.po_number, po.status, po.order_date, po.expected_date,
+      po.total_amount::numeric, po.created_at,
+      s.supplier_name,
+      b.branch_name,
+      c.company_name, c.company_id,
+      COUNT(*) OVER() AS total_count
+    FROM purchase_orders po
+    JOIN suppliers s ON s.supplier_id = po.supplier_id
+    JOIN branches  b ON b.branch_id   = po.branch_id
+    JOIN companies c ON c.company_id  = po.company_id
+    ${conds.length ? 'WHERE ' + conds.join(' AND ') : ''}
+    ORDER BY po.created_at DESC
+    LIMIT $${limIdx} OFFSET $${offIdx}
+  `, qb.params);
+  return shape(rows, pg, lm, 'purchases');
+}
+
+// ── Finance: AP Payments ──────────────────────────────────────────────────────
+
+async function listAllApPayments({ search, companyId, page, limit } = {}) {
+  const qb    = new QueryBuilder();
+  const conds = ['sp.is_void = FALSE'];
+
+  if (companyId) conds.push(`sp.company_id = $${qb.add(companyId)}`);
+  if (search) {
+    const p = qb.add(`%${search}%`);
+    conds.push(`(s.supplier_name ILIKE $${p} OR sp.reference_number ILIKE $${p})`);
+  }
+
+  const { pg, lm, offset } = paginate(page, limit);
+  const limIdx = qb.add(lm);
+  const offIdx = qb.add(offset);
+
+  const { rows } = await query(`
+    SELECT
+      sp.payment_id, sp.payment_date, sp.amount::numeric,
+      sp.payment_method, sp.reference_number, sp.is_void, sp.created_at,
+      s.supplier_name,
+      b.branch_name,
+      ba.account_name AS bank_account_name,
+      po.po_number,
+      c.company_name, c.company_id,
+      COUNT(*) OVER() AS total_count
+    FROM supplier_payments sp
+    JOIN suppliers    s  ON s.supplier_id       = sp.supplier_id
+    JOIN branches     b  ON b.branch_id         = sp.branch_id
+    JOIN companies    c  ON c.company_id        = sp.company_id
+    LEFT JOIN bank_accounts  ba ON ba.bank_account_id = sp.bank_account_id
+    LEFT JOIN purchase_orders po ON po.po_id    = sp.po_id
+    WHERE ${conds.join(' AND ')}
+    ORDER BY sp.payment_date DESC
+    LIMIT $${limIdx} OFFSET $${offIdx}
+  `, qb.params);
+  return shape(rows, pg, lm, 'payments');
+}
+
+// ── Finance: Chart of Accounts ────────────────────────────────────────────────
+
+async function listAllAccounts({ search, companyId, accountType, page, limit } = {}) {
+  const qb    = new QueryBuilder();
+  const conds = ['a.is_active = TRUE'];
+
+  if (companyId)   conds.push(`a.company_id = $${qb.add(companyId)}`);
+  if (accountType) conds.push(`a.account_type = $${qb.add(accountType)}`);
+  if (search) {
+    const p = qb.add(`%${search}%`);
+    conds.push(`(a.account_name ILIKE $${p} OR a.account_code ILIKE $${p})`);
+  }
+
+  const { pg, lm, offset } = paginate(page, limit);
+  const limIdx = qb.add(lm);
+  const offIdx = qb.add(offset);
+
+  const { rows } = await query(`
+    SELECT
+      a.account_id, a.account_code, a.account_name, a.account_type,
+      a.account_subtype, a.is_system, a.is_active, a.created_at,
+      c.company_name, c.company_id,
+      COUNT(*) OVER() AS total_count
+    FROM accounts a
+    JOIN companies c ON c.company_id = a.company_id
+    WHERE ${conds.join(' AND ')}
+    ORDER BY c.company_name, a.account_type, a.account_code
+    LIMIT $${limIdx} OFFSET $${offIdx}
+  `, qb.params);
+  return shape(rows, pg, lm, 'accounts');
+}
+
+// ── Finance: Bank Accounts ────────────────────────────────────────────────────
+
+async function listAllBankAccounts({ search, companyId, page, limit } = {}) {
+  const qb    = new QueryBuilder();
+  const conds = [];
+
+  if (companyId) conds.push(`ba.company_id = $${qb.add(companyId)}`);
+  if (search) {
+    const p = qb.add(`%${search}%`);
+    conds.push(`(ba.account_name ILIKE $${p} OR ba.bank_name ILIKE $${p} OR ba.account_number ILIKE $${p})`);
+  }
+
+  const { pg, lm, offset } = paginate(page, limit);
+  const limIdx = qb.add(lm);
+  const offIdx = qb.add(offset);
+
+  const { rows } = await query(`
+    SELECT
+      ba.bank_account_id, ba.account_name, ba.bank_name, ba.account_number,
+      ba.currency, ba.current_balance::numeric, ba.is_default, ba.is_active, ba.created_at,
+      c.company_name, c.company_id,
+      COUNT(*) OVER() AS total_count
+    FROM bank_accounts ba
+    JOIN companies c ON c.company_id = ba.company_id
+    ${conds.length ? 'WHERE ' + conds.join(' AND ') : ''}
+    ORDER BY c.company_name, ba.is_default DESC, ba.account_name
+    LIMIT $${limIdx} OFFSET $${offIdx}
+  `, qb.params);
+  return shape(rows, pg, lm, 'bankAccounts');
+}
+
+// ── Finance: Journals ─────────────────────────────────────────────────────────
+
+async function listAllJournals({ search, companyId, status, page, limit } = {}) {
+  const qb    = new QueryBuilder();
+  const conds = [];
+
+  if (companyId) conds.push(`j.company_id = $${qb.add(companyId)}`);
+  if (status)    conds.push(`j.status = $${qb.add(status)}`);
+  if (search) {
+    const p = qb.add(`%${search}%`);
+    conds.push(`(j.journal_number ILIKE $${p} OR j.description ILIKE $${p})`);
+  }
+
+  const { pg, lm, offset } = paginate(page, limit);
+  const limIdx = qb.add(lm);
+  const offIdx = qb.add(offset);
+
+  const { rows } = await query(`
+    SELECT
+      j.journal_id, j.journal_number, j.entry_date, j.description,
+      j.reference, j.status, j.created_at,
+      u.first_name || ' ' || u.last_name AS created_by,
+      COALESCE(SUM(jl.debit), 0)::numeric AS total_debit,
+      c.company_name, c.company_id,
+      COUNT(*) OVER() AS total_count
+    FROM journals j
+    JOIN companies c ON c.company_id = j.company_id
+    LEFT JOIN users u ON u.user_id = j.created_by_user_id
+    LEFT JOIN journal_lines jl ON jl.journal_id = j.journal_id
+    ${conds.length ? 'WHERE ' + conds.join(' AND ') : ''}
+    GROUP BY j.journal_id, u.first_name, u.last_name, c.company_name, c.company_id
+    ORDER BY j.entry_date DESC, j.journal_number DESC
+    LIMIT $${limIdx} OFFSET $${offIdx}
+  `, qb.params);
+  return shape(rows, pg, lm, 'journals');
+}
+
+async function listAllMpesaConfigs({ companyId, page, limit } = {}) {
+  const qb    = new QueryBuilder();
+  const conds = ['1=1'];
+
+  if (companyId) conds.push(`mc.company_id = $${qb.add(companyId)}`);
+
+  const { pg, lm, offset } = paginate(page, limit);
+  const limIdx = qb.add(lm);
+  const offIdx = qb.add(offset);
+
+  const { rows } = await query(`
+    SELECT
+      mc.config_id, mc.company_id, mc.branch_id,
+      mc.shortcode, mc.shortcode_type, mc.environment,
+      mc.callback_url, mc.is_active, mc.created_at, mc.updated_at,
+      c.company_name, b.branch_name,
+      left(mc.consumer_key, 6) || '***' AS consumer_key_hint,
+      left(mc.passkey,       6) || '***' AS passkey_hint,
+      COUNT(*) OVER() AS total_count
+    FROM mpesa_config mc
+    JOIN companies c ON c.company_id = mc.company_id
+    LEFT JOIN branches b ON b.branch_id = mc.branch_id
+    WHERE ${conds.join(' AND ')}
+    ORDER BY c.company_name, b.branch_name NULLS FIRST
+    LIMIT $${limIdx} OFFSET $${offIdx}
+  `, qb.params);
+  return shape(rows, pg, lm, 'configs');
+}
+
+async function saveMpesaConfig(companyId, data) {
+  const { branchId, consumerKey, consumerSecret, shortcode, shortcodeType, passkey, environment, callbackUrl } = data;
+  if (!companyId) throw AppError.badRequest('companyId is required');
+  return mpesaSvc.saveConfig(companyId, branchId || null, {
+    consumerKey, consumerSecret, shortcode, shortcodeType, passkey, environment, callbackUrl,
+  });
+}
+
+async function toggleMpesaConfig(configId) {
+  const { rows } = await query(
+    `UPDATE mpesa_config SET is_active = NOT is_active, updated_at = now()
+     WHERE config_id = $1
+     RETURNING config_id, is_active`,
+    [configId]
+  );
+  if (!rows.length) throw AppError.notFound('M-Pesa config');
+  return rows[0];
+}
+
+async function listAllMpesaTransactions({ search, companyId, mode, page, limit } = {}) {
+  const qb    = new QueryBuilder();
+  const conds = ['1=1'];
+
+  if (search) {
+    const p = qb.add(`%${search}%`);
+    conds.push(`(mt.mpesa_receipt_number ILIKE $${p} OR mt.phone_number ILIKE $${p} OR mt.account_reference ILIKE $${p})`);
+  }
+  if (companyId) conds.push(`mt.company_id = $${qb.add(companyId)}`);
+  if (mode)      conds.push(`mt.payment_mode = $${qb.add(mode)}`);
+
+  const { pg, lm, offset } = paginate(page, limit);
+  const limIdx = qb.add(lm);
+  const offIdx = qb.add(offset);
+
+  const { rows } = await query(`
+    SELECT
+      mt.mpesa_txn_id, mt.mpesa_receipt_number, mt.phone_number,
+      mt.amount::numeric, mt.payment_mode, mt.account_reference,
+      mt.status, mt.completed_at,
+      b.branch_name, c.company_name,
+      COUNT(*) OVER() AS total_count
+    FROM mpesa_transactions mt
+    JOIN companies c ON c.company_id = mt.company_id
+    LEFT JOIN branches b ON b.branch_id = mt.branch_id
+    WHERE ${conds.join(' AND ')}
+    ORDER BY mt.completed_at DESC NULLS LAST
+    LIMIT $${limIdx} OFFSET $${offIdx}
+  `, qb.params);
+  return shape(rows, pg, lm, 'transactions');
+}
+
+// ── Subscriptions ─────────────────────────────────────────────────────────────
+
+async function listSubscriptions({ companyId, page, limit } = {}) {
+  const { pg, lm, offset } = paginate(page, limit);
+  const qb = new QueryBuilder();
+  const conds = ['1=1'];
+  if (companyId) conds.push(`cs.company_id = $${qb.add(companyId)}`);
+  const limIdx = qb.add(lm);
+  const offIdx = qb.add(offset);
+
+  const { rows } = await query(`
+    SELECT cs.subscription_id, cs.company_id, cs.period,
+           cs.start_date, cs.end_date, cs.amount_paid,
+           cs.notes, cs.created_at,
+           c.company_name,
+           sp.plan_id, sp.plan_name,
+           u.first_name || ' ' || u.last_name AS recorded_by,
+           COUNT(*) OVER() AS total_count
+      FROM company_subscriptions cs
+      JOIN companies          c  ON c.company_id  = cs.company_id
+      JOIN subscription_plans sp ON sp.plan_id    = cs.plan_id
+      LEFT JOIN users         u  ON u.user_id     = cs.recorded_by
+     WHERE ${conds.join(' AND ')}
+     ORDER BY cs.created_at DESC
+     LIMIT $${limIdx} OFFSET $${offIdx}
+  `, qb.params);
+
+  return shape(rows, pg, lm, 'subscriptions');
+}
+
+async function recordSubscription(companyId, { planId, period, startDate, endDate, amountPaid, notes }, userId) {
+  if (!companyId) throw AppError.badRequest('companyId is required');
+  if (!planId)    throw AppError.badRequest('planId is required');
+  if (!startDate) throw AppError.badRequest('startDate is required');
+  if (!endDate)   throw AppError.badRequest('endDate is required');
+  if (endDate <= startDate) throw AppError.badRequest('endDate must be after startDate');
+
+  const validPeriods = ['monthly','quarterly','semi_annual','annual','biennial','custom'];
+  const resolvedPeriod = validPeriods.includes(period) ? period : 'custom';
+
+  const { rows: [plan] } = await query(
+    `SELECT plan_id FROM subscription_plans WHERE plan_id = $1 AND is_active = TRUE`, [planId]
+  );
+  if (!plan) throw AppError.notFound('Subscription plan');
+
+  const { rows: [sub] } = await query(`
+    INSERT INTO company_subscriptions
+      (company_id, plan_id, period, start_date, end_date, amount_paid, notes, recorded_by)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    RETURNING subscription_id, company_id, plan_id, period, start_date, end_date, amount_paid, notes, created_at
+  `, [companyId, planId, resolvedPeriod, startDate, endDate,
+      amountPaid != null ? parseFloat(amountPaid) : null,
+      notes || null, userId || null]);
+
+  // Update the live company row atomically
+  await query(`
+    UPDATE companies
+       SET subscription_plan_id   = $2,
+           subscription_start_date = $3,
+           subscription_end_date   = $4,
+           subscription_status     = 'active',
+           updated_at              = now()
+     WHERE company_id = $1
+  `, [companyId, planId, startDate, endDate]);
+
+  return sub;
+}
+
+async function autoSuspendExpired() {
+  const { rows } = await query(`
+    UPDATE companies
+       SET subscription_status = 'suspended',
+           updated_at          = now()
+     WHERE subscription_end_date < CURRENT_DATE
+       AND subscription_status NOT IN ('suspended', 'cancelled')
+     RETURNING company_id, company_name, subscription_end_date
+  `);
+  return rows;
+}
+
 module.exports = {
   listAllCompanies, listAllUsers, listAllBranches, listAllTerminals,
   listAllSessions,  listAllSales,  listAllProducts,  listAllInventory,
   listAllCustomers, listAllPaymentMethods, platformStats,
+  listAllSuppliers, listAllPurchases, listAllApPayments,
+  listAllAccounts,  listAllBankAccounts,  listAllJournals,
+  listAllMpesaConfigs, saveMpesaConfig, toggleMpesaConfig,
+  listAllMpesaTransactions,
   listPlans, createPlan, updatePlan, deletePlan,
   changeCompanyPlan, changeCompanyStatus,
+  listSubscriptions, recordSubscription, autoSuspendExpired,
 };

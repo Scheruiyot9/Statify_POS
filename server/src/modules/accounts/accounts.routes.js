@@ -11,6 +11,7 @@ router.use(authenticate, attachTenant, verifyTenant, scopeTenant, requireTenantC
 router.get ('/',                 requireRole('accountant'), ctrl.list);
 router.post('/seed-defaults',    requireRole('company_admin'), ctrl.seed);
 router.post('/',                 requireRole('accountant'), ctrl.create);
+router.get ('/entry/:entryId',   requireRole('accountant'), ctrl.journalEntry);
 router.get ('/:id/balance',      requireRole('accountant'), ctrl.balance);
 router.get ('/:id/ledger',       requireRole('accountant'), ctrl.ledger);
 router.get ('/:id',              requireRole('accountant'), ctrl.getOne);

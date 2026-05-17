@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Plus, ChevronRight, ChevronDown, Edit2, Trash2, Sparkles, Layers, Calendar, Scale, AlertTriangle, BarChart2, Printer, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -181,6 +182,8 @@ function printTrialBalance(data, asOf) {
 
 // ── Trial Balance Tab ─────────────────────────────────────────────────────────
 
+const todayISO = new Date().toISOString().slice(0, 10);
+
 const TB_TYPE_COLORS = {
   asset:     'text-blue-700',
   liability: 'text-red-600',
@@ -284,187 +287,6 @@ function TrialBalanceTab() {
   );
 }
 
-// ── Account Ledger Modal ──────────────────────────────────────────────────────
-
-function toISO(d) { return d.toISOString().slice(0, 10); }
-const todayISO = toISO(new Date());
-
-const ENTRY_TYPE_COLORS = {
-  SALE:    'bg-green-100 text-green-700',
-  GRN:     'bg-blue-100 text-blue-700',
-  PAYMENT: 'bg-red-100 text-red-600',
-  RETURN:  'bg-amber-100 text-amber-700',
-};
-
-function AccountLedgerModal({ account, onClose }) {
-  const [startDate, setStart] = useState(toISO(new Date(Date.now() - 29 * 86400000)));
-  const [endDate,   setEnd]   = useState(todayISO);
-  const [page, setPage]       = useState(1);
-
-  const { data: balanceData } = useQuery({
-    queryKey: ['account-balance', account.account_id],
-    queryFn:  () => api.get(`/accounts/${account.account_id}/balance`).then((r) => r.data.data),
-  });
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['account-ledger', account.account_id, startDate, endDate, page],
-    queryFn:  () => api.get(`/accounts/${account.account_id}/ledger`, {
-      params: { startDate, endDate, page, limit: 30 },
-    }).then((r) => r.data.data),
-    placeholderData: (prev) => prev,
-  });
-
-  const { refetch: fetchAllForExport, isFetching: isExporting } = useQuery({
-    queryKey: ['account-ledger-export', account.account_id, startDate, endDate],
-    queryFn:  () => api.get(`/accounts/${account.account_id}/ledger`, {
-      params: { startDate, endDate, page: 1, limit: 5000 },
-    }).then((r) => r.data.data),
-    enabled: false,
-    gcTime: 0,
-  });
-
-  const handleExport = async () => {
-    const result = await fetchAllForExport();
-    const allEntries = result.data?.entries ?? [];
-    const header = ['Date', 'Type', 'Reference', 'Description', 'Debit (Dr)', 'Credit (Cr)', 'Balance'];
-    const rows = allEntries.map((e) => [
-      e.entryDate ? new Date(e.entryDate).toLocaleDateString('en-KE') : '',
-      e.sourceType ?? '',
-      e.sourceRef ?? e.entryNumber ?? '',
-      e.description ?? '',
-      e.debit ?? 0,
-      e.credit ?? 0,
-      e.balance ?? '',
-    ]);
-    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-    ws['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 20 }, { wch: 42 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, account.account_code);
-    XLSX.writeFile(wb, `Ledger_${account.account_code}_${startDate}_to_${endDate}.xlsx`);
-  };
-
-  const { entries = [], total = 0, pages = 1 } = data ?? {};
-
-  return (
-    <Modal open onClose={onClose} size="xl"
-      title={
-        <div>
-          <p className="text-sm font-semibold text-gray-900">
-            <span className="font-mono text-gray-500 mr-2">{account.account_code}</span>
-            {account.account_name}
-          </p>
-          <p className="text-xs text-gray-400 capitalize mt-0.5">{account.account_type} account</p>
-        </div>
-      }
-      footer={
-        <div className="flex gap-3">
-          <button onClick={handleExport} disabled={isExporting}
-            className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 transition-colors">
-            <Download className="h-4 w-4" />{isExporting ? 'Exporting…' : 'Export to Excel'}
-          </button>
-          <Button variant="secondary" fullWidth onClick={onClose}>Close</Button>
-        </div>
-      }
-    >
-      <div className="space-y-4">
-        {/* Balance summary */}
-        {balanceData && (
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: 'Balance', value: balanceData.balance ?? 0, accent: true },
-              { label: 'Total Debits',  value: balanceData.totalDebits  ?? 0 },
-              { label: 'Total Credits', value: balanceData.totalCredits ?? 0 },
-            ].map(({ label, value, accent }) => (
-              <div key={label} className={`rounded-lg p-3 text-center ${accent ? 'bg-primary-50 border border-primary-200' : 'bg-gray-50'}`}>
-                <p className="text-xs text-gray-500">{label}</p>
-                <p className={`text-base font-bold mt-0.5 ${accent ? 'text-primary-700' : 'text-gray-800'}`}>{formatCurrency(value)}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Date filters */}
-        <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 w-fit">
-          <Calendar className="h-3.5 w-3.5 text-gray-400" />
-          <input type="date" value={startDate} max={endDate}
-            onChange={(e) => { setStart(e.target.value); setPage(1); }}
-            className="text-xs border-none outline-none bg-transparent" />
-          <span className="text-gray-400 text-xs">—</span>
-          <input type="date" value={endDate} min={startDate} max={todayISO}
-            onChange={(e) => { setEnd(e.target.value); setPage(1); }}
-            className="text-xs border-none outline-none bg-transparent" />
-        </div>
-
-        {/* Ledger table */}
-        {isLoading ? <PageSpinner /> : entries.length === 0 ? (
-          <p className="py-8 text-center text-gray-400 text-sm">No entries for this period</p>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-gray-100">
-            <table className="w-full table-fixed text-sm">
-              <colgroup>
-                <col className="w-24" />   {/* Date */}
-                <col className="w-20" />   {/* Type */}
-                <col className="w-28" />   {/* Reference */}
-                <col />                    {/* Description — takes remaining space */}
-                <col className="w-28" />   {/* Dr */}
-                <col className="w-28" />   {/* Cr */}
-                <col className="w-28" />   {/* Balance */}
-              </colgroup>
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Date</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Type</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Reference</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Description</th>
-                  <th className="px-3 py-2.5 text-right text-xs font-medium text-blue-600">Dr</th>
-                  <th className="px-3 py-2.5 text-right text-xs font-medium text-green-600">Cr</th>
-                  <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500">Balance</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {entries.map((e, idx) => (
-                  <tr key={`${e.lineId ?? e.entryId ?? idx}`} className="hover:bg-gray-50">
-                    <td className="px-3 py-2.5 text-gray-500 text-xs whitespace-nowrap">{formatDate(e.entryDate)}</td>
-                    <td className="px-3 py-2.5">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${ENTRY_TYPE_COLORS[e.sourceType] ?? 'bg-gray-100 text-gray-600'}`}>
-                        {e.sourceType ?? '—'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-gray-600 truncate">{e.sourceRef ?? e.entryNumber}</td>
-                    <td className="px-3 py-2.5 text-xs text-gray-700">
-                      <p className="truncate" title={e.description}>{e.description}</p>
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-xs">
-                      {e.debit > 0 ? <span className="font-semibold text-blue-700">{formatCurrency(e.debit)}</span> : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-xs">
-                      {e.credit > 0 ? <span className="font-semibold text-green-700">{formatCurrency(e.credit)}</span> : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className={`px-3 py-2.5 text-right font-mono text-xs font-semibold ${e.balance != null ? (e.balance >= 0 ? 'text-gray-800' : 'text-red-600') : 'text-gray-300'}`}>
-                      {e.balance != null ? formatCurrency(e.balance) : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {pages > 1 && (
-          <div className="flex items-center justify-between text-xs text-gray-500">
-            <span>Page {page} of {pages} · {total} records</span>
-            <div className="flex gap-1">
-              <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)}
-                className="rounded border px-3 py-1 disabled:opacity-40 hover:bg-gray-50">Prev</button>
-              <button disabled={page >= pages} onClick={() => setPage((p) => p + 1)}
-                className="rounded border px-3 py-1 disabled:opacity-40 hover:bg-gray-50">Next</button>
-            </div>
-          </div>
-        )}
-      </div>
-    </Modal>
-  );
-}
 
 // ── Account Row ────────────────────────────────────────────────────────────────
 
@@ -472,7 +294,8 @@ function AccountLedgerModal({ account, onClose }) {
 //                     credit accounts (liability/equity/revenue) → balance shows in Cr column
 const DEBIT_NORMAL = new Set(['asset', 'expense']);
 
-function AccountRow({ account, depth, allAccounts, balanceMap, onEdit, onDelete, onViewLedger }) {
+function AccountRow({ account, depth, allAccounts, balanceMap, onEdit, onDelete }) {
+  const navigate = useNavigate();
   const [expanded, setExpanded] = useState(true);
   const children = allAccounts.filter((a) => a.parent_account_id === account.account_id);
 
@@ -521,7 +344,7 @@ function AccountRow({ account, depth, allAccounts, balanceMap, onEdit, onDelete,
 
         <td className="px-4 py-2.5">
           <div className="flex items-center gap-2 justify-end">
-            <button onClick={() => onViewLedger(account)} title="View ledger"
+            <button onClick={() => navigate(`/app/accounts/${account.account_id}/ledger`)} title="View ledger"
               className="rounded p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition-colors">
               <Layers className="h-3.5 w-3.5" />
             </button>
@@ -541,7 +364,7 @@ function AccountRow({ account, depth, allAccounts, balanceMap, onEdit, onDelete,
       {expanded && children.map((child) => (
         <AccountRow key={child.account_id} account={child} depth={depth + 1}
           allAccounts={allAccounts} balanceMap={balanceMap}
-          onEdit={onEdit} onDelete={onDelete} onViewLedger={onViewLedger} />
+          onEdit={onEdit} onDelete={onDelete} />
       ))}
     </>
   );
@@ -633,7 +456,6 @@ export default function AccountsPage() {
   const [editTarget,      setEditTarget]      = useState(null);
   const [createOpen,      setCreateOpen]      = useState(false);
   const [deleteTarget,    setDeleteTarget]    = useState(null);
-  const [ledgerTarget,    setLedgerTarget]    = useState(null);
   const [typeFilter,      setTypeFilter]      = useState('');
   const [activeTab,       setActiveTab]       = useState('accounts');
   const [openingBalOpen,  setOpeningBalOpen]  = useState(false);
@@ -777,8 +599,7 @@ export default function AccountsPage() {
                             allAccounts={typeAccounts}
                             balanceMap={balanceMap}
                             onEdit={setEditTarget}
-                            onDelete={setDeleteTarget}
-                            onViewLedger={setLedgerTarget} />
+                            onDelete={setDeleteTarget} />
                         ))}
                       </tbody>
                     </table>
@@ -806,9 +627,6 @@ export default function AccountsPage() {
       )}
       {editTarget && (
         <AccountModal account={editTarget} accounts={accounts} onClose={() => setEditTarget(null)} />
-      )}
-      {ledgerTarget && (
-        <AccountLedgerModal account={ledgerTarget} onClose={() => setLedgerTarget(null)} />
       )}
       <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Deactivate Account" size="sm"
         footer={

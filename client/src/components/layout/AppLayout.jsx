@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { LogOut, KeyRound, User, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { LogOut, KeyRound, User, ChevronDown, Eye, EyeOff, X, Building2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Sidebar from './Sidebar';
 import { useAuthStore } from '@/app/store';
@@ -267,19 +267,29 @@ export default function AppLayout() {
 
         {/* Super-admin company context banner */}
         {isSuperAdmin && activeCompanyId && (
-          <div className="flex items-center justify-between bg-amber-50 border-b border-amber-200 px-6 py-2 text-sm">
-            <span className="text-amber-800">
-              Filtered to: <span className="font-semibold">{activeCompanyName}</span>
-            </span>
-            <div className="flex items-center gap-4">
-              <Link to="/app/admin" className="text-amber-700 underline hover:text-amber-900">
+          <div
+            className="flex items-center gap-3 border-b border-white/10 px-6 py-2"
+            style={{ background: 'linear-gradient(90deg, #012535 0%, #013547 100%)' }}
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-secondary-500 text-primary-900 text-xs font-bold flex-shrink-0">
+                <Building2 className="h-3.5 w-3.5" />
+              </div>
+              <span className="text-white/50 text-xs">Managing</span>
+              <span className="font-semibold text-secondary-300 text-sm">{activeCompanyName}</span>
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <Link
+                to="/app/admin"
+                className="text-xs text-white/50 hover:text-white/80 transition-colors px-2 py-1 rounded-md hover:bg-white/10"
+              >
                 Switch company
               </Link>
               <button
                 onClick={clearActiveCompany}
-                className="text-amber-600 hover:text-amber-900 font-medium"
+                className="flex items-center gap-1 rounded-md bg-white/10 px-2.5 py-1 text-xs font-medium text-white/70 hover:bg-white/20 hover:text-white transition-all"
               >
-                ✕ Clear filter
+                <X className="h-3 w-3" /> Exit
               </button>
             </div>
           </div>

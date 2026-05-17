@@ -25,6 +25,11 @@ const updateStatus = async (req, res) => {
   res.json({ success: true, data: company });
 };
 
+const remove = async (req, res) => {
+  const result = await svc.deleteCompany(req.params.id);
+  res.json({ success: true, data: result, message: `${result.company_name} deleted` });
+};
+
 const listPlans = async (_req, res) => {
   const plans = await svc.listSubscriptionPlans();
   res.json({ success: true, data: plans });
@@ -58,4 +63,4 @@ const updateMyProfile = async (req, res) => {
   res.json({ success: true, data: company });
 };
 
-module.exports = { list, getOne, create, update, updateStatus, listPlans, getMine, updateMyProfile, getLoyaltySettings, updateLoyaltySettings };
+module.exports = { list, getOne, create, update, updateStatus, remove, listPlans, getMine, updateMyProfile, getLoyaltySettings, updateLoyaltySettings };

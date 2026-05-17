@@ -5,8 +5,9 @@ import {
   Building2, Users, GitBranch, Plus, Search,
   CheckCircle, Clock, AlertTriangle, XCircle, CreditCard,
   Monitor, ShoppingCart, Package, BarChart2, UserCheck,
-  Layers, ArrowRight, RefreshCw, Pencil, Trash2, DollarSign,
-  Power,
+  Layers, ArrowRight, Pencil, Trash2, DollarSign,
+  Power, Truck, BookOpen, Landmark, ScrollText, Smartphone, Settings, FileText,
+  CalendarRange,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -98,38 +99,6 @@ function RowActions({ onEdit, onDelete, deleting }) {
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       )}
-    </div>
-  );
-}
-
-// ── Platform Stats ────────────────────────────────────────────────────────────
-
-function PlatformStats() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['platform-stats'],
-    queryFn: () => api.get('/platform/stats').then((r) => r.data.data),
-    refetchInterval: 60_000,
-  });
-  const stats = [
-    { label: 'Companies',    value: data?.total_companies ?? '—', sub: `${data?.active_companies ?? 0} active`,    color: 'bg-primary-50 text-primary-700' },
-    { label: 'Trial',        value: data?.trial_companies ?? '—', sub: `${data?.suspended_companies ?? 0} suspended`, color: 'bg-blue-50 text-blue-700' },
-    { label: 'Users',        value: data?.total_users     ?? '—', sub: 'across all tenants',  color: 'bg-purple-50 text-purple-700' },
-    { label: 'Branches',     value: data?.total_branches  ?? '—', sub: 'active branches',     color: 'bg-indigo-50 text-indigo-700' },
-    { label: 'Products',     value: data?.total_products  ?? '—', sub: 'catalogue entries',   color: 'bg-teal-50 text-teal-700' },
-    { label: 'Customers',    value: data?.total_customers ?? '—', sub: 'registered',          color: 'bg-orange-50 text-orange-700' },
-    { label: 'Open Sessions',value: data?.open_sessions   ?? '—', sub: 'POS sessions live',   color: 'bg-green-50 text-green-700' },
-    { label: "Today's Sales",value: data?.today_sales != null ? formatCurrency(data.today_sales) : '—', sub: 'gross revenue', color: 'bg-amber-50 text-amber-700' },
-  ];
-  if (isLoading) return <div className="grid grid-cols-4 gap-4">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="rounded-xl bg-gray-100 h-20 animate-pulse" />)}</div>;
-  return (
-    <div className="grid grid-cols-4 gap-4">
-      {stats.map(({ label, value, sub, color }) => (
-        <div key={label} className={`rounded-xl p-4 ${color}`}>
-          <p className="text-xs text-gray-500">{label}</p>
-          <p className="text-2xl font-bold mt-0.5">{value}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
-        </div>
-      ))}
     </div>
   );
 }
@@ -232,7 +201,21 @@ function CompanyEditModal({ company, plans, onClose }) {
     logo_url: company.logo_url ?? null,
   });
   const [status, setStatus] = useState(company.subscription_status);
+  const [mpesaConfigOpen, setMpesaConfigOpen] = useState(false);
+  const [subOpen, setSubOpen] = useState(false);
   const set = (k, v) => setFormState((f) => ({ ...f, [k]: v }));
+
+  const { data: mpesaData, isLoading: mpesaLoading } = useQuery({
+    queryKey: ['platform-mpesa-configs', { companyId: company.company_id }],
+    queryFn: () => api.get('/platform/mpesa-configs', { params: { companyId: company.company_id, limit: 10 } }).then((r) => r.data.data),
+  });
+  const mpesaConfigs = mpesaData?.configs ?? [];
+
+  const { data: subData, isLoading: subLoading } = useQuery({
+    queryKey: ['company-subscriptions', company.company_id],
+    queryFn: () => api.get('/platform/subscriptions', { params: { companyId: company.company_id, limit: 10 } }).then((r) => r.data.data),
+  });
+  const subscriptions = subData?.subscriptions ?? [];
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['admin-companies'] });
@@ -253,6 +236,12 @@ function CompanyEditModal({ company, plans, onClose }) {
     onError: (err) => toast.error(err.response?.data?.message || 'Update failed'),
   });
 
+  const toggleMpesaMut = useMutation({
+    mutationFn: (id) => api.patch(`/platform/mpesa-configs/${id}/toggle`),
+    onSuccess: () => { toast.success('Status updated'); qc.invalidateQueries({ queryKey: ['platform-mpesa-configs'] }); },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
+  });
+
   const handleSave = () => {
     if (!form.company_name) { toast.error('Company name is required'); return; }
     updateMut.mutate({ ...form, subscription_plan_id: form.subscription_plan_id || null });
@@ -265,68 +254,351 @@ function CompanyEditModal({ company, plans, onClose }) {
     onClose();
   };
 
+  const currentPlan = plans.find((p) => p.plan_id === (form.subscription_plan_id || company.subscription_plan_id));
+
   return (
-    <Modal open onClose={onClose} title={`Edit — ${company.company_name}`} size="lg"
-      footer={
-        <div className="flex gap-3">
-          <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
-          <Button variant="outline" fullWidth icon={<ArrowRight className="h-4 w-4" />} onClick={handleManage}>Manage</Button>
-          <Button fullWidth loading={updateMut.isPending} onClick={handleSave}>Save Changes</Button>
-        </div>
-      }
-    >
-      <div className="space-y-5">
-        <div className="flex items-start gap-4">
-          <ImageUpload value={form.logo_url} onChange={(v) => set('logo_url', v)} label="Logo" size="md" />
-          <div className="flex-1"><Field label="Company Name" required><input value={form.company_name} onChange={(e) => set('company_name', e.target.value)} className={inp} /></Field></div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Domain / Website"><input value={form.domain} onChange={(e) => set('domain', e.target.value)} placeholder="company.example.com" className={inp} /></Field>
-          <Field label="Subscription Plan">
-            <select value={form.subscription_plan_id} onChange={(e) => set('subscription_plan_id', e.target.value)} className={sel}>
-              <option value="">No plan (trial)</option>
-              {plans.map((p) => <option key={p.plan_id} value={p.plan_id}>{p.plan_name} — {formatCurrency(p.price)}/mo</option>)}
-            </select>
-          </Field>
-          <Field label="Currency">
-            <select value={form.currency} onChange={(e) => set('currency', e.target.value)} className={sel}>
-              <option value="KES">KES — Kenyan Shilling</option>
-              <option value="USD">USD — US Dollar</option>
-              <option value="UGX">UGX — Ugandan Shilling</option>
-              <option value="TZS">TZS — Tanzanian Shilling</option>
-            </select>
-          </Field>
-          <Field label="Timezone">
-            <select value={form.timezone} onChange={(e) => set('timezone', e.target.value)} className={sel}>
-              <option value="Africa/Nairobi">Africa/Nairobi (EAT)</option>
-              <option value="Africa/Kampala">Africa/Kampala (EAT)</option>
-              <option value="Africa/Dar_es_Salaam">Africa/Dar_es_Salaam (EAT)</option>
-              <option value="Africa/Lagos">Africa/Lagos (WAT)</option>
-              <option value="UTC">UTC</option>
-            </select>
-          </Field>
-        </div>
-        {/* Subscription Status */}
-        <div className="rounded-xl border border-gray-100 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Subscription Status</p>
-          <div className="flex items-center gap-3">
-            <StatusBadge status={status} />
-            <select value={status} onChange={(e) => setStatus(e.target.value)}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-primary-500 focus:outline-none bg-white">
-              {['trial','active','suspended','cancelled'].map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-            {status !== company.subscription_status && (
-              <Button size="xs" loading={statusMut.isPending} onClick={() => statusMut.mutate(status)}>Apply Status</Button>
+    <>
+      <Modal open onClose={onClose} title={`Edit — ${company.company_name}`} size="lg"
+        footer={
+          <div className="flex gap-3">
+            <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+            <Button variant="outline" fullWidth icon={<ArrowRight className="h-4 w-4" />} onClick={handleManage}>Manage</Button>
+            <Button fullWidth loading={updateMut.isPending} onClick={handleSave}>Save Changes</Button>
+          </div>
+        }
+      >
+        <div className="space-y-5">
+          {/* Company identity */}
+          <div className="flex items-start gap-4">
+            <ImageUpload value={form.logo_url} onChange={(v) => set('logo_url', v)} label="Logo" size="md" />
+            <div className="flex-1"><Field label="Company Name" required><input value={form.company_name} onChange={(e) => set('company_name', e.target.value)} className={inp} /></Field></div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Domain / Website"><input value={form.domain} onChange={(e) => set('domain', e.target.value)} placeholder="company.example.com" className={inp} /></Field>
+            <Field label="Subscription Plan">
+              <select value={form.subscription_plan_id} onChange={(e) => set('subscription_plan_id', e.target.value)} className={sel}>
+                <option value="">No plan (trial)</option>
+                {plans.map((p) => <option key={p.plan_id} value={p.plan_id}>{p.plan_name} — {formatCurrency(p.price)}/mo</option>)}
+              </select>
+            </Field>
+            <Field label="Currency">
+              <select value={form.currency} onChange={(e) => set('currency', e.target.value)} className={sel}>
+                <option value="KES">KES — Kenyan Shilling</option>
+                <option value="USD">USD — US Dollar</option>
+                <option value="UGX">UGX — Ugandan Shilling</option>
+                <option value="TZS">TZS — Tanzanian Shilling</option>
+              </select>
+            </Field>
+            <Field label="Timezone">
+              <select value={form.timezone} onChange={(e) => set('timezone', e.target.value)} className={sel}>
+                <option value="Africa/Nairobi">Africa/Nairobi (EAT)</option>
+                <option value="Africa/Kampala">Africa/Kampala (EAT)</option>
+                <option value="Africa/Dar_es_Salaam">Africa/Dar_es_Salaam (EAT)</option>
+                <option value="Africa/Lagos">Africa/Lagos (WAT)</option>
+                <option value="UTC">UTC</option>
+              </select>
+            </Field>
+          </div>
+
+          {/* Stats row */}
+          <div className="grid grid-cols-4 gap-3">
+            <div className="rounded-xl bg-gray-50 p-3 text-center">
+              <p className="text-xs text-gray-500">Branches</p>
+              <p className="text-lg font-bold text-gray-800">{company.branch_count}{company.max_branches ? <span className="text-xs text-gray-400 font-normal"> /{company.max_branches}</span> : ''}</p>
+            </div>
+            <div className="rounded-xl bg-gray-50 p-3 text-center">
+              <p className="text-xs text-gray-500">Users</p>
+              <p className="text-lg font-bold text-gray-800">{company.user_count}{company.max_users ? <span className="text-xs text-gray-400 font-normal"> /{company.max_users}</span> : ''}</p>
+            </div>
+            <div className="rounded-xl bg-gray-50 p-3 text-center">
+              <p className="text-xs text-gray-500">Finance</p>
+              <p className="text-sm font-semibold mt-1">{currentPlan?.has_finance ? <span className="text-green-600">Enabled</span> : <span className="text-gray-400">Disabled</span>}</p>
+            </div>
+            <div className="rounded-xl bg-gray-50 p-3 text-center">
+              <p className="text-xs text-gray-500">Created</p>
+              <p className="text-xs font-semibold text-gray-700 mt-1">{formatDate(company.created_at)}</p>
+            </div>
+          </div>
+
+          {/* Subscription Status */}
+          <div className="rounded-xl border border-gray-100 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Subscription Status</p>
+            <div className="flex items-center gap-3">
+              <StatusBadge status={status} />
+              <select value={status} onChange={(e) => setStatus(e.target.value)}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-primary-500 focus:outline-none bg-white">
+                {['trial','active','suspended','cancelled'].map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+              {status !== company.subscription_status && (
+                <Button size="xs" loading={statusMut.isPending} onClick={() => statusMut.mutate(status)}>Apply Status</Button>
+              )}
+            </div>
+          </div>
+
+          {/* Subscriptions */}
+          <div className="rounded-xl border border-gray-100 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Subscriptions</p>
+              <Button size="xs" icon={<CalendarRange className="h-3 w-3" />} onClick={() => setSubOpen(true)}>Record New</Button>
+            </div>
+            {subLoading ? (
+              <div className="space-y-2">{[1,2].map((i) => <div key={i} className="h-8 animate-pulse rounded-lg bg-gray-100" />)}</div>
+            ) : subscriptions.length === 0 ? (
+              <p className="text-xs text-gray-400 py-2">No subscription history yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="pb-1.5 text-left font-medium text-gray-500">Plan</th>
+                      <th className="pb-1.5 text-left font-medium text-gray-500">Period</th>
+                      <th className="pb-1.5 text-left font-medium text-gray-500">Start</th>
+                      <th className="pb-1.5 text-left font-medium text-gray-500">End</th>
+                      <th className="pb-1.5 text-right font-medium text-gray-500">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {subscriptions.map((s) => {
+                      const expired = s.end_date && new Date(s.end_date) < new Date();
+                      const expiringSoon = !expired && s.end_date && (new Date(s.end_date) - new Date()) < 30 * 86400000;
+                      return (
+                        <tr key={s.subscription_id} className="hover:bg-gray-50">
+                          <td className="py-1.5 font-medium text-gray-800">{s.plan_name}</td>
+                          <td className="py-1.5 text-gray-500 capitalize">{s.period?.replace('_', '-') || '—'}</td>
+                          <td className="py-1.5 text-gray-600">{s.start_date ? String(s.start_date).slice(0,10) : '—'}</td>
+                          <td className={`py-1.5 font-medium ${expired ? 'text-red-600' : expiringSoon ? 'text-amber-600' : 'text-gray-600'}`}>
+                            {s.end_date ? String(s.end_date).slice(0,10) : '—'}
+                            {expired && <span className="ml-1 text-red-400">(expired)</span>}
+                            {expiringSoon && <span className="ml-1 text-amber-400">(soon)</span>}
+                          </td>
+                          <td className="py-1.5 text-right font-mono text-gray-700">
+                            {s.amount_paid != null ? formatCurrency(s.amount_paid) : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* M-Pesa Configurations */}
+          <div className="rounded-xl border border-gray-100 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">M-Pesa Configurations</p>
+              <Button size="xs" icon={<Plus className="h-3 w-3" />} onClick={() => setMpesaConfigOpen(true)}>Add Config</Button>
+            </div>
+            {mpesaLoading ? (
+              <div className="space-y-2">
+                {[1, 2].map((i) => <div key={i} className="h-8 animate-pulse rounded-lg bg-gray-100" />)}
+              </div>
+            ) : mpesaConfigs.length === 0 ? (
+              <p className="text-xs text-gray-400 py-2">No M-Pesa configuration set up yet. Click Add Config to get started.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {mpesaConfigs.map((cfg) => (
+                  <div key={cfg.config_id} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
+                    <div className="flex items-center gap-2 text-xs">
+                      <Smartphone className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                      <span className="font-mono text-gray-800 font-medium">{cfg.shortcode}</span>
+                      <span className="text-gray-500 capitalize">{cfg.shortcode_type}</span>
+                      <span className={`rounded-full px-1.5 py-0.5 font-medium capitalize ${cfg.environment === 'production' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {cfg.environment}
+                      </span>
+                      {cfg.branch_name && <span className="text-gray-400">· {cfg.branch_name}</span>}
+                      {!cfg.branch_name && <span className="text-gray-400 italic">Company-wide</span>}
+                    </div>
+                    <button
+                      onClick={() => toggleMpesaMut.mutate(cfg.config_id)}
+                      className={`text-xs font-medium px-2 py-0.5 rounded-full transition-colors ${cfg.is_active ? 'text-green-600 bg-green-50 hover:bg-red-50 hover:text-red-600' : 'text-gray-400 bg-gray-100 hover:bg-green-50 hover:text-green-600'}`}
+                    >
+                      {cfg.is_active ? 'Active' : 'Inactive'}
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          {[{ label: 'Branches', value: company.branch_count }, { label: 'Users', value: company.user_count }, { label: 'Created', value: formatDate(company.created_at) }].map(({ label, value }) => (
-            <div key={label} className="rounded-xl bg-gray-50 p-3 text-center">
-              <p className="text-xs text-gray-500">{label}</p>
-              <p className="text-lg font-bold text-gray-800">{value}</p>
-            </div>
-          ))}
+      </Modal>
+      {mpesaConfigOpen && (
+        <MpesaConfigModal
+          companyId={company.company_id}
+          onClose={() => { setMpesaConfigOpen(false); qc.invalidateQueries({ queryKey: ['platform-mpesa-configs'] }); }}
+        />
+      )}
+      {subOpen && (
+        <RecordSubscriptionModal
+          companyId={company.company_id}
+          plans={plans}
+          onClose={() => setSubOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+// ── Record Subscription Modal ─────────────────────────────────────────────────
+
+const PERIODS = [
+  { value: 'monthly',    label: 'Monthly',     months: 1  },
+  { value: 'quarterly',  label: 'Quarterly',   months: 3  },
+  { value: 'semi_annual',label: 'Semi-Annual', months: 6  },
+  { value: 'annual',     label: 'Annual',      months: 12 },
+  { value: 'biennial',   label: 'Biennial',    months: 24 },
+  { value: 'custom',     label: 'Custom',      months: null },
+];
+
+function addMonths(dateStr, months) {
+  const d = new Date(dateStr);
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().slice(0, 10);
+}
+
+function computeAmount(plan, period) {
+  if (!plan) return '';
+  const p = PERIODS.find((p) => p.value === period);
+  if (!p || !p.months) return '';
+  if (period === 'annual' && plan.annual_price) return parseFloat(plan.annual_price).toFixed(2);
+  if (period === 'biennial' && plan.annual_price) return (parseFloat(plan.annual_price) * 2).toFixed(2);
+  return (parseFloat(plan.price) * p.months).toFixed(2);
+}
+
+function RecordSubscriptionModal({ companyId: initialCompanyId, companies = [], plans, onClose }) {
+  const qc  = useQueryClient();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const [selectedCompanyId, setSelectedCompanyId] = useState(initialCompanyId ?? '');
+  const companyId = selectedCompanyId;
+
+  const [form, setFormState] = useState({
+    planId:      plans.find((p) => p.is_active)?.plan_id ?? '',
+    period:      'annual',
+    startDate:   today,
+    endDate:     addMonths(today, 12),
+    amountPaid:  '',
+    notes:       '',
+  });
+  const set = (k, v) => setFormState((f) => ({ ...f, [k]: v }));
+
+  const selectedPlan = plans.find((p) => p.plan_id === form.planId);
+
+  // When plan or period changes, recompute end date + amount
+  const handlePlanChange = (planId) => {
+    const plan = plans.find((p) => p.plan_id === planId);
+    const p    = PERIODS.find((p) => p.value === form.period);
+    setFormState((f) => ({
+      ...f,
+      planId,
+      amountPaid: computeAmount(plan, f.period),
+      endDate: p?.months ? addMonths(f.startDate, p.months) : f.endDate,
+    }));
+  };
+
+  const handlePeriodChange = (period) => {
+    const p = PERIODS.find((x) => x.value === period);
+    setFormState((f) => ({
+      ...f,
+      period,
+      endDate:    p?.months ? addMonths(f.startDate, p.months) : f.endDate,
+      amountPaid: computeAmount(selectedPlan, period),
+    }));
+  };
+
+  const handleStartChange = (startDate) => {
+    const p = PERIODS.find((x) => x.value === form.period);
+    setFormState((f) => ({
+      ...f,
+      startDate,
+      endDate: p?.months ? addMonths(startDate, p.months) : f.endDate,
+    }));
+  };
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: (data) => api.post('/platform/subscriptions', { companyId, ...data }),
+    onSuccess: () => {
+      toast.success('Subscription recorded');
+      qc.invalidateQueries({ queryKey: ['company-subscriptions', companyId] });
+      qc.invalidateQueries({ queryKey: ['platform-subscriptions'] });
+      qc.invalidateQueries({ queryKey: ['admin-companies'] });
+      qc.invalidateQueries({ queryKey: ['platform-stats'] });
+      onClose();
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to record subscription'),
+  });
+
+  const handleSubmit = () => {
+    if (!companyId)      { toast.error('Select a company');       return; }
+    if (!form.planId)    { toast.error('Select a plan');          return; }
+    if (!form.startDate) { toast.error('Start date is required'); return; }
+    if (!form.endDate)   { toast.error('End date is required');   return; }
+    if (form.endDate <= form.startDate) { toast.error('End date must be after start date'); return; }
+    mutate({ ...form, amountPaid: form.amountPaid !== '' ? parseFloat(form.amountPaid) : null });
+  };
+
+  const suggestedAmount = computeAmount(selectedPlan, form.period);
+
+  return (
+    <Modal open onClose={onClose} title="Record Subscription" size="sm"
+      footer={
+        <div className="flex gap-3">
+          <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+          <Button fullWidth loading={isPending} onClick={handleSubmit}>Record Subscription</Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        {companies.length > 0 && (
+          <Field label="Company" required>
+            <select value={selectedCompanyId} onChange={(e) => setSelectedCompanyId(e.target.value)} className={sel}>
+              <option value="">Select company…</option>
+              {companies.map((c) => <option key={c.company_id} value={c.company_id}>{c.company_name}</option>)}
+            </select>
+          </Field>
+        )}
+
+        <Field label="Plan" required>
+          <select value={form.planId} onChange={(e) => handlePlanChange(e.target.value)} className={sel}>
+            <option value="">Select plan…</option>
+            {plans.filter((p) => p.is_active).map((p) => (
+              <option key={p.plan_id} value={p.plan_id}>{p.plan_name}</option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="Billing Period" required>
+          <select value={form.period} onChange={(e) => handlePeriodChange(e.target.value)} className={sel}>
+            {PERIODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </select>
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Start Date" required>
+            <input type="date" value={form.startDate} max={form.endDate}
+              onChange={(e) => handleStartChange(e.target.value)} className={inp} />
+          </Field>
+          <Field label="End Date" required>
+            <input type="date" value={form.endDate} min={form.startDate}
+              onChange={(e) => set('endDate', e.target.value)} className={inp} />
+          </Field>
+        </div>
+
+        <Field label="Amount Payable (KES)" hint={suggestedAmount ? `Suggested: ${Number(suggestedAmount).toLocaleString()}` : undefined}>
+          <input type="number" min="0" step="0.01" value={form.amountPaid}
+            onChange={(e) => set('amountPaid', e.target.value)}
+            placeholder={suggestedAmount || '0.00'} className={inp} />
+        </Field>
+
+        <Field label="Notes">
+          <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)}
+            rows={2} placeholder="e.g. Annual renewal — paid via EFT"
+            className={inp + ' resize-none'} />
+        </Field>
+
+        <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-xs text-blue-700">
+          This will set the company status to <strong>active</strong> and update the active plan and dates.
         </div>
       </div>
     </Modal>
@@ -520,6 +792,7 @@ function PlansPanel() {
 // ── Companies Panel ───────────────────────────────────────────────────────────
 
 function CompaniesPanel({ plans }) {
+  const qc = useQueryClient();
   const [search, setSearch]           = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage]               = useState(1);
@@ -535,6 +808,24 @@ function CompaniesPanel({ plans }) {
   const companies = data?.companies ?? [];
   const total     = data?.total     ?? 0;
   const pages     = data?.pages     ?? 1;
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => api.delete(`/companies/${id}`),
+    onSuccess: (_, id) => {
+      toast.success('Company deleted');
+      qc.invalidateQueries({ queryKey: ['admin-companies'] });
+      qc.invalidateQueries({ queryKey: ['platform-stats'] });
+      qc.invalidateQueries({ queryKey: ['platform-companies-list'] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Delete failed'),
+  });
+
+  const handleDelete = (c) => {
+    if (!window.confirm(
+      `Permanently delete "${c.company_name}"?\n\nThis will remove ALL associated data — branches, users, products, sales, and inventory. This action cannot be undone.`
+    )) return;
+    deleteMut.mutate(c.company_id);
+  };
 
   return (
     <div className="space-y-4">
@@ -593,10 +884,11 @@ function CompaniesPanel({ plans }) {
                     <td className="px-4 py-3"><StatusBadge status={c.subscription_status} /></td>
                     <td className="px-4 py-3 text-gray-400 text-xs">{formatDate(c.created_at)}</td>
                     <td className="px-4 py-3">
-                      <button onClick={() => setSelected(c)}
-                        className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors" title="Edit">
-                        <Pencil className="h-4 w-4" />
-                      </button>
+                      <RowActions
+                        onEdit={() => setSelected(c)}
+                        onDelete={() => handleDelete(c)}
+                        deleting={deleteMut.isPending}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -1609,39 +1901,127 @@ function SalesPanel({ companies }) {
   );
 }
 
-// ── Payment Methods Panel ─────────────────────────────────────────────────────
+// ── Payment Method Modal (Create / Edit) ──────────────────────────────────────
 
-function PaymentsPanel({ companies }) {
+function PaymentMethodModal({ companyId, pm, onClose }) {
+  const qc     = useQueryClient();
+  const isEdit = !!pm;
+  const [form, setFormState] = useState({
+    methodName:         pm?.method_name         ?? '',
+    requiresReference:  pm?.requires_reference  ?? false,
+    isActive:           pm?.is_active           ?? true,
+  });
+  const set = (k, v) => setFormState((f) => ({ ...f, [k]: v }));
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: (data) => isEdit
+      ? api.patch(`/pos/payment-methods/${pm.payment_method_id}`, data, withCo(companyId))
+      : api.post('/pos/payment-methods', data, withCo(companyId)),
+    onSuccess: () => {
+      toast.success(isEdit ? 'Payment method updated' : 'Payment method created');
+      qc.invalidateQueries({ queryKey: ['platform-payments'] });
+      onClose();
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Save failed'),
+  });
+
+  const handleSubmit = () => {
+    if (!form.methodName.trim()) { toast.error('Method name is required'); return; }
+    mutate(form);
+  };
+
+  return (
+    <Modal open onClose={onClose} title={isEdit ? `Edit — ${pm.method_name}` : 'New Payment Method'}
+      footer={<div className="flex gap-3"><Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button><Button fullWidth loading={isPending} onClick={handleSubmit}>{isEdit ? 'Save Changes' : 'Create'}</Button></div>}
+    >
+      <div className="space-y-4">
+        <Field label="Method Name" required>
+          <input value={form.methodName} onChange={(e) => set('methodName', e.target.value)} className={inp} placeholder="e.g. M-Pesa, Cash, Card" />
+        </Field>
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" checked={form.requiresReference} onChange={(e) => set('requiresReference', e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+          <div>
+            <p className="text-sm font-medium text-gray-800">Requires Reference</p>
+            <p className="text-xs text-gray-500">Cashier must enter a reference number (e.g. M-Pesa confirmation code)</p>
+          </div>
+        </label>
+        {isEdit && (
+          <Field label="Status">
+            <select value={form.isActive ? 'true' : 'false'} onChange={(e) => set('isActive', e.target.value === 'true')} className={sel}>
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+          </Field>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ── M-Pesa Panel ──────────────────────────────────────────────────────────────
+
+const MPESA_MODE_STYLE = {
+  stk_push: 'bg-green-100 text-green-700',
+  c2b:      'bg-blue-100 text-blue-700',
+  manual:   'bg-gray-100 text-gray-600',
+};
+
+function MpesaPanel({ companies }) {
+  const [search,    setSearch]    = useState('');
   const [companyId, setCompanyId] = useState('');
+  const [mode,      setMode]      = useState('');
   const [page,      setPage]      = useState(1);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['platform-payments', { companyId, page }],
-    queryFn: () => api.get('/platform/payment-methods', { params: { companyId, page, limit: 25 } }).then((r) => r.data.data),
+    queryKey: ['platform-mpesa', { search, companyId, mode, page }],
+    queryFn: () => api.get('/platform/mpesa', { params: { search, companyId, mode, page, limit: 25 } }).then((r) => r.data.data),
     placeholderData: (prev) => prev,
   });
-  const rows  = data?.paymentMethods ?? [];
-  const total = data?.total          ?? 0;
-  const pages = data?.pages          ?? 1;
+  const rows  = data?.transactions ?? [];
+  const total = data?.total        ?? 0;
+  const pages = data?.pages        ?? 1;
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3"><CompanyFilter companies={companies} value={companyId} onChange={(v) => { setCompanyId(v); setPage(1); }} /></div>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search receipt, phone or reference…"
+            className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none" />
+        </div>
+        <CompanyFilter companies={companies} value={companyId} onChange={(v) => { setCompanyId(v); setPage(1); }} />
+        <select value={mode} onChange={(e) => { setMode(e.target.value); setPage(1); }}
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none bg-white">
+          <option value="">All Modes</option>
+          {['stk_push','c2b','manual'].map((m) => <option key={m} value={m}>{m.replace(/_/g, ' ')}</option>)}
+        </select>
+      </div>
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         {isLoading ? <PageSpinner /> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
-                <tr>{['Method','Company','Requires Ref','Status'].map((h) => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr>
+                <tr>{['Receipt #','Phone','Amount','Mode','Reference','Branch','Company','Date'].map((h) => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {rows.map((p) => (
-                  <tr key={p.payment_method_id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{p.method_name}</td>
-                    <td className="px-4 py-3 text-gray-600">{p.company_name}</td>
-                    <td className="px-4 py-3">{p.requires_reference ? <CheckCircle className="h-4 w-4 text-green-500" /> : <span className="text-gray-300">—</span>}</td>
-                    <td className="px-4 py-3">{p.is_active ? <span className="text-green-600 text-xs font-medium">Active</span> : <span className="text-gray-400 text-xs">Inactive</span>}</td>
+                {rows.map((t) => (
+                  <tr key={t.mpesa_txn_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-mono text-xs text-gray-700">{t.mpesa_receipt_number ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-600">{t.phone_number}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{formatCurrency(t.amount)}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${MPESA_MODE_STYLE[t.payment_mode] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {t.payment_mode?.replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{t.account_reference ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-600">{t.branch_name ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-600">{t.company_name}</td>
+                    <td className="px-4 py-3 text-gray-400 text-xs">{formatDate(t.completed_at)}</td>
                   </tr>
                 ))}
-                {rows.length === 0 && <tr><td colSpan={4} className="py-14 text-center text-gray-400"><CreditCard className="mx-auto mb-2 h-8 w-8 opacity-25" />No payment methods found</td></tr>}
+                {rows.length === 0 && <tr><td colSpan={8} className="py-14 text-center text-gray-400"><Smartphone className="mx-auto mb-2 h-8 w-8 opacity-25" />No M-Pesa transactions found</td></tr>}
               </tbody>
             </table>
           </div>
@@ -1652,22 +2032,1020 @@ function PaymentsPanel({ companies }) {
   );
 }
 
+// ── M-Pesa Config Modal ───────────────────────────────────────────────────────
+
+function MpesaConfigModal({ companyId: initialCompanyId, companies = [], config, onClose }) {
+  const qc     = useQueryClient();
+  const isEdit = !!config;
+
+  const [selectedCompanyId, setSelectedCompanyId] = useState(initialCompanyId ?? '');
+  const companyId = selectedCompanyId;
+
+  const [form, setFormState] = useState({
+    branchId:       config?.branch_id      ?? '',
+    shortcode:      config?.shortcode      ?? '',
+    shortcodeType:  config?.shortcode_type ?? 'paybill',
+    environment:    config?.environment    ?? 'sandbox',
+    callbackUrl:    config?.callback_url   ?? '',
+    consumerKey:    '',
+    consumerSecret: '',
+    passkey:        '',
+  });
+  const set = (k, v) => setFormState((f) => ({ ...f, [k]: v }));
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ['co-branches', companyId],
+    queryFn: () => api.get('/branches', withCo(companyId)).then((r) => r.data.data),
+    enabled: !!companyId,
+  });
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: (data) => api.post('/platform/mpesa-configs', { companyId, ...data }),
+    onSuccess: () => {
+      toast.success(isEdit ? 'M-Pesa config updated' : 'M-Pesa config created');
+      qc.invalidateQueries({ queryKey: ['platform-mpesa-configs'] });
+      onClose();
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Save failed'),
+  });
+
+  const handleSubmit = () => {
+    if (!companyId)           { toast.error('Select a company');            return; }
+    if (!form.shortcode)      { toast.error('Shortcode is required');       return; }
+    if (!form.consumerKey)    { toast.error('Consumer Key is required');    return; }
+    if (!form.consumerSecret) { toast.error('Consumer Secret is required'); return; }
+    if (!form.passkey)        { toast.error('Passkey is required');         return; }
+    mutate(form);
+  };
+
+  return (
+    <Modal open onClose={onClose} title={isEdit ? `Edit Config — ${config.company_name}` : 'Create M-Pesa Config'} size="lg"
+      footer={<div className="flex gap-3"><Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button><Button fullWidth loading={isPending} onClick={handleSubmit}>{isEdit ? 'Save Changes' : 'Create Config'}</Button></div>}
+    >
+      <div className="space-y-3">
+        {isEdit && (
+          <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
+            Sensitive credentials must be re-entered to save changes. Current Consumer Key hint: <span className="font-mono font-semibold">{config.consumer_key_hint}</span>
+          </div>
+        )}
+        {!isEdit && companies.length > 0 && (
+          <Field label="Company" required>
+            <select value={selectedCompanyId} onChange={(e) => setSelectedCompanyId(e.target.value)} className={sel}>
+              <option value="">Select company…</option>
+              {companies.map((c) => <option key={c.company_id} value={c.company_id}>{c.company_name}</option>)}
+            </select>
+          </Field>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Branch (blank = company-wide)">
+            <select value={form.branchId} onChange={(e) => set('branchId', e.target.value)} className={sel}>
+              <option value="">Company-wide</option>
+              {branches.map((b) => <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>)}
+            </select>
+          </Field>
+          <Field label="Environment">
+            <select value={form.environment} onChange={(e) => set('environment', e.target.value)} className={sel}>
+              <option value="sandbox">Sandbox</option>
+              <option value="production">Production</option>
+            </select>
+          </Field>
+          <Field label="Shortcode" required>
+            <input value={form.shortcode} onChange={(e) => set('shortcode', e.target.value)} placeholder="e.g. 174379" className={inp} />
+          </Field>
+          <Field label="Shortcode Type">
+            <select value={form.shortcodeType} onChange={(e) => set('shortcodeType', e.target.value)} className={sel}>
+              <option value="paybill">Paybill</option>
+              <option value="till">Till Number</option>
+            </select>
+          </Field>
+          <Field label="Consumer Key" required>
+            <input value={form.consumerKey} onChange={(e) => set('consumerKey', e.target.value)}
+              placeholder={isEdit ? `New key (current: ${config.consumer_key_hint})` : 'Consumer Key'} className={inp} />
+          </Field>
+          <Field label="Consumer Secret" required>
+            <input type="password" value={form.consumerSecret} onChange={(e) => set('consumerSecret', e.target.value)}
+              placeholder="Consumer Secret" className={inp} />
+          </Field>
+          <div className="col-span-2">
+            <Field label="Passkey" required>
+              <input type="password" value={form.passkey} onChange={(e) => set('passkey', e.target.value)}
+                placeholder={isEdit ? `New passkey (current: ${config.passkey_hint})` : 'Passkey'} className={inp} />
+            </Field>
+          </div>
+          <div className="col-span-2">
+            <Field label="Callback URL" hint="Must be publicly accessible HTTPS URL">
+              <input type="url" value={form.callbackUrl} onChange={(e) => set('callbackUrl', e.target.value)}
+                placeholder="https://your-domain/api/mpesa/callback" className={inp} />
+            </Field>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── M-Pesa Config Panel ───────────────────────────────────────────────────────
+
+function MpesaConfigPanel({ companies }) {
+  const qc = useQueryClient();
+  const [companyId,  setCompanyId]  = useState('');
+  const [page,       setPage]       = useState(1);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-mpesa-configs', { companyId, page }],
+    queryFn: () => api.get('/platform/mpesa-configs', { params: { companyId, page, limit: 25 } }).then((r) => r.data.data),
+    placeholderData: (prev) => prev,
+  });
+  const rows  = data?.configs ?? [];
+  const total = data?.total   ?? 0;
+  const pages = data?.pages   ?? 1;
+
+  const toggleMut = useMutation({
+    mutationFn: (id) => api.patch(`/platform/mpesa-configs/${id}/toggle`),
+    onSuccess: () => { toast.success('Status updated'); qc.invalidateQueries({ queryKey: ['platform-mpesa-configs'] }); },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <CompanyFilter companies={companies} value={companyId} onChange={(v) => { setCompanyId(v); setPage(1); }} />
+        <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>Add Config</Button>
+      </div>
+      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        {isLoading ? <PageSpinner /> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>{['Company','Branch','Shortcode','Type','Environment','Consumer Key','Status',''].map((h) => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {rows.map((c) => (
+                  <tr key={c.config_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium text-gray-900">{c.company_name}</td>
+                    <td className="px-4 py-3 text-gray-600">{c.branch_name ?? <span className="text-gray-400 text-xs italic">Company-wide</span>}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-700">{c.shortcode}</td>
+                    <td className="px-4 py-3 text-gray-600 capitalize">{c.shortcode_type}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${c.environment === 'production' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {c.environment}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{c.consumer_key_hint}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => toggleMut.mutate(c.config_id)}
+                        disabled={toggleMut.isPending}
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${c.is_active ? 'bg-green-100 text-green-700 hover:bg-red-50 hover:text-red-600' : 'bg-gray-100 text-gray-500 hover:bg-green-50 hover:text-green-700'}`}
+                      >
+                        {c.is_active ? 'Active' : 'Inactive'}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
+                      <RowActions onEdit={() => setEditTarget(c)} />
+                    </td>
+                  </tr>
+                ))}
+                {rows.length === 0 && <tr><td colSpan={8} className="py-14 text-center text-gray-400"><Settings className="mx-auto mb-2 h-8 w-8 opacity-25" />No M-Pesa configurations found</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <Pagination page={page} pages={pages} total={total} onPage={setPage} />
+      </div>
+      {createOpen && (
+        <MpesaConfigModal
+          companyId={companyId || undefined}
+          companies={companyId ? [] : companies}
+          onClose={() => setCreateOpen(false)}
+        />
+      )}
+      {editTarget && (
+        <MpesaConfigModal
+          companyId={editTarget.company_id}
+          config={editTarget}
+          onClose={() => setEditTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Payment Methods Panel ─────────────────────────────────────────────────────
+
+function PaymentsPanel({ companies }) {
+  const qc = useQueryClient();
+  const [companyId,  setCompanyId]  = useState('');
+  const [page,       setPage]       = useState(1);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-payments', { companyId, page }],
+    queryFn: () => api.get('/platform/payment-methods', { params: { companyId, page, limit: 25 } }).then((r) => r.data.data),
+    placeholderData: (prev) => prev,
+  });
+  const rows  = data?.paymentMethods ?? [];
+  const total = data?.total          ?? 0;
+  const pages = data?.pages          ?? 1;
+
+  const deactivateMut = useMutation({
+    mutationFn: (id) => api.patch(`/pos/payment-methods/${id}`, { isActive: false }, withCo(companyId)),
+    onSuccess: () => { toast.success('Payment method deactivated'); qc.invalidateQueries({ queryKey: ['platform-payments'] }); },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
+  });
+
+  const handleDeactivate = (pm) => {
+    if (!window.confirm(`Deactivate payment method "${pm.method_name}"? It will no longer appear at the POS.`)) return;
+    deactivateMut.mutate(pm.payment_method_id);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <CompanyFilter companies={companies} value={companyId} onChange={(v) => { setCompanyId(v); setPage(1); }} />
+        {companyId && <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>Add Method</Button>}
+      </div>
+      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        {isLoading ? <PageSpinner /> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>{['Method','Company','Requires Ref','Status',''].map((h) => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {rows.map((p) => (
+                  <tr key={p.payment_method_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium text-gray-900">{p.method_name}</td>
+                    <td className="px-4 py-3 text-gray-600">{p.company_name}</td>
+                    <td className="px-4 py-3">{p.requires_reference ? <CheckCircle className="h-4 w-4 text-green-500" /> : <span className="text-gray-300">—</span>}</td>
+                    <td className="px-4 py-3">{p.is_active ? <span className="text-green-600 text-xs font-medium">Active</span> : <span className="text-gray-400 text-xs">Inactive</span>}</td>
+                    <td className="px-4 py-3">
+                      {companyId && (
+                        <RowActions
+                          onEdit={() => setEditTarget(p)}
+                          onDelete={p.is_active ? () => handleDeactivate(p) : undefined}
+                          deleting={deactivateMut.isPending}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {rows.length === 0 && <tr><td colSpan={5} className="py-14 text-center text-gray-400"><CreditCard className="mx-auto mb-2 h-8 w-8 opacity-25" />No payment methods found</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <Pagination page={page} pages={pages} total={total} onPage={setPage} />
+      </div>
+      {createOpen && <PaymentMethodModal companyId={companyId} onClose={() => setCreateOpen(false)} />}
+      {editTarget  && <PaymentMethodModal companyId={companyId} pm={editTarget} onClose={() => setEditTarget(null)} />}
+    </div>
+  );
+}
+
+// ── Suppliers Panel ───────────────────────────────────────────────────────────
+
+function SuppliersPanel({ companies }) {
+  const [search,    setSearch]    = useState('');
+  const [companyId, setCompanyId] = useState('');
+  const [page,      setPage]      = useState(1);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-suppliers', { search, companyId, page }],
+    queryFn: () => api.get('/platform/suppliers', { params: { search, companyId, page, limit: 25 } }).then((r) => r.data.data),
+    placeholderData: (prev) => prev,
+  });
+  const rows  = data?.suppliers ?? [];
+  const total = data?.total     ?? 0;
+  const pages = data?.pages     ?? 1;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search supplier name or email…"
+            className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none" />
+        </div>
+        <CompanyFilter companies={companies} value={companyId} onChange={(v) => { setCompanyId(v); setPage(1); }} />
+      </div>
+      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        {isLoading ? <PageSpinner /> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>{['Supplier','Contact','Email','Phone','Terms','Currency','Company',''].map((h) => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {rows.map((s) => (
+                  <tr key={s.supplier_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium text-gray-900">{s.supplier_name}</td>
+                    <td className="px-4 py-3 text-gray-600">{s.contact_person ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{s.email ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{s.phone ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{s.payment_terms ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{s.currency ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-600">{s.company_name}</td>
+                    <td className="px-4 py-3">
+                      {s.is_active
+                        ? <span className="text-green-600 text-xs font-medium">Active</span>
+                        : <span className="text-gray-400 text-xs">Inactive</span>}
+                    </td>
+                  </tr>
+                ))}
+                {rows.length === 0 && <tr><td colSpan={8} className="py-14 text-center text-gray-400"><Truck className="mx-auto mb-2 h-8 w-8 opacity-25" />No suppliers found</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <Pagination page={page} pages={pages} total={total} onPage={setPage} />
+      </div>
+    </div>
+  );
+}
+
+// ── Purchases Panel ───────────────────────────────────────────────────────────
+
+const PO_STATUS_STYLE = {
+  draft:            'bg-gray-100 text-gray-600',
+  pending_approval: 'bg-blue-100 text-blue-700',
+  approved:         'bg-green-100 text-green-700',
+  received:         'bg-teal-100 text-teal-700',
+  cancelled:        'bg-red-100 text-red-600',
+};
+
+function PurchasesPanel({ companies }) {
+  const [search,       setSearch]       = useState('');
+  const [companyId,    setCompanyId]    = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page,         setPage]         = useState(1);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-purchases', { search, companyId, statusFilter, page }],
+    queryFn: () => api.get('/platform/purchases', { params: { search, companyId, status: statusFilter, page, limit: 25 } }).then((r) => r.data.data),
+    placeholderData: (prev) => prev,
+  });
+  const rows  = data?.purchases ?? [];
+  const total = data?.total     ?? 0;
+  const pages = data?.pages     ?? 1;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search PO number or supplier…"
+            className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none" />
+        </div>
+        <CompanyFilter companies={companies} value={companyId} onChange={(v) => { setCompanyId(v); setPage(1); }} />
+        <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none bg-white">
+          <option value="">All Statuses</option>
+          {['draft','pending_approval','approved','received','cancelled'].map((s) => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+        </select>
+      </div>
+      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        {isLoading ? <PageSpinner /> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>{['PO #','Supplier','Branch','Company','Total','Order Date','Status'].map((h) => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {rows.map((p) => (
+                  <tr key={p.po_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-mono text-xs text-gray-700">{p.po_number}</td>
+                    <td className="px-4 py-3 text-gray-800 font-medium">{p.supplier_name}</td>
+                    <td className="px-4 py-3 text-gray-600">{p.branch_name}</td>
+                    <td className="px-4 py-3 text-gray-600">{p.company_name}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{formatCurrency(p.total_amount)}</td>
+                    <td className="px-4 py-3 text-gray-400 text-xs">{formatDate(p.order_date)}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${PO_STATUS_STYLE[p.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {p.status?.replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {rows.length === 0 && <tr><td colSpan={7} className="py-14 text-center text-gray-400"><ShoppingCart className="mx-auto mb-2 h-8 w-8 opacity-25" />No purchase orders found</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <Pagination page={page} pages={pages} total={total} onPage={setPage} />
+      </div>
+    </div>
+  );
+}
+
+// ── AP Payments Panel ─────────────────────────────────────────────────────────
+
+function ApPaymentsPanel({ companies }) {
+  const [search,    setSearch]    = useState('');
+  const [companyId, setCompanyId] = useState('');
+  const [page,      setPage]      = useState(1);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-ap-payments', { search, companyId, page }],
+    queryFn: () => api.get('/platform/ap-payments', { params: { search, companyId, page, limit: 25 } }).then((r) => r.data.data),
+    placeholderData: (prev) => prev,
+  });
+  const rows  = data?.payments ?? [];
+  const total = data?.total    ?? 0;
+  const pages = data?.pages    ?? 1;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search supplier or reference…"
+            className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none" />
+        </div>
+        <CompanyFilter companies={companies} value={companyId} onChange={(v) => { setCompanyId(v); setPage(1); }} />
+      </div>
+      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        {isLoading ? <PageSpinner /> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>{['Supplier','Amount','Method','Reference','Bank Account','PO #','Company','Date'].map((h) => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {rows.map((p) => (
+                  <tr key={p.payment_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium text-gray-900">{p.supplier_name}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{formatCurrency(p.amount)}</td>
+                    <td className="px-4 py-3 text-gray-600 capitalize">{p.payment_method?.replace(/_/g, ' ') ?? '—'}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.reference_number ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{p.bank_account_name ?? '—'}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.po_number ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-600">{p.company_name}</td>
+                    <td className="px-4 py-3 text-gray-400 text-xs">{formatDate(p.payment_date)}</td>
+                  </tr>
+                ))}
+                {rows.length === 0 && <tr><td colSpan={8} className="py-14 text-center text-gray-400"><DollarSign className="mx-auto mb-2 h-8 w-8 opacity-25" />No AP payments found</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <Pagination page={page} pages={pages} total={total} onPage={setPage} />
+      </div>
+    </div>
+  );
+}
+
+// ── Accounts (CoA) Panel ──────────────────────────────────────────────────────
+
+const ACCOUNT_TYPE_STYLE = {
+  asset:     'bg-blue-100 text-blue-700',
+  liability: 'bg-red-100 text-red-600',
+  equity:    'bg-purple-100 text-purple-700',
+  revenue:   'bg-green-100 text-green-700',
+  expense:   'bg-amber-100 text-amber-700',
+};
+
+function AccountsPanel({ companies }) {
+  const [search,      setSearch]      = useState('');
+  const [companyId,   setCompanyId]   = useState('');
+  const [accountType, setAccountType] = useState('');
+  const [page,        setPage]        = useState(1);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-accounts', { search, companyId, accountType, page }],
+    queryFn: () => api.get('/platform/accounts', { params: { search, companyId, accountType, page, limit: 25 } }).then((r) => r.data.data),
+    placeholderData: (prev) => prev,
+  });
+  const rows  = data?.accounts ?? [];
+  const total = data?.total    ?? 0;
+  const pages = data?.pages    ?? 1;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search account name or code…"
+            className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none" />
+        </div>
+        <CompanyFilter companies={companies} value={companyId} onChange={(v) => { setCompanyId(v); setPage(1); }} />
+        <select value={accountType} onChange={(e) => { setAccountType(e.target.value); setPage(1); }}
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none bg-white">
+          <option value="">All Types</option>
+          {['asset','liability','equity','revenue','expense'].map((t) => <option key={t} value={t} className="capitalize">{t}</option>)}
+        </select>
+      </div>
+      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        {isLoading ? <PageSpinner /> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>{['Code','Account Name','Type','Subtype','Company','System'].map((h) => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {rows.map((a) => (
+                  <tr key={a.account_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-mono text-xs text-gray-600">{a.account_code}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{a.account_name}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${ACCOUNT_TYPE_STYLE[a.account_type] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {a.account_type}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs capitalize">{a.account_subtype?.replace(/_/g, ' ') ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-600">{a.company_name}</td>
+                    <td className="px-4 py-3">{a.is_system ? <CheckCircle className="h-4 w-4 text-blue-400" /> : <span className="text-gray-300">—</span>}</td>
+                  </tr>
+                ))}
+                {rows.length === 0 && <tr><td colSpan={6} className="py-14 text-center text-gray-400"><BookOpen className="mx-auto mb-2 h-8 w-8 opacity-25" />No accounts found</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <Pagination page={page} pages={pages} total={total} onPage={setPage} />
+      </div>
+    </div>
+  );
+}
+
+// ── Bank Accounts Panel ───────────────────────────────────────────────────────
+
+function BankAccountsPanel({ companies }) {
+  const [search,    setSearch]    = useState('');
+  const [companyId, setCompanyId] = useState('');
+  const [page,      setPage]      = useState(1);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-bank-accounts', { search, companyId, page }],
+    queryFn: () => api.get('/platform/bank-accounts', { params: { search, companyId, page, limit: 25 } }).then((r) => r.data.data),
+    placeholderData: (prev) => prev,
+  });
+  const rows  = data?.bankAccounts ?? [];
+  const total = data?.total        ?? 0;
+  const pages = data?.pages        ?? 1;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search account name, bank or number…"
+            className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none" />
+        </div>
+        <CompanyFilter companies={companies} value={companyId} onChange={(v) => { setCompanyId(v); setPage(1); }} />
+      </div>
+      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        {isLoading ? <PageSpinner /> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>{['Account Name','Bank','Account #','Currency','Balance','Default','Company','Status'].map((h) => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {rows.map((b) => (
+                  <tr key={b.bank_account_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium text-gray-900">{b.account_name}</td>
+                    <td className="px-4 py-3 text-gray-600">{b.bank_name ?? '—'}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{b.account_number ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{b.currency}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{formatCurrency(b.current_balance)}</td>
+                    <td className="px-4 py-3">{b.is_default ? <CheckCircle className="h-4 w-4 text-green-500" /> : <span className="text-gray-300">—</span>}</td>
+                    <td className="px-4 py-3 text-gray-600">{b.company_name}</td>
+                    <td className="px-4 py-3">{b.is_active ? <span className="text-green-600 text-xs font-medium">Active</span> : <span className="text-gray-400 text-xs">Inactive</span>}</td>
+                  </tr>
+                ))}
+                {rows.length === 0 && <tr><td colSpan={8} className="py-14 text-center text-gray-400"><Landmark className="mx-auto mb-2 h-8 w-8 opacity-25" />No bank accounts found</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <Pagination page={page} pages={pages} total={total} onPage={setPage} />
+      </div>
+    </div>
+  );
+}
+
+// ── Journals Panel ────────────────────────────────────────────────────────────
+
+const JNL_STATUS_STYLE = {
+  draft:  'bg-gray-100 text-gray-600',
+  posted: 'bg-green-100 text-green-700',
+  void:   'bg-red-100 text-red-600',
+};
+
+function JournalsPanel({ companies }) {
+  const [search,       setSearch]       = useState('');
+  const [companyId,    setCompanyId]    = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page,         setPage]         = useState(1);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-journals', { search, companyId, statusFilter, page }],
+    queryFn: () => api.get('/platform/journals', { params: { search, companyId, status: statusFilter, page, limit: 25 } }).then((r) => r.data.data),
+    placeholderData: (prev) => prev,
+  });
+  const rows  = data?.journals ?? [];
+  const total = data?.total    ?? 0;
+  const pages = data?.pages    ?? 1;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search journal number or description…"
+            className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none" />
+        </div>
+        <CompanyFilter companies={companies} value={companyId} onChange={(v) => { setCompanyId(v); setPage(1); }} />
+        <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none bg-white">
+          <option value="">All Statuses</option>
+          {['draft','posted','void'].map((s) => <option key={s} value={s} className="capitalize">{s}</option>)}
+        </select>
+      </div>
+      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        {isLoading ? <PageSpinner /> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>{['Journal #','Description','Debit Total','Company','Created By','Date','Status'].map((h) => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {rows.map((j) => (
+                  <tr key={j.journal_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-mono text-xs text-gray-700">{j.journal_number}</td>
+                    <td className="px-4 py-3 text-gray-800">{j.description ?? '—'}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{formatCurrency(j.total_debit)}</td>
+                    <td className="px-4 py-3 text-gray-600">{j.company_name}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{j.created_by ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-400 text-xs">{formatDate(j.entry_date)}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${JNL_STATUS_STYLE[j.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {j.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {rows.length === 0 && <tr><td colSpan={7} className="py-14 text-center text-gray-400"><ScrollText className="mx-auto mb-2 h-8 w-8 opacity-25" />No journal entries found</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <Pagination page={page} pages={pages} total={total} onPage={setPage} />
+      </div>
+    </div>
+  );
+}
+
+// ── Reports Panel ─────────────────────────────────────────────────────────────
+
+const REPORT_DEFS = [
+  { id: 'sales',             label: 'Sales Report',      endpoint: '/reports/sales',             needsDate: true,  needsBranch: true  },
+  { id: 'stock-valuation',   label: 'Stock Valuation',   endpoint: '/reports/stock-valuation',   needsDate: false, needsBranch: true  },
+  { id: 'pl',                label: 'Profit & Loss',     endpoint: '/reports/pl',                needsDate: true,  needsBranch: false },
+  { id: 'ap-aging',          label: 'AP Aging',          endpoint: '/reports/ap-aging',          needsDate: false, needsBranch: false },
+  { id: 'balance-sheet',     label: 'Balance Sheet',     endpoint: '/reports/balance-sheet',     needsDate: false, needsBranch: false },
+  { id: 'purchases-summary', label: 'Purchases Summary', endpoint: '/reports/purchases-summary', needsDate: true,  needsBranch: false },
+  { id: 'trial-balance',     label: 'Trial Balance',     endpoint: '/reports/trial-balance',     needsDate: true,  needsBranch: false },
+  { id: 'cash-flow',         label: 'Cash Flow',         endpoint: '/reports/cash-flow',         needsDate: true,  needsBranch: false },
+];
+
+function extractReportData(reportId, data) {
+  if (!data) return { summary: {}, rows: [] };
+  switch (reportId) {
+    case 'sales':
+      return { summary: data.summary ?? {}, rows: data.topProducts ?? [] };
+    case 'stock-valuation':
+      return { summary: { totalValue: data.totalValue, totalUnits: data.totalUnits }, rows: data.items ?? [] };
+    case 'pl':
+      return { summary: { grossProfit: data.grossProfit, grossMargin: data.grossMargin, operatingProfit: data.operatingProfit, operatingMargin: data.operatingMargin }, rows: data.expenseBreakdown ?? [] };
+    case 'ap-aging':
+      return { summary: data.totals ?? {}, rows: data.suppliers ?? [] };
+    case 'balance-sheet':
+      return { summary: {}, rows: [ ...(data.assets ?? []).map((r) => ({ section: 'Assets', ...r })), ...(data.liabilities ?? []).map((r) => ({ section: 'Liabilities', ...r })), ...(data.equity ?? []).map((r) => ({ section: 'Equity', ...r })) ] };
+    case 'purchases-summary':
+      return { summary: { totalOrders: data.orders?.count, orderTotal: data.orders?.total, paidTotal: data.payments?.total }, rows: data.bySupplier ?? [] };
+    case 'trial-balance':
+      return { summary: { totalDebits: data.totalDebits, totalCredits: data.totalCredits, difference: data.difference }, rows: data.rows ?? [] };
+    case 'cash-flow':
+      return { summary: { netCashChange: data.netCashChange, openingBalance: data.openingBalance, closingBalance: data.closingBalance }, rows: [ ...(data.operating ?? []).map((r) => ({ section: 'Operating', ...r })), ...(data.financing ?? []).map((r) => ({ section: 'Financing', ...r })), ...(data.other ?? []).map((r) => ({ section: 'Other', ...r })) ] };
+    default:
+      return { summary: {}, rows: [] };
+  }
+}
+
+function downloadCSV(rows, filename) {
+  if (!rows.length) { toast.error('No data to export'); return; }
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.join(','),
+    ...rows.map((row) => headers.map((h) => {
+      const v = row[h] ?? '';
+      return typeof v === 'string' && (v.includes(',') || v.includes('"')) ? `"${v.replace(/"/g, '""')}"` : String(v);
+    }).join(',')),
+  ].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function ReportsPanel({ companies }) {
+  const [companyId,  setCompanyId]  = useState('');
+  const [reportId,   setReportId]   = useState('sales');
+  const [startDate,  setStartDate]  = useState(() => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10); });
+  const [endDate,    setEndDate]    = useState(() => new Date().toISOString().slice(0, 10));
+  const [branchId,   setBranchId]   = useState('');
+  const [runKey,     setRunKey]     = useState(null);
+
+  const def = REPORT_DEFS.find((r) => r.id === reportId);
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ['co-branches', companyId],
+    queryFn: () => api.get('/branches', withCo(companyId)).then((r) => r.data.data),
+    enabled: !!companyId && def?.needsBranch,
+  });
+
+  const params = {
+    ...(def?.needsDate ? { startDate, endDate } : {}),
+    ...(def?.needsBranch && branchId ? { branchId } : {}),
+  };
+
+  const { data: reportData, isLoading: reportLoading, isError, error } = useQuery({
+    queryKey: ['platform-report', companyId, reportId, params, runKey],
+    queryFn: () => api.get(def.endpoint, { params, ...withCo(companyId) }).then((r) => r.data.data),
+    enabled: !!companyId && !!runKey,
+    retry: false,
+  });
+
+  const { summary, rows } = extractReportData(reportId, reportData);
+  const columns = rows.length ? Object.keys(rows[0]) : [];
+
+  const handleRun = () => {
+    if (!companyId) { toast.error('Select a company first'); return; }
+    setRunKey(Date.now());
+  };
+
+  const fmtCell = (col, val) => {
+    if (val == null) return '—';
+    if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+    if (typeof val === 'number') {
+      const lc = col.toLowerCase();
+      if (lc.includes('margin') || lc.includes('rate') || lc.includes('percent')) return `${val.toFixed(1)}%`;
+      if (lc.includes('count') || lc.includes('qty') || lc.includes('units') || lc === 'id') return val.toLocaleString();
+      return formatCurrency(val);
+    }
+    return String(val);
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Controls */}
+      <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <p className="text-xs font-medium text-gray-600 mb-1">Company</p>
+            <CompanyFilter companies={companies} value={companyId} onChange={(v) => { setCompanyId(v); setRunKey(null); setBranchId(''); }} />
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-600 mb-1">Report</p>
+            <select value={reportId} onChange={(e) => { setReportId(e.target.value); setRunKey(null); setBranchId(''); }}
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none bg-white min-w-48">
+              {REPORT_DEFS.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+            </select>
+          </div>
+          {def?.needsBranch && (
+            <div>
+              <p className="text-xs font-medium text-gray-600 mb-1">Branch</p>
+              <select value={branchId} onChange={(e) => setBranchId(e.target.value)}
+                className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none bg-white">
+                <option value="">All Branches</option>
+                {branches.map((b) => <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>)}
+              </select>
+            </div>
+          )}
+          {def?.needsDate && (
+            <>
+              <div>
+                <p className="text-xs font-medium text-gray-600 mb-1">Start Date</p>
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-600 mb-1">End Date</p>
+                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={inp} />
+              </div>
+            </>
+          )}
+          <Button icon={<BarChart2 className="h-4 w-4" />} onClick={handleRun}>Run Report</Button>
+          {rows.length > 0 && (
+            <Button variant="secondary" icon={<FileText className="h-4 w-4" />}
+              onClick={() => downloadCSV(rows, `${reportId}-${companyId}-${new Date().toISOString().slice(0,10)}.csv`)}>
+              Export CSV
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      {reportData && Object.keys(summary).length > 0 && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {Object.entries(summary).map(([k, v]) => (
+            <div key={k} className="rounded-xl border border-gray-100 bg-white shadow-sm p-4">
+              <p className="text-xs text-gray-500 capitalize">{k.replace(/([A-Z])/g, ' $1').trim()}</p>
+              <p className="text-xl font-bold text-gray-900 mt-1">{fmtCell(k, v)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Placeholder */}
+      {!runKey && (
+        <div className="rounded-xl border border-gray-100 bg-white p-14 text-center text-gray-400">
+          <BarChart2 className="mx-auto mb-2 h-8 w-8 opacity-25" />
+          <p className="text-sm">Select a company and report, then click Run Report</p>
+        </div>
+      )}
+
+      {runKey && reportLoading && <PageSpinner />}
+
+      {runKey && isError && (
+        <div className="rounded-xl border border-red-100 bg-red-50 p-6 text-center text-red-600 text-sm">
+          {error?.response?.data?.message || 'Failed to load report. Ensure the company has this module enabled.'}
+        </div>
+      )}
+
+      {/* Results table */}
+      {runKey && !reportLoading && !isError && reportData && (
+        <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  {columns.map((c) => (
+                    <th key={c} className="px-4 py-3 text-left text-xs font-medium text-gray-500 capitalize whitespace-nowrap">
+                      {c.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim()}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {rows.map((row, i) => (
+                  <tr key={i} className="hover:bg-gray-50">
+                    {columns.map((c) => (
+                      <td key={c} className="px-4 py-3 text-gray-700 whitespace-nowrap">{fmtCell(c, row[c])}</td>
+                    ))}
+                  </tr>
+                ))}
+                {rows.length === 0 && (
+                  <tr><td colSpan={columns.length || 1} className="py-14 text-center text-gray-400 text-sm">No data for selected period</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Subscriptions Panel ───────────────────────────────────────────────────────
+
+function SubscriptionsPanel({ companies }) {
+  const [companyId,  setCompanyId]  = useState('');
+  const [page,       setPage]       = useState(1);
+  const [recordOpen, setRecordOpen] = useState(false);
+
+  const { data: plansData = [] } = useQuery({
+    queryKey: ['platform-plans'],
+    queryFn: () => api.get('/platform/plans').then((r) => r.data.data),
+  });
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-subscriptions', companyId, page],
+    queryFn: () => api.get('/platform/subscriptions', { params: { companyId: companyId || undefined, page, limit: 25 } }).then((r) => r.data.data),
+    placeholderData: (prev) => prev,
+  });
+
+  const rows  = data?.subscriptions ?? [];
+  const pages = data?.pages ?? 1;
+  const total = data?.total ?? 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <select value={companyId} onChange={(e) => { setCompanyId(e.target.value); setPage(1); }}
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:border-primary-500">
+            <option value="">All Companies</option>
+            {companies.map((c) => <option key={c.company_id} value={c.company_id}>{c.company_name}</option>)}
+          </select>
+        </div>
+        <Button size="sm" icon={<CalendarRange className="h-4 w-4" />} onClick={() => setRecordOpen(true)}>
+          Record Subscription
+        </Button>
+      </div>
+
+      {isLoading ? <PageSpinner /> : rows.length === 0 ? (
+        <div className="rounded-xl border border-gray-100 bg-white py-16 text-center text-gray-400 text-sm">
+          No subscription records found
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Company</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Plan</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Period</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Start</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">End</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">Amount (KES)</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Recorded by</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {rows.map((s) => {
+                const expired      = s.end_date && new Date(s.end_date) < new Date();
+                const expiringSoon = !expired && s.end_date && (new Date(s.end_date) - new Date()) < 30 * 86400000;
+                return (
+                  <tr key={s.subscription_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium text-gray-800">{s.company_name}</td>
+                    <td className="px-4 py-3 text-gray-600">{s.plan_name}</td>
+                    <td className="px-4 py-3 capitalize text-gray-600">{s.period?.replace('_', '-') || '—'}</td>
+                    <td className="px-4 py-3 text-gray-600">{s.start_date ? String(s.start_date).slice(0,10) : '—'}</td>
+                    <td className={`px-4 py-3 font-medium ${expired ? 'text-red-600' : expiringSoon ? 'text-amber-600' : 'text-gray-600'}`}>
+                      {s.end_date ? String(s.end_date).slice(0,10) : '—'}
+                      {expired      && <span className="ml-1.5 rounded-full bg-red-100 text-red-600 px-1.5 py-0.5 text-xs">expired</span>}
+                      {expiringSoon && <span className="ml-1.5 rounded-full bg-amber-100 text-amber-600 px-1.5 py-0.5 text-xs">soon</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-gray-700">
+                      {s.amount_paid != null ? formatCurrency(s.amount_paid) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{s.recorded_by || '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {pages > 1 && (
+        <div className="flex items-center justify-between text-xs text-gray-500">
+          <span>Page {page} of {pages} · {total} records</span>
+          <div className="flex gap-1">
+            <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)}
+              className="rounded border px-3 py-1.5 disabled:opacity-40 hover:bg-gray-50">Prev</button>
+            <button disabled={page >= pages} onClick={() => setPage((p) => p + 1)}
+              className="rounded border px-3 py-1.5 disabled:opacity-40 hover:bg-gray-50">Next</button>
+          </div>
+        </div>
+      )}
+
+      {recordOpen && (
+        <RecordSubscriptionModal
+          companyId={companyId || undefined}
+          companies={companyId ? [] : companies}
+          plans={plansData}
+          onClose={() => setRecordOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'companies', label: 'Companies',  Icon: Building2    },
-  { id: 'plans',     label: 'Plans',      Icon: CreditCard   },
-  { id: 'users',     label: 'Users',      Icon: Users        },
-  { id: 'branches',  label: 'Branches',   Icon: GitBranch    },
-  { id: 'terminals', label: 'Terminals',  Icon: Monitor      },
-  { id: 'sessions',  label: 'Sessions',   Icon: Layers       },
-  { id: 'pricing',   label: 'Pricing',    Icon: DollarSign   },
-  { id: 'sales',     label: 'Sales',      Icon: ShoppingCart },
-  { id: 'products',  label: 'Products',   Icon: Package      },
-  { id: 'inventory', label: 'Inventory',  Icon: BarChart2    },
-  { id: 'customers', label: 'Customers',  Icon: UserCheck    },
-  { id: 'payments',  label: 'Payments',   Icon: CreditCard   },
+  { id: 'companies',     label: 'Companies',     Icon: Building2    },
+  { id: 'plans',         label: 'Plans',         Icon: CreditCard   },
+  { id: 'users',         label: 'Users',         Icon: Users        },
+  { id: 'branches',      label: 'Branches',      Icon: GitBranch    },
+  { id: 'terminals',     label: 'Terminals',     Icon: Monitor      },
+  { id: 'sessions',      label: 'Sessions',      Icon: Layers       },
+  { id: 'pricing',       label: 'Pricing',       Icon: DollarSign   },
+  { id: 'sales',         label: 'Sales',         Icon: ShoppingCart },
+  { id: 'products',      label: 'Products',      Icon: Package      },
+  { id: 'inventory',     label: 'Inventory',     Icon: BarChart2    },
+  { id: 'customers',     label: 'Customers',     Icon: UserCheck    },
+  { id: 'mpesa',         label: 'M-Pesa',        Icon: Smartphone   },
+  { id: 'mpesa-config',  label: 'M-Pesa Config', Icon: Settings     },
+  { id: 'payments',      label: 'Payments',      Icon: CreditCard   },
+  { id: 'suppliers',     label: 'Suppliers',     Icon: Truck        },
+  { id: 'purchases',     label: 'Purchases',     Icon: ShoppingCart },
+  { id: 'ap-payments',   label: 'AP Payments',   Icon: DollarSign   },
+  { id: 'accounts',      label: 'Accounts',      Icon: BookOpen     },
+  { id: 'bank-accounts', label: 'Bank Accounts', Icon: Landmark     },
+  { id: 'journals',      label: 'Journals',      Icon: ScrollText   },
+  { id: 'reports',         label: 'Reports',       Icon: FileText     },
+  { id: 'subscriptions',   label: 'Subscriptions', Icon: CalendarRange },
 ];
+
+const TAB_BY_ID = Object.fromEntries(TABS.map((t) => [t.id, t]));
 
 export default function AdminPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1676,11 +3054,6 @@ export default function AdminPage() {
     return TABS.some((tab) => tab.id === t) ? t : 'companies';
   });
   const qc = useQueryClient();
-
-  const switchTab = (id) => {
-    setActiveTab(id);
-    setSearchParams({ tab: id }, { replace: true });
-  };
 
   useEffect(() => {
     const t = searchParams.get('tab');
@@ -1703,31 +3076,38 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-5">
-      {activeTab === 'companies' && (
-        <div className="flex justify-end">
-          <button onClick={() => qc.invalidateQueries({ queryKey: ['platform-stats'] })}
-            className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50 transition-colors">
-            <RefreshCw className="h-3.5 w-3.5" /> Refresh stats
-          </button>
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div className="flex flex-wrap border-b border-gray-200 gap-0">
-        {TABS.map(({ id, label, Icon }) => (
-          <button key={id} onClick={() => switchTab(id)}
-            className={[
-              'flex items-center gap-1.5 border-b-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap',
-              activeTab === id ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700',
-            ].join(' ')}
-          >
-            <Icon className="h-3.5 w-3.5" /> {label}
-          </button>
-        ))}
+      {/* Page header */}
+      <div>
+        <h2 className="text-lg font-bold text-gray-900">{TAB_BY_ID[activeTab]?.label ?? 'Admin'}</h2>
+        <p className="text-sm text-gray-400 mt-0.5">
+          {activeTab === 'companies'      ? 'Manage all tenants, subscriptions, and platform health'
+            : activeTab === 'plans'       ? 'Define subscription tiers and feature access'
+            : activeTab === 'users'       ? 'View and manage users across all tenants'
+            : activeTab === 'branches'    ? 'View and manage branches across all companies'
+            : activeTab === 'sessions'    ? 'Monitor and force-close POS sessions'
+            : activeTab === 'terminals'   ? 'Manage POS terminals across all companies'
+            : activeTab === 'sales'       ? 'Browse transactions across all tenants'
+            : activeTab === 'mpesa'       ? 'View M-Pesa transactions across all tenants'
+            : activeTab === 'mpesa-config'? 'View and manage M-Pesa configurations across all tenants'
+            : activeTab === 'reports'     ? 'View and export reports for any tenant'
+            : activeTab === 'payments'    ? 'View payment methods configured per company'
+            : activeTab === 'pricing'     ? 'Manage per-branch product pricing overrides'
+            : activeTab === 'products'    ? 'View and manage products across all tenants'
+            : activeTab === 'inventory'   ? 'Monitor stock levels across all companies'
+            : activeTab === 'customers'   ? 'View and manage customers across all tenants'
+            : activeTab === 'suppliers'   ? 'View suppliers registered across all tenants'
+            : activeTab === 'purchases'   ? 'Browse purchase orders across all tenants'
+            : activeTab === 'ap-payments' ? 'View supplier payments across all tenants'
+            : activeTab === 'accounts'    ? 'View chart of accounts across all tenants'
+            : activeTab === 'bank-accounts' ? 'View bank accounts registered across all tenants'
+            : activeTab === 'journals'       ? 'Browse journal entries across all tenants'
+            : activeTab === 'subscriptions'  ? 'Track and record subscription payments per company'
+            : ''}
+        </p>
       </div>
 
       {/* Tab panels */}
-      {activeTab === 'companies' && <><PlatformStats /><CompaniesPanel plans={plans} /></>}
+      {activeTab === 'companies' && <CompaniesPanel plans={plans} />}
       {activeTab === 'plans'     && <PlansPanel />}
       {activeTab === 'users'     && <UsersPanel companies={companiesForFilter} />}
       {activeTab === 'branches'  && <BranchesPanel companies={companiesForFilter} />}
@@ -1738,7 +3118,17 @@ export default function AdminPage() {
       {activeTab === 'products'  && <ProductsPanel companies={companiesForFilter} />}
       {activeTab === 'inventory' && <InventoryPanel companies={companiesForFilter} />}
       {activeTab === 'customers' && <CustomersPanel companies={companiesForFilter} />}
-      {activeTab === 'payments'  && <PaymentsPanel companies={companiesForFilter} />}
+      {activeTab === 'mpesa'         && <MpesaPanel        companies={companiesForFilter} />}
+      {activeTab === 'mpesa-config'  && <MpesaConfigPanel  companies={companiesForFilter} />}
+      {activeTab === 'reports'       && <ReportsPanel      companies={companiesForFilter} />}
+      {activeTab === 'payments'      && <PaymentsPanel     companies={companiesForFilter} />}
+      {activeTab === 'suppliers'     && <SuppliersPanel    companies={companiesForFilter} />}
+      {activeTab === 'purchases'     && <PurchasesPanel    companies={companiesForFilter} />}
+      {activeTab === 'ap-payments'   && <ApPaymentsPanel   companies={companiesForFilter} />}
+      {activeTab === 'accounts'      && <AccountsPanel     companies={companiesForFilter} />}
+      {activeTab === 'bank-accounts' && <BankAccountsPanel companies={companiesForFilter} />}
+      {activeTab === 'journals'       && <JournalsPanel      companies={companiesForFilter} />}
+      {activeTab === 'subscriptions'  && <SubscriptionsPanel companies={companiesForFilter} />}
     </div>
   );
 }

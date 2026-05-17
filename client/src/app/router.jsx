@@ -20,6 +20,7 @@ import UsersPage        from '@/features/users/UsersPage';
 import PosTerminal      from '@/features/pos/PosTerminal';
 import MpesaPage        from '@/features/mpesa/MpesaPage';
 import AccountsPage     from '@/features/accounts/AccountsPage';
+import AccountLedgerPage from '@/features/accounts/AccountLedgerPage';
 import BankAccountsPage from '@/features/bank-accounts/BankAccountsPage';
 import SuppliersPage    from '@/features/suppliers/SuppliersPage';
 import PurchasesPage   from '@/features/purchases/PurchasesPage';
@@ -112,6 +113,7 @@ export default function AppRouter() {
 
         {/* Finance module — gated by plan */}
         <Route path="accounts"     element={<FinanceRoute><AccountsPage /></FinanceRoute>} />
+        <Route path="accounts/:accountId/ledger" element={<FinanceRoute><AccountLedgerPage /></FinanceRoute>} />
         <Route path="bank-accounts" element={<FinanceRoute><BankAccountsPage /></FinanceRoute>} />
         <Route path="suppliers"    element={<FinanceRoute><SuppliersPage /></FinanceRoute>} />
         <Route path="purchases"    element={<FinanceRoute><PurchasesPage /></FinanceRoute>} />

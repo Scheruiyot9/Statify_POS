@@ -8,7 +8,8 @@ const update = async (req, res) => ok(res, await svc.updateAccount(req.tenantId,
 const remove = async (req, res) => ok(res, await svc.deleteAccount(req.tenantId, req.params.id));
 const seed   = async (req, res) => ok(res, await svc.seedDefaults(req.tenantId));
 
-const balance = async (req, res) => ok(res, await svc.getAccountBalance(req.tenantId, req.params.id));
-const ledger  = async (req, res) => ok(res, await svc.getAccountLedger(req.tenantId, req.params.id, req.query));
+const balance      = async (req, res) => ok(res, await svc.getAccountBalance(req.tenantId, req.params.id));
+const ledger       = async (req, res) => ok(res, await svc.getAccountLedger(req.tenantId, req.params.id, req.query));
+const journalEntry = async (req, res) => ok(res, await svc.getJournalEntry(req.tenantId, req.params.entryId));
 
-module.exports = { list, getOne, create, update, remove, seed, balance, ledger };
+module.exports = { list, getOne, create, update, remove, seed, balance, ledger, journalEntry };

@@ -33,6 +33,26 @@ const inventory      = async (req, res) => r(res, await svc.listAllInventory(req
 const customers      = async (req, res) => r(res, await svc.listAllCustomers(req.query));
 const paymentMethods = async (req, res) => r(res, await svc.listAllPaymentMethods(req.query));
 
+// M-Pesa
+const mpesa             = async (req, res) => r(res, await svc.listAllMpesaTransactions(req.query));
+const mpesaConfigs      = async (req, res) => r(res, await svc.listAllMpesaConfigs(req.query));
+const saveMpesaConfig   = async (req, res) => r(res, await svc.saveMpesaConfig(req.body.companyId, req.body), 201);
+const toggleMpesaConfig = async (req, res) => r(res, await svc.toggleMpesaConfig(req.params.id));
+
+// Finance
+const suppliers    = async (req, res) => r(res, await svc.listAllSuppliers(req.query));
+const purchases    = async (req, res) => r(res, await svc.listAllPurchases(req.query));
+const apPayments   = async (req, res) => r(res, await svc.listAllApPayments(req.query));
+const accounts     = async (req, res) => r(res, await svc.listAllAccounts(req.query));
+const bankAccounts = async (req, res) => r(res, await svc.listAllBankAccounts(req.query));
+const journals     = async (req, res) => r(res, await svc.listAllJournals(req.query));
+
+// Subscriptions
+const listSubscriptions  = async (req, res) => r(res, await svc.listSubscriptions(req.query));
+const recordSubscription = async (req, res) => r(res, await svc.recordSubscription(
+  req.body.companyId, req.body, req.user?.userId
+), 201);
+
 module.exports = {
   stats,
   listPlans, createPlan, updatePlan, deletePlan,
@@ -41,4 +61,7 @@ module.exports = {
   terminals, sessions, sales,
   products, inventory,
   customers, paymentMethods,
+  mpesa, mpesaConfigs, saveMpesaConfig, toggleMpesaConfig,
+  suppliers, purchases, apPayments, accounts, bankAccounts, journals,
+  listSubscriptions, recordSubscription,
 };

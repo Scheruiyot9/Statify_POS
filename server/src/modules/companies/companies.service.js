@@ -350,12 +350,34 @@ async function listSubscriptionPlans() {
   return rows;
 }
 
+async function deleteCompany(companyId) {
+  const { rows: open } = await query(
+    `SELECT COUNT(*) AS cnt
+     FROM pos_sessions ps
+     JOIN pos_terminals pt ON pt.terminal_id = ps.terminal_id
+     JOIN branches b ON b.branch_id = pt.branch_id
+     WHERE b.company_id = $1 AND ps.status = 'open'`,
+    [companyId]
+  );
+  if (parseInt(open[0].cnt) > 0) {
+    throw AppError.badRequest('Close all active POS sessions before deleting this company');
+  }
+
+  const { rows } = await query(
+    'DELETE FROM companies WHERE company_id = $1 RETURNING company_id, company_name',
+    [companyId]
+  );
+  if (!rows.length) throw AppError.notFound('Company');
+  return rows[0];
+}
+
 module.exports = {
   listCompanies,
   getCompany,
   createCompany,
   updateCompany,
   updateSubscriptionStatus,
+  deleteCompany,
   listSubscriptionPlans,
   getMyCompany,
   updateMyProfile,

@@ -3,9 +3,9 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, Warehouse, Users, Receipt,
   BarChart2, Settings, ShieldCheck, Monitor, UserCog, Clock,
-  RotateCcw, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
+  RotateCcw, Menu, ChevronDown, ChevronUp,
   Smartphone, Building2, GitBranch, Layers, ShoppingCart,
-  CreditCard, BookOpen, Landmark, Truck, Lock, Star, ScrollText,
+  CreditCard, BookOpen, Landmark, Truck, Lock, Star, ScrollText, FileText, CalendarRange,
 } from 'lucide-react';
 import { useAuthStore } from '@/app/store';
 import { usePermission } from '@/hooks/usePermission';
@@ -138,9 +138,9 @@ function SuperAdminNav({ collapsed }) {
       <NavItem to="/app/dashboard" label="Overview" Icon={LayoutDashboard} collapsed={collapsed} />
 
       <NavGroup id="sa-platform" label="Platform" collapsed={collapsed} defaultOpen>
-        <NavItem to="/app/admin" label="Companies" Icon={Building2} collapsed={collapsed} isAdmin search="companies" />
-        <NavItem to="/app/admin" label="Plans & Pricing" Icon={Star} collapsed={collapsed} isAdmin search="plans" />
-        <NavItem to="/app/admin" label="Pricing Rules" Icon={CreditCard} collapsed={collapsed} isAdmin search="pricing" />
+        <NavItem to="/app/admin" label="Companies"      Icon={Building2}    collapsed={collapsed} isAdmin search="companies" />
+        <NavItem to="/app/admin" label="Plans & Pricing" Icon={Star}        collapsed={collapsed} isAdmin search="plans" />
+        <NavItem to="/app/admin" label="Subscriptions"  Icon={CalendarRange} collapsed={collapsed} isAdmin search="subscriptions" />
       </NavGroup>
 
       <NavGroup id="sa-people" label="People" collapsed={collapsed} defaultOpen>
@@ -152,17 +152,34 @@ function SuperAdminNav({ collapsed }) {
         <NavItem to="/app/admin" label="Sessions" Icon={Layers} collapsed={collapsed} isAdmin search="sessions" />
         <NavItem to="/app/admin" label="Terminals" Icon={Monitor} collapsed={collapsed} isAdmin search="terminals" />
         <NavItem to="/app/admin" label="Sales" Icon={Receipt} collapsed={collapsed} isAdmin search="sales" />
+        <NavItem to="/app/admin" label="M-Pesa" Icon={Smartphone} collapsed={collapsed} isAdmin search="mpesa" />
+        <NavItem to="/app/admin" label="M-Pesa Config" Icon={Settings} collapsed={collapsed} isAdmin search="mpesa-config" />
         <NavItem to="/app/admin" label="Payment Methods" Icon={CreditCard} collapsed={collapsed} isAdmin search="payments" />
       </NavGroup>
 
       <NavGroup id="sa-catalog" label="Catalog" collapsed={collapsed} defaultOpen={false}>
         <NavItem to="/app/admin" label="Products" Icon={Package} collapsed={collapsed} isAdmin search="products" />
         <NavItem to="/app/admin" label="Inventory" Icon={Warehouse} collapsed={collapsed} isAdmin search="inventory" />
+        <NavItem to="/app/admin" label="Pricing Rules" Icon={CreditCard} collapsed={collapsed} isAdmin search="pricing" />
       </NavGroup>
 
       <NavGroup id="sa-crm" label="CRM" collapsed={collapsed} defaultOpen={false}>
         <NavItem to="/app/admin" label="Customers" Icon={Users} collapsed={collapsed} isAdmin search="customers" />
       </NavGroup>
+
+      <NavGroup id="sa-reports" label="Reports" collapsed={collapsed} defaultOpen={false}>
+        <NavItem to="/app/admin" label="Reports" Icon={FileText} collapsed={collapsed} isAdmin search="reports" />
+      </NavGroup>
+
+      <NavGroup id="sa-finance" label="Finance" collapsed={collapsed} defaultOpen={false}>
+        <NavItem to="/app/admin" label="Suppliers"     Icon={Truck}       collapsed={collapsed} isAdmin search="suppliers" />
+        <NavItem to="/app/admin" label="Purchases"     Icon={ShoppingCart} collapsed={collapsed} isAdmin search="purchases" />
+        <NavItem to="/app/admin" label="AP Payments"   Icon={CreditCard}  collapsed={collapsed} isAdmin search="ap-payments" />
+        <NavItem to="/app/admin" label="Accounts"      Icon={BookOpen}    collapsed={collapsed} isAdmin search="accounts" />
+        <NavItem to="/app/admin" label="Bank Accounts" Icon={Landmark}    collapsed={collapsed} isAdmin search="bank-accounts" />
+        <NavItem to="/app/admin" label="Journals"      Icon={ScrollText}  collapsed={collapsed} isAdmin search="journals" />
+      </NavGroup>
+
 
     </nav>
   );
@@ -287,37 +304,27 @@ export default function Sidebar() {
       {/* Logo + collapse toggle */}
       <div className={[
         'flex items-center border-b border-secondary-400/20 flex-shrink-0',
-        collapsed ? 'flex-col gap-3 px-0 py-3' : 'justify-between px-4 py-3',
+        collapsed ? 'flex-col gap-2 px-0 py-3 justify-center' : 'justify-between px-4 py-3',
       ].join(' ')}>
-        <div className="flex items-center gap-2 overflow-hidden">
+        {/* Hamburger toggle — always visible at top */}
+        <button
+          onClick={toggle}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="flex flex-shrink-0 items-center justify-center rounded-lg p-1.5 text-white/70 hover:bg-white/15 hover:text-white transition-colors"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+
+        <div className={['flex items-center gap-2 overflow-hidden', collapsed ? '' : 'order-first'].join(' ')}>
           {collapsed ? (
-            /* Icon-only when collapsed */
-            <img
-              src="/statify-icon-white.svg"
-              alt="Statify"
-              className="h-9 w-9 flex-shrink-0"
-            />
+            <img src="/statify-icon-white.svg" alt="Statify" className="h-8 w-8 flex-shrink-0" />
           ) : (
-            /* Full wordmark when expanded */
-            <img
-              src="/statify-logo-white.svg"
-              alt="Statify Solutions Limited"
-              className="h-16 w-auto flex-shrink-0"
-            />
+            <img src="/statify-logo-white.svg" alt="Statify Solutions Limited" className="h-16 w-auto flex-shrink-0" />
           )}
           {!collapsed && isSuperAdmin && (
             <span className="ml-1 text-xs text-secondary-400 font-medium whitespace-nowrap">Super Admin</span>
           )}
         </div>
-        <button
-          onClick={toggle}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="flex flex-shrink-0 items-center justify-center rounded-lg p-1.5 text-white/60 hover:bg-white/20 hover:text-white transition-colors"
-        >
-          {collapsed
-            ? <ChevronRight className="h-4 w-4" />
-            : <ChevronLeft className="h-4 w-4" />}
-        </button>
       </div>
 
       {/* POS shortcut — tenant only */}
