@@ -38,12 +38,12 @@ async function seed() {
     // ── 1. Resolve canonical plan IDs ───────────────────────────────────────
     // Expects 01_subscription_plans.sql to have been run already.
     const plans = await client.query(
-      `SELECT plan_id, plan_name FROM subscription_plans WHERE plan_name IN ('Growth','Starter') AND is_active = TRUE`
+      `SELECT plan_id, plan_name FROM subscription_plans WHERE plan_name IN ('Premium','Basic') AND is_active = TRUE`
     );
 
     const planMap = Object.fromEntries(plans.rows.map(r => [r.plan_name, r.plan_id]));
 
-    if (!planMap['Growth'] || !planMap['Starter']) {
+    if (!planMap['Premium'] || !planMap['Basic']) {
       throw new Error(
         'Required subscription plans not found. Run schema/seed/01_subscription_plans.sql first.'
       );
@@ -64,7 +64,7 @@ async function seed() {
          'CBD, Nairobi', 'KES', 'Kenya')
       ON CONFLICT DO NOTHING
       RETURNING company_id, company_name
-    `, [planMap['Growth'], planMap['Starter']]);
+    `, [planMap['Premium'], planMap['Basic']]);
 
     const [freshmart, techzone] = companies.rows;
     console.log('  ✓ Companies');
@@ -388,7 +388,7 @@ async function seed() {
     console.log('\n✅ Seed complete!\n');
     console.log('Login credentials (all use Password@123):');
     console.log('  super@statify.com        → super_admin');
-    console.log('  admin@freshmart.com      → company_admin  (FreshMart / Growth plan)');
+    console.log('  admin@freshmart.com      → company_admin  (FreshMart / Premium plan)');
     console.log('  manager@freshmart.com    → branch_manager (FreshMart HQ)');
     console.log('  cashier@freshmart.com    → cashier        (FreshMart HQ)');
     console.log('  inventory@freshmart.com  → inventory_mgr  (FreshMart HQ)');
