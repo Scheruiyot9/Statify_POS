@@ -912,7 +912,9 @@ function CompaniesPanel({ plans }) {
 
 // ── User Modal (Create / Edit) ────────────────────────────────────────────────
 
-function UserModal({ companyId, user, onClose }) {
+const FINANCE_ROLES = ['accountant'];
+
+function UserModal({ companyId, user, onClose, hasFinance }) {
   const qc     = useQueryClient();
   const isEdit = !!user;
 
@@ -927,8 +929,9 @@ function UserModal({ companyId, user, onClose }) {
   });
   const set = (k, v) => setFormState((f) => ({ ...f, [k]: v }));
 
-  const { data: roles    = [] } = useQuery({ queryKey: ['co-roles',    companyId], queryFn: () => api.get('/users/roles',  withCo(companyId)).then((r) => r.data.data), enabled: !!companyId });
-  const { data: branches = [] } = useQuery({ queryKey: ['co-branches', companyId], queryFn: () => api.get('/branches',     withCo(companyId)).then((r) => r.data.data), enabled: !!companyId });
+  const { data: allRoles = [] } = useQuery({ queryKey: ['co-roles', companyId], queryFn: () => api.get('/users/roles', withCo(companyId)).then((r) => r.data.data), enabled: !!companyId });
+  const roles    = hasFinance ? allRoles : allRoles.filter((r) => !FINANCE_ROLES.includes(r.role_name));
+  const { data: branches = [] } = useQuery({ queryKey: ['co-branches', companyId], queryFn: () => api.get('/branches',    withCo(companyId)).then((r) => r.data.data), enabled: !!companyId });
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['platform-users'] });
@@ -1000,6 +1003,9 @@ function UsersPanel({ companies }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
 
+  const selectedCompany = companies.find((c) => c.company_id === companyId);
+  const hasFinance   = selectedCompany?.has_finance   ?? false;
+
   const { data, isLoading } = useQuery({
     queryKey: ['platform-users', { search, companyId, page }],
     queryFn: () => api.get('/platform/users', { params: { search, companyId, page, limit: 25 } }).then((r) => r.data.data),
@@ -1057,8 +1063,8 @@ function UsersPanel({ companies }) {
         )}
         <Pagination page={page} pages={pages} total={total} onPage={setPage} />
       </div>
-      {createOpen && <UserModal companyId={companyId} onClose={() => setCreateOpen(false)} />}
-      {editTarget  && <UserModal companyId={companyId} user={editTarget} onClose={() => setEditTarget(null)} />}
+      {createOpen && <UserModal companyId={companyId} hasFinance={hasFinance} onClose={() => setCreateOpen(false)} />}
+      {editTarget  && <UserModal companyId={companyId} hasFinance={hasFinance} user={editTarget} onClose={() => setEditTarget(null)} />}
     </div>
   );
 }
@@ -1974,10 +1980,14 @@ function MpesaPanel({ companies }) {
   const [mode,      setMode]      = useState('');
   const [page,      setPage]      = useState(1);
 
+  const selectedCompany = companies.find((c) => c.company_id === companyId);
+  const hasApiAccess    = !companyId || (selectedCompany?.has_api_access ?? false);
+
   const { data, isLoading } = useQuery({
     queryKey: ['platform-mpesa', { search, companyId, mode, page }],
     queryFn: () => api.get('/platform/mpesa', { params: { search, companyId, mode, page, limit: 25 } }).then((r) => r.data.data),
     placeholderData: (prev) => prev,
+    enabled: hasApiAccess,
   });
   const rows  = data?.transactions ?? [];
   const total = data?.total        ?? 0;
@@ -1992,12 +2002,20 @@ function MpesaPanel({ companies }) {
             className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none" />
         </div>
         <CompanyFilter companies={companies} value={companyId} onChange={(v) => { setCompanyId(v); setPage(1); }} />
+        {companyId && !hasApiAccess && (
+          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">M-Pesa not enabled — plan has no API access</span>
+        )}
         <select value={mode} onChange={(e) => { setMode(e.target.value); setPage(1); }}
           className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none bg-white">
           <option value="">All Modes</option>
           {['stk_push','c2b','manual'].map((m) => <option key={m} value={m}>{m.replace(/_/g, ' ')}</option>)}
         </select>
       </div>
+      {companyId && !hasApiAccess ? (
+        <div className="rounded-xl border border-amber-100 bg-amber-50 p-10 text-center text-sm text-amber-700">
+          This company's plan does not include API/M-Pesa access. Upgrade to Enterprise to enable M-Pesa integration.
+        </div>
+      ) : (
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         {isLoading ? <PageSpinner /> : (
           <div className="overflow-x-auto">
@@ -2029,6 +2047,7 @@ function MpesaPanel({ companies }) {
         )}
         <Pagination page={page} pages={pages} total={total} onPage={setPage} />
       </div>
+      )}
     </div>
   );
 }
@@ -2154,10 +2173,14 @@ function MpesaConfigPanel({ companies }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
 
+  const selectedCompany = companies.find((c) => c.company_id === companyId);
+  const hasApiAccess    = !companyId || (selectedCompany?.has_api_access ?? false);
+
   const { data, isLoading } = useQuery({
     queryKey: ['platform-mpesa-configs', { companyId, page }],
     queryFn: () => api.get('/platform/mpesa-configs', { params: { companyId, page, limit: 25 } }).then((r) => r.data.data),
     placeholderData: (prev) => prev,
+    enabled: hasApiAccess,
   });
   const rows  = data?.configs ?? [];
   const total = data?.total   ?? 0;
@@ -2173,8 +2196,16 @@ function MpesaConfigPanel({ companies }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <CompanyFilter companies={companies} value={companyId} onChange={(v) => { setCompanyId(v); setPage(1); }} />
-        <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>Add Config</Button>
+        {(!companyId || hasApiAccess) && <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>Add Config</Button>}
+        {companyId && !hasApiAccess && (
+          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">M-Pesa not enabled — plan has no API access</span>
+        )}
       </div>
+      {companyId && !hasApiAccess ? (
+        <div className="rounded-xl border border-amber-100 bg-amber-50 p-10 text-center text-sm text-amber-700">
+          This company's plan does not include API/M-Pesa access. Upgrade to Enterprise to enable M-Pesa integration.
+        </div>
+      ) : (
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         {isLoading ? <PageSpinner /> : (
           <div className="overflow-x-auto">
@@ -2216,6 +2247,7 @@ function MpesaConfigPanel({ companies }) {
         )}
         <Pagination page={page} pages={pages} total={total} onPage={setPage} />
       </div>
+      )}
       {createOpen && (
         <MpesaConfigModal
           companyId={companyId || undefined}
@@ -2704,14 +2736,14 @@ function JournalsPanel({ companies }) {
 // ── Reports Panel ─────────────────────────────────────────────────────────────
 
 const REPORT_DEFS = [
-  { id: 'sales',             label: 'Sales Report',      endpoint: '/reports/sales',             needsDate: true,  needsBranch: true  },
-  { id: 'stock-valuation',   label: 'Stock Valuation',   endpoint: '/reports/stock-valuation',   needsDate: false, needsBranch: true  },
-  { id: 'pl',                label: 'Profit & Loss',     endpoint: '/reports/pl',                needsDate: true,  needsBranch: false },
-  { id: 'ap-aging',          label: 'AP Aging',          endpoint: '/reports/ap-aging',          needsDate: false, needsBranch: false },
-  { id: 'balance-sheet',     label: 'Balance Sheet',     endpoint: '/reports/balance-sheet',     needsDate: false, needsBranch: false },
-  { id: 'purchases-summary', label: 'Purchases Summary', endpoint: '/reports/purchases-summary', needsDate: true,  needsBranch: false },
-  { id: 'trial-balance',     label: 'Trial Balance',     endpoint: '/reports/trial-balance',     needsDate: true,  needsBranch: false },
-  { id: 'cash-flow',         label: 'Cash Flow',         endpoint: '/reports/cash-flow',         needsDate: true,  needsBranch: false },
+  { id: 'sales',             label: 'Sales Report',      endpoint: '/reports/sales',             needsDate: true,  needsBranch: true,  finance: false },
+  { id: 'stock-valuation',   label: 'Stock Valuation',   endpoint: '/reports/stock-valuation',   needsDate: false, needsBranch: true,  finance: false },
+  { id: 'pl',                label: 'Profit & Loss',     endpoint: '/reports/pl',                needsDate: true,  needsBranch: false, finance: true  },
+  { id: 'ap-aging',          label: 'AP Aging',          endpoint: '/reports/ap-aging',          needsDate: false, needsBranch: false, finance: true  },
+  { id: 'balance-sheet',     label: 'Balance Sheet',     endpoint: '/reports/balance-sheet',     needsDate: false, needsBranch: false, finance: true  },
+  { id: 'purchases-summary', label: 'Purchases Summary', endpoint: '/reports/purchases-summary', needsDate: true,  needsBranch: false, finance: true  },
+  { id: 'trial-balance',     label: 'Trial Balance',     endpoint: '/reports/trial-balance',     needsDate: true,  needsBranch: false, finance: true  },
+  { id: 'cash-flow',         label: 'Cash Flow',         endpoint: '/reports/cash-flow',         needsDate: true,  needsBranch: false, finance: true  },
 ];
 
 function extractReportData(reportId, data) {
@@ -2786,7 +2818,11 @@ function ReportsPanel({ companies }) {
   const [branchId,   setBranchId]   = useState('');
   const [runKey,     setRunKey]     = useState(null);
 
-  const def = REPORT_DEFS.find((r) => r.id === reportId);
+  const selectedCompany = companies.find((c) => c.company_id === companyId);
+  const hasFinance      = selectedCompany?.has_finance ?? false;
+  const availableReports = REPORT_DEFS.filter((r) => !r.finance || hasFinance);
+
+  const def = availableReports.find((r) => r.id === reportId) ?? availableReports[0];
 
   const { data: branches = [] } = useQuery({
     queryKey: ['co-branches', companyId],
@@ -2833,13 +2869,21 @@ function ReportsPanel({ companies }) {
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <p className="text-xs font-medium text-gray-600 mb-1">Company</p>
-            <CompanyFilter companies={companies} value={companyId} onChange={(v) => { setCompanyId(v); setRunKey(null); setBranchId(''); }} />
+            <CompanyFilter companies={companies} value={companyId} onChange={(v) => {
+            setCompanyId(v); setRunKey(null); setBranchId('');
+            const co = companies.find((c) => c.company_id === v);
+            const coHasFinance = co?.has_finance ?? false;
+            setReportId((prev) => {
+              const prevDef = REPORT_DEFS.find((r) => r.id === prev);
+              return (prevDef && (!prevDef.finance || coHasFinance)) ? prev : 'sales';
+            });
+          }} />
           </div>
           <div>
             <p className="text-xs font-medium text-gray-600 mb-1">Report</p>
-            <select value={reportId} onChange={(e) => { setReportId(e.target.value); setRunKey(null); setBranchId(''); }}
+            <select value={def?.id ?? 'sales'} onChange={(e) => { setReportId(e.target.value); setRunKey(null); setBranchId(''); }}
               className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none bg-white min-w-48">
-              {REPORT_DEFS.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+              {availableReports.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
             </select>
           </div>
           {def?.needsBranch && (

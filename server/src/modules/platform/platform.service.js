@@ -37,6 +37,8 @@ async function listAllCompanies({ search, status, page, limit } = {}) {
       c.company_id, c.company_name, c.domain, c.subscription_status,
       c.is_active, c.timezone, c.currency, c.created_at,
       sp.plan_name, sp.max_users, sp.max_branches,
+      COALESCE(sp.has_finance,    FALSE) AS has_finance,
+      COALESCE(sp.has_api_access, FALSE) AS has_api_access,
       (SELECT COUNT(*) FROM branches b WHERE b.company_id = c.company_id AND b.is_active = TRUE) AS branch_count,
       (SELECT COUNT(*) FROM users   u WHERE u.company_id = c.company_id AND u.is_active = TRUE) AS user_count,
       COUNT(*) OVER() AS total_count
