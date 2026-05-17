@@ -31,14 +31,40 @@ const changePasswordSchema = Joi.object({
   newPassword:     Joi.string().min(8).required(),
 });
 
+const forgotPasswordSchema = Joi.object({
+  email: Joi.string().email().required(),
+});
+
+const resetPasswordSchema = Joi.object({
+  token:       Joi.string().required(),
+  newPassword: Joi.string().min(6).required(),
+});
+
+const interestSchema = Joi.object({
+  fullName:     Joi.string().min(2).max(150).required(),
+  email:        Joi.string().email().required(),
+  phone:        Joi.string().max(30).allow('', null).optional(),
+  businessName: Joi.string().min(2).max(150).required(),
+  message:      Joi.string().max(1000).allow('', null).optional(),
+});
+
+// Moderate rate limit for password reset requests
+const forgotLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { success: false, message: 'Too many password reset requests. Try again in 15 minutes.' },
+});
+
 // Public
-router.post('/login',   loginLimiter,   validate(loginSchema), controller.login);
-// Refresh token comes from httpOnly cookie — no body schema needed
-router.post('/refresh', refreshLimiter, controller.refresh);
+router.post('/login',           loginLimiter,   validate(loginSchema),          controller.login);
+router.post('/refresh',         refreshLimiter, controller.refresh);
+router.post('/forgot-password', forgotLimiter,  validate(forgotPasswordSchema), controller.forgotPassword);
+router.post('/reset-password',  forgotLimiter,  validate(resetPasswordSchema),  controller.resetPassword);
+router.post('/interest',                        validate(interestSchema),        controller.submitInterest);
 
 // Protected
-router.post('/logout',          authenticate, controller.logout);
-router.get('/me',               authenticate, controller.me);
+router.post('/logout',           authenticate, controller.logout);
+router.get('/me',                authenticate, controller.me);
 router.patch('/change-password', authenticate, validate(changePasswordSchema), controller.changePassword);
 
 module.exports = router;

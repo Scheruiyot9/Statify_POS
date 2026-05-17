@@ -856,6 +856,19 @@ async function autoSuspendExpired() {
        AND subscription_status NOT IN ('suspended', 'cancelled')
      RETURNING company_id, company_name, subscription_end_date
   `);
+
+  if (rows.length) {
+    const ids = rows.map((r) => r.company_id);
+    // Revoke all active sessions for suspended companies so existing tokens stop working
+    await query(
+      `UPDATE user_sessions
+          SET revoked_at = now(), revoked_reason = 'subscription_suspended'
+        WHERE revoked_at IS NULL
+          AND user_id IN (SELECT user_id FROM users WHERE company_id = ANY($1::uuid[]))`,
+      [ids]
+    );
+  }
+
   return rows;
 }
 

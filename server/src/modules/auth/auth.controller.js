@@ -37,9 +37,24 @@ const me = (req, res) => {
 
 const changePassword = async (req, res) => {
   await authService.changePassword(req.user.userId, req.body);
-  // Invalidate the current refresh token cookie after password change
   res.clearCookie(COOKIE_NAME, { ...COOKIE_OPTS, maxAge: 0 });
   ok(res, { message: 'Password updated successfully. Please log in again.' });
 };
 
-module.exports = { login, refresh, logout, me, changePassword };
+const forgotPassword = async (req, res) => {
+  await authService.forgotPassword(req.body);
+  // Always return 200 — never leak whether the email exists
+  ok(res, { message: 'If that email is registered, you will receive a reset link shortly.' });
+};
+
+const resetPassword = async (req, res) => {
+  await authService.resetPassword(req.body);
+  ok(res, { message: 'Password reset successfully. You can now log in with your new password.' });
+};
+
+const submitInterest = async (req, res) => {
+  await authService.submitInterest(req.body);
+  ok(res, { message: 'Thank you! We will be in touch shortly.' });
+};
+
+module.exports = { login, refresh, logout, me, changePassword, forgotPassword, resetPassword, submitInterest };

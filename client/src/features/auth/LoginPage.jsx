@@ -6,7 +6,7 @@ import {
   BarChart3, ShoppingCart, Users, TrendingUp,
   Shield, CheckCircle2, Package, CreditCard,
   ChevronDown, Sparkles, Zap, Globe, Smartphone,
-  Repeat, Cloud, Key,
+  Repeat, Cloud, Key, Phone, ArrowLeft, Send,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -68,26 +68,27 @@ const INTEGRATIONS = [
 ];
 
 const NAV_LINKS = [
-  { label: 'Features', href: '#features' },
-  { label: 'Finance', href: '#finance' },
+  { label: 'Features',    href: '#features' },
+  { label: 'Finance',     href: '#finance' },
   { label: 'Integrations', href: '#integrations' },
-  { label: 'Support', href: 'mailto:support@statify.co' },
+  { label: 'Get Started', href: '#get-started' },
+  { label: 'Support',     href: 'mailto:support@statify.co.ke' },
 ];
 
-export default function LoginPage() {
+// ── Sign-in card (sign-in / forgot-password views) ───────────────────────────
+
+function SignInCard() {
   const navigate = useNavigate();
-  const setAuth = useAuthStore((s) => s.setAuth);
-  const [loading, setLoading] = useState(false);
-  const [showPwd, setShowPwd] = useState(false);
-  const [serverErr, setServerErr] = useState('');
-  const featuresRef = useRef(null);
+  const setAuth  = useAuthStore((s) => s.setAuth);
+  const [loading, setLoading]       = useState(false);
+  const [showPwd, setShowPwd]       = useState(false);
+  const [serverErr, setServerErr]   = useState('');
+  const [view, setView]             = useState('login'); // 'login' | 'forgot' | 'forgot-sent'
 
-  const { register, handleSubmit, formState: { errors } } = useForm();
+  const loginForm = useForm();
+  const forgotForm = useForm();
 
-  const scrollToFeatures = () =>
-    featuresRef.current?.scrollIntoView({ behavior: 'smooth' });
-
-  const onSubmit = async (data) => {
+  const onLogin = async (data) => {
     setLoading(true);
     setServerErr('');
     try {
@@ -102,6 +103,461 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  const onForgot = async (data) => {
+    setLoading(true);
+    setServerErr('');
+    try {
+      await api.post('/auth/forgot-password', data);
+      setView('forgot-sent');
+    } catch (err) {
+      setServerErr(err?.response?.data?.message || 'Request failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="w-full">
+      <div
+        className="overflow-hidden rounded-3xl shadow-2xl"
+        style={{ background: 'linear-gradient(160deg, #024A59 0%, #011920 100%)' }}
+      >
+        <div className="h-1 w-full bg-gradient-to-r from-secondary-400 via-secondary-500 to-secondary-400" />
+
+        <div className="px-8 pb-8 pt-7">
+          <div className="mb-5 flex items-center gap-2">
+            <StatifyLogo size={28} variant="white" />
+            <span className="text-sm font-extrabold tracking-widest text-white">STATIFY</span>
+            <span className="text-sm font-light text-secondary-400">POS</span>
+          </div>
+
+          {/* ── Login view ── */}
+          {view === 'login' && (
+            <>
+              <h2 className="text-xl font-bold text-white">Sign in to your workspace</h2>
+              <p className="mt-1 text-sm text-white/50">Enter your credentials to continue.</p>
+
+              {serverErr && (
+                <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-red-400/30 bg-red-500/15 px-4 py-3 text-sm text-red-300">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{serverErr}</span>
+                </div>
+              )}
+
+              <form onSubmit={loginForm.handleSubmit(onLogin)} className="mt-5 space-y-4" noValidate>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-white/70">Email address</label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-white/30">
+                      <Mail className="h-4 w-4" />
+                    </span>
+                    <input
+                      type="email"
+                      placeholder="you@company.com"
+                      autoComplete="email"
+                      autoFocus
+                      className={[
+                        'login-input block w-full rounded-xl border text-sm pl-10 pr-4 py-3 transition-colors',
+                        'bg-[#011d26] text-white placeholder-white/50',
+                        'focus:outline-none focus:ring-2 focus:ring-secondary-400/60 focus:border-secondary-400/60',
+                        loginForm.formState.errors.email ? 'border-red-400/50' : 'border-white/10 hover:border-white/20',
+                      ].join(' ')}
+                      {...loginForm.register('email', {
+                        required: 'Email is required',
+                        pattern: { value: /\S+@\S+\.\S+/, message: 'Enter a valid email' },
+                      })}
+                    />
+                  </div>
+                  {loginForm.formState.errors.email && (
+                    <p className="text-xs text-red-400">{loginForm.formState.errors.email.message}</p>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-white/70">Password</label>
+                    <button
+                      type="button"
+                      onClick={() => { setServerErr(''); setView('forgot'); }}
+                      className="text-xs text-secondary-400 hover:text-secondary-300 transition-colors"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-white/30">
+                      <Lock className="h-4 w-4" />
+                    </span>
+                    <input
+                      type={showPwd ? 'text' : 'password'}
+                      placeholder="••••••••"
+                      autoComplete="current-password"
+                      className={[
+                        'login-input block w-full rounded-xl border text-sm pl-10 pr-11 py-3 transition-colors',
+                        'bg-[#011d26] text-white placeholder-white/50',
+                        'focus:outline-none focus:ring-2 focus:ring-secondary-400/60 focus:border-secondary-400/60',
+                        loginForm.formState.errors.password ? 'border-red-400/50' : 'border-white/10 hover:border-white/20',
+                      ].join(' ')}
+                      {...loginForm.register('password', {
+                        required: 'Password is required',
+                        minLength: { value: 6, message: 'At least 6 characters' },
+                      })}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPwd((v) => !v)}
+                      className="absolute inset-y-0 right-3.5 flex items-center text-white/30 hover:text-white/60"
+                      tabIndex={-1}
+                    >
+                      {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  {loginForm.formState.errors.password && (
+                    <p className="text-xs text-red-400">{loginForm.formState.errors.password.message}</p>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className={[
+                    'flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 mt-1',
+                    'bg-secondary-500 text-sm font-bold text-primary-900 transition-all',
+                    'hover:bg-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-400 focus:ring-offset-2 focus:ring-offset-primary-900',
+                    'disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-secondary-500/20',
+                  ].join(' ')}
+                >
+                  {loading ? (
+                    <>
+                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                      </svg>
+                      Signing in…
+                    </>
+                  ) : 'Sign in'}
+                </button>
+              </form>
+
+              <div className="mt-6 space-y-2.5 border-t border-white/10 pt-5">
+                {[
+                  'Full access to all modules',
+                  'Real-time sales dashboard',
+                  'Finance & accounting suite',
+                ].map((p) => (
+                  <div key={p} className="flex items-center gap-2.5 text-xs text-white/45">
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-secondary-400" />
+                    {p}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* ── Forgot password view ── */}
+          {view === 'forgot' && (
+            <>
+              <button
+                onClick={() => { setServerErr(''); setView('login'); }}
+                className="mb-4 flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" /> Back to sign in
+              </button>
+
+              <h2 className="text-xl font-bold text-white">Reset password</h2>
+              <p className="mt-1 text-sm text-white/50">
+                Enter your email and we'll send a reset link if it's registered.
+              </p>
+
+              {serverErr && (
+                <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-red-400/30 bg-red-500/15 px-4 py-3 text-sm text-red-300">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{serverErr}</span>
+                </div>
+              )}
+
+              <form onSubmit={forgotForm.handleSubmit(onForgot)} className="mt-5 space-y-4" noValidate>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-white/70">Email address</label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-white/30">
+                      <Mail className="h-4 w-4" />
+                    </span>
+                    <input
+                      type="email"
+                      placeholder="you@company.com"
+                      autoComplete="email"
+                      autoFocus
+                      className={[
+                        'login-input block w-full rounded-xl border text-sm pl-10 pr-4 py-3 transition-colors',
+                        'bg-[#011d26] text-white placeholder-white/50',
+                        'focus:outline-none focus:ring-2 focus:ring-secondary-400/60 focus:border-secondary-400/60',
+                        forgotForm.formState.errors.email ? 'border-red-400/50' : 'border-white/10 hover:border-white/20',
+                      ].join(' ')}
+                      {...forgotForm.register('email', {
+                        required: 'Email is required',
+                        pattern: { value: /\S+@\S+\.\S+/, message: 'Enter a valid email' },
+                      })}
+                    />
+                  </div>
+                  {forgotForm.formState.errors.email && (
+                    <p className="text-xs text-red-400">{forgotForm.formState.errors.email.message}</p>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className={[
+                    'flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 mt-1',
+                    'bg-secondary-500 text-sm font-bold text-primary-900 transition-all',
+                    'hover:bg-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-400',
+                    'disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-secondary-500/20',
+                  ].join(' ')}
+                >
+                  {loading ? (
+                    <>
+                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                      </svg>
+                      Sending…
+                    </>
+                  ) : 'Send reset link'}
+                </button>
+              </form>
+
+              <div className="mt-5 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                <p className="text-xs text-white/40 leading-relaxed">
+                  Need help? Contact us at{' '}
+                  <a href="mailto:support@statify.co.ke" className="text-secondary-400 hover:text-secondary-300">
+                    support@statify.co.ke
+                  </a>{' '}
+                  or call{' '}
+                  <a href="tel:+254796265933" className="text-secondary-400 hover:text-secondary-300">
+                    +254 796 265 933
+                  </a>
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* ── Forgot-sent confirmation ── */}
+          {view === 'forgot-sent' && (
+            <div className="py-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-secondary-500/20 mb-4">
+                <Mail className="h-6 w-6 text-secondary-400" />
+              </div>
+              <h2 className="text-xl font-bold text-white">Check your inbox</h2>
+              <p className="mt-2 text-sm text-white/55 leading-relaxed">
+                If that email is registered with Statify, you'll receive a password reset link within a few minutes.
+                Check your spam folder if you don't see it.
+              </p>
+              <button
+                onClick={() => { setServerErr(''); setView('login'); }}
+                className="mt-6 flex items-center gap-1.5 text-sm text-secondary-400 hover:text-secondary-300 transition-colors"
+              >
+                <ArrowLeft className="h-4 w-4" /> Back to sign in
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Subscribe interest form ───────────────────────────────────────────────────
+
+function InterestForm() {
+  const [loading, setLoading]   = useState(false);
+  const [sent, setSent]         = useState(false);
+  const [serverErr, setServerErr] = useState('');
+
+  const { register, handleSubmit, reset, formState: { errors } } = useForm();
+
+  const onSubmit = async (data) => {
+    setLoading(true);
+    setServerErr('');
+    try {
+      await api.post('/auth/interest', {
+        fullName:     data.fullName,
+        email:        data.email,
+        phone:        data.phone || '',
+        businessName: data.businessName,
+        message:      data.message || '',
+      });
+      setSent(true);
+      reset();
+    } catch (err) {
+      setServerErr(err?.response?.data?.message || 'Failed to send. Please try again or email us directly.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (sent) {
+    return (
+      <div className="text-center py-10">
+        <CheckCircle2 className="mx-auto mb-4 h-12 w-12 text-secondary-500" />
+        <h3 className="text-xl font-bold text-gray-900">Thank you for your interest!</h3>
+        <p className="mt-2 text-sm text-gray-500 max-w-md mx-auto">
+          We've received your request and will get back to you within 1 business day to discuss getting your business set up on Statify.
+        </p>
+        <button
+          onClick={() => setSent(false)}
+          className="mt-6 text-sm text-secondary-600 hover:text-secondary-700 font-medium"
+        >
+          Submit another request
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="mb-10 text-center">
+        <p className="mb-2 text-xs font-bold uppercase tracking-widest text-secondary-600">Get started today</p>
+        <h2 className="text-3xl font-extrabold text-gray-900">Interested in Statify?</h2>
+        <p className="mx-auto mt-3 max-w-xl text-sm text-gray-500">
+          Leave your details and our team will reach out within 1 business day to walk you through a demo and get your workspace set up.
+        </p>
+      </div>
+
+      <div className="mx-auto max-w-2xl">
+        <div className="rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
+
+          {serverErr && (
+            <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{serverErr}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700">Full name <span className="text-red-400">*</span></label>
+                <input
+                  type="text"
+                  placeholder="Jane Doe"
+                  className={[
+                    'block w-full rounded-xl border px-4 py-2.5 text-sm transition-colors',
+                    'focus:outline-none focus:ring-2 focus:ring-primary-400/50 focus:border-primary-400',
+                    errors.fullName ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300',
+                  ].join(' ')}
+                  {...register('fullName', { required: 'Full name is required' })}
+                />
+                {errors.fullName && <p className="text-xs text-red-500">{errors.fullName.message}</p>}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700">Business name <span className="text-red-400">*</span></label>
+                <input
+                  type="text"
+                  placeholder="Acme Retail Ltd"
+                  className={[
+                    'block w-full rounded-xl border px-4 py-2.5 text-sm transition-colors',
+                    'focus:outline-none focus:ring-2 focus:ring-primary-400/50 focus:border-primary-400',
+                    errors.businessName ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300',
+                  ].join(' ')}
+                  {...register('businessName', { required: 'Business name is required' })}
+                />
+                {errors.businessName && <p className="text-xs text-red-500">{errors.businessName.message}</p>}
+              </div>
+            </div>
+
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700">Email <span className="text-red-400">*</span></label>
+                <input
+                  type="email"
+                  placeholder="jane@acme.co.ke"
+                  className={[
+                    'block w-full rounded-xl border px-4 py-2.5 text-sm transition-colors',
+                    'focus:outline-none focus:ring-2 focus:ring-primary-400/50 focus:border-primary-400',
+                    errors.email ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300',
+                  ].join(' ')}
+                  {...register('email', {
+                    required: 'Email is required',
+                    pattern: { value: /\S+@\S+\.\S+/, message: 'Enter a valid email' },
+                  })}
+                />
+                {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700">Phone number</label>
+                <input
+                  type="tel"
+                  placeholder="+254 7XX XXX XXX"
+                  className="block w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm transition-colors hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-400/50 focus:border-primary-400"
+                  {...register('phone')}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-gray-700">Message <span className="text-gray-400 font-normal">(optional)</span></label>
+              <textarea
+                rows={3}
+                placeholder="Tell us about your business — how many branches, staff, and what you're looking for…"
+                className="block w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm transition-colors hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-400/50 focus:border-primary-400 resize-none"
+                {...register('message')}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className={[
+                'flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3.5',
+                'bg-primary-700 text-sm font-bold text-white transition-all shadow-sm',
+                'hover:bg-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500',
+                'disabled:opacity-60 disabled:cursor-not-allowed',
+              ].join(' ')}
+            >
+              {loading ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                  Sending…
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4" />
+                  Send request
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-6 border-t border-gray-100 pt-5 text-xs text-gray-400">
+            <a href="mailto:support@statify.co.ke" className="flex items-center gap-1.5 hover:text-primary-600 transition-colors">
+              <Mail className="h-3.5 w-3.5" />
+              support@statify.co.ke
+            </a>
+            <a href="tel:+254796265933" className="flex items-center gap-1.5 hover:text-primary-600 transition-colors">
+              <Phone className="h-3.5 w-3.5" />
+              +254 796 265 933
+            </a>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export default function LoginPage() {
+  const featuresRef   = useRef(null);
+  const getStartedRef = useRef(null);
+
+  const scrollToFeatures   = () => featuresRef.current?.scrollIntoView({ behavior: 'smooth' });
 
   return (
     <div className="min-h-screen bg-white font-sans antialiased">
@@ -193,137 +649,17 @@ export default function LoginPage() {
               >
                 Explore features <ChevronDown className="h-4 w-4" />
               </button>
-              <a
-                href="#integrations"
+              <button
+                onClick={() => getStartedRef.current?.scrollIntoView({ behavior: 'smooth' })}
                 className="inline-flex items-center gap-2 rounded-xl border border-secondary-200 bg-secondary-50 px-5 py-2.5 text-sm font-semibold text-secondary-700 shadow-sm transition-all hover:bg-secondary-100"
               >
-                <Zap className="h-4 w-4" /> Integrations
-              </a>
+                <Zap className="h-4 w-4" /> Get started
+              </button>
             </div>
           </div>
 
           {/* Right — sign-in card */}
-          <div className="w-full">
-            <div
-              className="overflow-hidden rounded-3xl shadow-2xl"
-              style={{ background: 'linear-gradient(160deg, #024A59 0%, #011920 100%)' }}
-            >
-              <div className="h-1 w-full bg-gradient-to-r from-secondary-400 via-secondary-500 to-secondary-400" />
-
-              <div className="px-8 pb-8 pt-7">
-                <div className="mb-5 flex items-center gap-2">
-                  <StatifyLogo size={28} variant="white" />
-                  <span className="text-sm font-extrabold tracking-widest text-white">STATIFY</span>
-                  <span className="text-sm font-light text-secondary-400">POS</span>
-                </div>
-
-                <h2 className="text-xl font-bold text-white">Sign in to your workspace</h2>
-                <p className="mt-1 text-sm text-white/50">Enter your credentials to continue.</p>
-
-                {serverErr && (
-                  <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-red-400/30 bg-red-500/15 px-4 py-3 text-sm text-red-300">
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>{serverErr}</span>
-                  </div>
-                )}
-
-                <form onSubmit={handleSubmit(onSubmit)} className="mt-5 space-y-4" noValidate>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-white/70">Email address</label>
-                    <div className="relative">
-                      <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-white/30">
-                        <Mail className="h-4 w-4" />
-                      </span>
-                      <input
-                        type="email"
-                        placeholder="you@company.com"
-                        autoComplete="email"
-                        autoFocus
-                        className={[
-                          'login-input block w-full rounded-xl border text-sm pl-10 pr-4 py-3 transition-colors',
-                          'bg-[#011d26] text-white placeholder-white/50',
-                          'focus:outline-none focus:ring-2 focus:ring-secondary-400/60 focus:border-secondary-400/60',
-                          errors.email ? 'border-red-400/50' : 'border-white/10 hover:border-white/20',
-                        ].join(' ')}
-                        {...register('email', {
-                          required: 'Email is required',
-                          pattern: { value: /\S+@\S+\.\S+/, message: 'Enter a valid email' },
-                        })}
-                      />
-                    </div>
-                    {errors.email && <p className="text-xs text-red-400">{errors.email.message}</p>}
-                  </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-white/70">Password</label>
-                    <div className="relative">
-                      <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-white/30">
-                        <Lock className="h-4 w-4" />
-                      </span>
-                      <input
-                        type={showPwd ? 'text' : 'password'}
-                        placeholder="••••••••"
-                        autoComplete="current-password"
-                        className={[
-                          'login-input block w-full rounded-xl border text-sm pl-10 pr-11 py-3 transition-colors',
-                          'bg-[#011d26] text-white placeholder-white/50',
-                          'focus:outline-none focus:ring-2 focus:ring-secondary-400/60 focus:border-secondary-400/60',
-                          errors.password ? 'border-red-400/50' : 'border-white/10 hover:border-white/20',
-                        ].join(' ')}
-                        {...register('password', {
-                          required: 'Password is required',
-                          minLength: { value: 6, message: 'At least 6 characters' },
-                        })}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPwd((v) => !v)}
-                        className="absolute inset-y-0 right-3.5 flex items-center text-white/30 hover:text-white/60"
-                        tabIndex={-1}
-                      >
-                        {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
-                    {errors.password && <p className="text-xs text-red-400">{errors.password.message}</p>}
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className={[
-                      'flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 mt-1',
-                      'bg-secondary-500 text-sm font-bold text-primary-900 transition-all',
-                      'hover:bg-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-400 focus:ring-offset-2 focus:ring-offset-primary-900',
-                      'disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-secondary-500/20',
-                    ].join(' ')}
-                  >
-                    {loading ? (
-                      <>
-                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                        </svg>
-                        Signing in…
-                      </>
-                    ) : 'Sign in'}
-                  </button>
-                </form>
-
-                <div className="mt-6 space-y-2.5 border-t border-white/10 pt-5">
-                  {[
-                    'Full access to all modules',
-                    'Real-time sales dashboard',
-                    'Finance & accounting suite',
-                  ].map((p) => (
-                    <div key={p} className="flex items-center gap-2.5 text-xs text-white/45">
-                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-secondary-400" />
-                      {p}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+          <SignInCard />
         </div>
 
         {/* Dashboard screenshot strip */}
@@ -446,6 +782,13 @@ export default function LoginPage() {
         </div>
       </section>
 
+      {/* ── Get Started / Interest form ──────────────────────────────────────── */}
+      <section id="get-started" ref={getStartedRef} className="bg-gray-50 py-16">
+        <div className="mx-auto max-w-7xl px-8">
+          <InterestForm />
+        </div>
+      </section>
+
       {/* ── Footer ──────────────────────────────────────────────────────────── */}
       <footer
         className="py-7"
@@ -459,9 +802,12 @@ export default function LoginPage() {
           </div>
           <p className="text-xs text-white/25">© {new Date().getFullYear()} Statify · Multi-Tenant Point of Sale Platform</p>
           <div className="flex items-center gap-5">
-            {['Privacy', 'Terms', 'Support'].map((l) => (
-              <a key={l} href="#" className="text-xs text-white/25 transition-colors hover:text-white/60">{l}</a>
-            ))}
+            <a href="mailto:support@statify.co.ke" className="flex items-center gap-1.5 text-xs text-white/35 transition-colors hover:text-white/60">
+              <Mail className="h-3 w-3" /> support@statify.co.ke
+            </a>
+            <a href="tel:+254796265933" className="flex items-center gap-1.5 text-xs text-white/35 transition-colors hover:text-white/60">
+              <Phone className="h-3 w-3" /> +254 796 265 933
+            </a>
           </div>
         </div>
       </footer>

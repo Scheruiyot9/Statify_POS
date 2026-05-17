@@ -4,6 +4,7 @@ const jwt      = require('jsonwebtoken');
 const { query } = require('../../config/database');
 const env      = require('../../config/env');
 const AppError = require('../../shared/AppError');
+const { sendMail } = require('../../shared/mailer');
 
 const signAccess = (payload) =>
   jwt.sign(payload, env.jwt.secret, { expiresIn: env.jwt.expiresIn });
@@ -56,10 +57,12 @@ const login = async ({ email, password }) => {
   const { rows } = await query(
     `SELECT u.user_id, u.company_id, u.password_hash, u.is_active,
             u.first_name, u.last_name,
-            r.role_name
+            r.role_name,
+            c.subscription_status
        FROM users u
        LEFT JOIN user_roles ur ON ur.user_id = u.user_id
        LEFT JOIN roles r        ON r.role_id  = ur.role_id
+       LEFT JOIN companies c    ON c.company_id = u.company_id
       WHERE u.email = $1
       LIMIT 1`,
     [email.toLowerCase().trim()]
@@ -68,6 +71,10 @@ const login = async ({ email, password }) => {
   const user = rows[0];
   if (!user) throw AppError.unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
   if (!user.is_active) throw AppError.forbidden('Account is deactivated', 'ACCOUNT_INACTIVE');
+  if (user.subscription_status === 'suspended')
+    throw AppError.forbidden('Your subscription has expired. Please contact support@statify.co.ke or call +254796265933 to renew.', 'SUBSCRIPTION_EXPIRED');
+  if (user.subscription_status === 'cancelled')
+    throw AppError.forbidden('Your account has been cancelled. Please contact support@statify.co.ke for assistance.', 'ACCOUNT_CANCELLED');
 
   const valid = await bcrypt.compare(password, user.password_hash);
   if (!valid) throw AppError.unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
@@ -172,6 +179,111 @@ const changePassword = async (userId, { currentPassword, newPassword }) => {
   );
 };
 
+const forgotPassword = async ({ email }) => {
+  const { rows } = await query(
+    `SELECT user_id, first_name FROM users WHERE email = $1 AND is_active = TRUE LIMIT 1`,
+    [email.toLowerCase().trim()]
+  );
+
+  // Always return success — never reveal whether an email exists
+  if (!rows.length) return;
+
+  const user = rows[0];
+
+  // Expire any existing unused tokens for this user
+  await query(
+    `UPDATE password_reset_tokens SET used_at = now() WHERE user_id = $1 AND used_at IS NULL`,
+    [user.user_id]
+  );
+
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(rawToken);
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+  await query(
+    `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+    [user.user_id, tokenHash, expiresAt]
+  );
+
+  const resetLink = `${env.appUrl}/reset-password?token=${rawToken}`;
+
+  await sendMail({
+    to: email,
+    subject: 'Reset your Statify POS password',
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#f9fafb;border-radius:12px">
+        <h2 style="color:#024A59;margin-bottom:8px">Password Reset Request</h2>
+        <p style="color:#374151">Hi ${user.first_name},</p>
+        <p style="color:#374151">You requested a password reset for your Statify POS account. Click the button below to set a new password. This link expires in 1 hour.</p>
+        <a href="${resetLink}" style="display:inline-block;margin:20px 0;padding:12px 28px;background:#024A59;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Reset Password</a>
+        <p style="color:#6B7280;font-size:13px">If you didn't request this, you can safely ignore this email.</p>
+        <hr style="border:none;border-top:1px solid #E5E7EB;margin:24px 0"/>
+        <p style="color:#9CA3AF;font-size:12px">Statify POS · support@statify.co.ke · +254796265933</p>
+      </div>
+    `,
+    text: `Hi ${user.first_name},\n\nReset your Statify POS password:\n${resetLink}\n\nThis link expires in 1 hour.\n\n— Statify POS`,
+  });
+};
+
+const resetPassword = async ({ token, newPassword }) => {
+  if (!token || !newPassword) throw AppError.badRequest('Token and new password are required');
+  if (newPassword.length < 6) throw AppError.badRequest('Password must be at least 6 characters');
+
+  const tokenHash = hashToken(token);
+  const { rows } = await query(
+    `SELECT prt.token_id, prt.user_id FROM password_reset_tokens prt
+      WHERE prt.token_hash = $1
+        AND prt.used_at IS NULL
+        AND prt.expires_at > now()
+      LIMIT 1`,
+    [tokenHash]
+  );
+
+  if (!rows.length)
+    throw AppError.badRequest('This reset link is invalid or has expired. Please request a new one.', 'INVALID_RESET_TOKEN');
+
+  const { token_id, user_id } = rows[0];
+  const hash = await bcrypt.hash(newPassword, env.bcryptRounds);
+
+  await query(`UPDATE users SET password_hash = $1, updated_at = now() WHERE user_id = $2`, [hash, user_id]);
+  await query(`UPDATE password_reset_tokens SET used_at = now() WHERE token_id = $1`, [token_id]);
+  // Revoke all sessions to force fresh login
+  await query(
+    `UPDATE user_sessions SET revoked_at = now(), revoked_reason = 'password_reset'
+      WHERE user_id = $1 AND revoked_at IS NULL`,
+    [user_id]
+  );
+};
+
+const submitInterest = async ({ fullName, email, phone, businessName, message }) => {
+  if (!fullName || !email || !businessName)
+    throw AppError.badRequest('Name, email, and business name are required');
+
+  await query(
+    `INSERT INTO subscription_interests (full_name, email, phone, business_name, message)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [fullName.trim(), email.toLowerCase().trim(), phone?.trim() || null, businessName.trim(), message?.trim() || null]
+  );
+
+  await sendMail({
+    to: 'support@statify.co.ke',
+    subject: `New subscription interest: ${businessName}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#f9fafb;border-radius:12px">
+        <h2 style="color:#024A59">New Subscription Interest</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;color:#374151">
+          <tr><td style="padding:6px 0;font-weight:600;width:130px">Name</td><td>${fullName}</td></tr>
+          <tr><td style="padding:6px 0;font-weight:600">Email</td><td>${email}</td></tr>
+          <tr><td style="padding:6px 0;font-weight:600">Phone</td><td>${phone || '—'}</td></tr>
+          <tr><td style="padding:6px 0;font-weight:600">Business</td><td>${businessName}</td></tr>
+          <tr><td style="padding:6px 0;font-weight:600;vertical-align:top">Message</td><td>${message || '—'}</td></tr>
+        </table>
+      </div>
+    `,
+    text: `New interest:\nName: ${fullName}\nEmail: ${email}\nPhone: ${phone}\nBusiness: ${businessName}\nMessage: ${message}`,
+  });
+};
+
 // Convert JWT duration strings like '7d', '15m', '1h' to milliseconds
 function parseDuration(str) {
   const units = { s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000 };
@@ -180,4 +292,4 @@ function parseDuration(str) {
   return parseInt(m[1], 10) * (units[m[2]] || 86400000);
 }
 
-module.exports = { login, refresh, logout, changePassword };
+module.exports = { login, refresh, logout, changePassword, forgotPassword, resetPassword, submitInterest };

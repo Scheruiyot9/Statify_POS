@@ -4,6 +4,7 @@ import { useAuthStore } from './store';
 import { capabilitiesForRole, permissionToCapability } from './permissions';
 
 import LoginPage        from '@/features/auth/LoginPage';
+import ResetPasswordPage from '@/features/auth/ResetPasswordPage';
 import AppLayout        from '@/components/layout/AppLayout';
 import PosLayout        from '@/components/layout/PosLayout';
 import DashboardPage    from '@/features/dashboard/DashboardPage';
@@ -72,7 +73,8 @@ export default function AppRouter() {
   return (
     <Routes>
       {/* Public */}
-      <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+      <Route path="/login"          element={<PublicRoute><LoginPage /></PublicRoute>} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
 
       {/* POS Terminal — full-screen, own layout */}
       <Route path="/pos" element={
