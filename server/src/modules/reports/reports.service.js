@@ -1064,11 +1064,21 @@ async function getCashFlowStatement(companyId, { startDate, endDate } = {}) {
 
 // ── Stock Valuation ───────────────────────────────────────────────────────────
 
-async function getStockValuation(companyId, { branchId } = {}) {
+async function getStockValuation(companyId, role, branchIds, { branchId } = {}) {
   const conds = ['p.company_id = $1', 'p.is_active = TRUE', 'b.company_id = $1', 'pbi.quantity_available > 0'];
   const vals  = [companyId];
 
-  if (branchId) { vals.push(branchId); conds.push(`pbi.branch_id = $${vals.length}`); }
+  if (isCompanyWide(role)) {
+    // company-wide roles: optionally filter by a specific branchId from query params
+    if (branchId) { vals.push(branchId); conds.push(`pbi.branch_id = $${vals.length}`); }
+  } else {
+    // branch-scoped roles: restrict to assigned branches
+    const ids = branchIds && branchIds.length
+      ? branchIds
+      : ['00000000-0000-0000-0000-000000000000'];
+    vals.push(ids);
+    conds.push(`pbi.branch_id = ANY($${vals.length})`);
+  }
 
   const { rows } = await query(`
     SELECT

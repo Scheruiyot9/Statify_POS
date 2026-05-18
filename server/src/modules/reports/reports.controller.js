@@ -36,7 +36,8 @@ const balanceSheet = async (req, res) => {
 };
 
 const stockValuation = async (req, res) => {
-  const data = await getStockValuation(req.tenantId, req.query);
+  const { role, branchIds = [] } = req.user;
+  const data = await getStockValuation(req.tenantId, role, branchIds, req.query);
   res.json({ success: true, data });
 };
 

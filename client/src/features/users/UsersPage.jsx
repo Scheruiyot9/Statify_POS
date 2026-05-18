@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit2, UserCheck, UserX, KeyRound, Search, ShieldCheck } from 'lucide-react';
+import { Plus, Edit2, UserCheck, UserX, KeyRound, Search, ShieldCheck, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Button      from '@/components/ui/Button';
@@ -27,10 +27,61 @@ function RoleBadge({ role }) {
   );
 }
 
+// ── Temp Password Modal ───────────────────────────────────────────────────────
+function TempPasswordModal({ name, email, password, onClose }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(password);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl overflow-hidden">
+        <div className="bg-green-50 border-b border-green-100 px-6 py-4 flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-green-100">
+            <KeyRound className="h-5 w-5 text-green-600" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-green-800">User Created</p>
+            <p className="text-xs text-green-600">Share this temporary password with the user</p>
+          </div>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <p className="text-xs text-gray-500 mb-0.5">User</p>
+            <p className="text-sm font-medium text-gray-800">{name}</p>
+            <p className="text-xs text-gray-500">{email}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Temporary Password</p>
+            <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+              <code className="flex-1 text-sm font-mono font-semibold tracking-wider text-gray-900 select-all">{password}</code>
+              <button onClick={copy} className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800 transition-colors font-medium">
+                <Copy className="h-3.5 w-3.5" />
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+            This password is shown only once. The user should change it immediately after first login.
+          </p>
+          <button onClick={onClose} className="w-full rounded-lg bg-primary-600 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 transition-colors">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── User Form Modal ───────────────────────────────────────────────────────────
 function UserForm({ user, onClose }) {
   const qc = useQueryClient();
   const isEdit = !!user;
+
+  const [tempPassword, setTempPassword] = useState(null);
+  const [createdUser, setCreatedUser]   = useState(null);
 
   const [form, setForm] = useState({
     first_name: user?.first_name ?? '',
@@ -55,16 +106,14 @@ function UserForm({ user, onClose }) {
         ? api.put(`/users/${user.user_id}`, data)
         : api.post('/users', data),
     onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['users'] });
       if (!isEdit && res.data.data?.temp_password) {
-        toast.success(
-          `User created. Temporary password: ${res.data.data.temp_password}`,
-          { duration: 12000 }
-        );
+        setCreatedUser({ name: `${form.first_name} ${form.last_name}`.trim(), email: form.email });
+        setTempPassword(res.data.data.temp_password);
       } else {
         toast.success(isEdit ? 'User updated' : 'User created');
+        onClose();
       }
-      qc.invalidateQueries({ queryKey: ['users'] });
-      onClose();
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Save failed'),
   });
@@ -81,6 +130,7 @@ function UserForm({ user, onClose }) {
   };
 
   return (
+    <>
     <Modal
       open
       onClose={onClose}
@@ -178,6 +228,15 @@ function UserForm({ user, onClose }) {
         )}
       </div>
     </Modal>
+    {tempPassword && (
+      <TempPasswordModal
+        name={createdUser?.name}
+        email={createdUser?.email}
+        password={tempPassword}
+        onClose={() => { setTempPassword(null); onClose(); }}
+      />
+    )}
+    </>
   );
 }
 

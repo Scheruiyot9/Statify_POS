@@ -49,7 +49,7 @@ const buildTokenPayload = async (user) => {
 const login = async ({ email, password }) => {
   const { rows } = await query(
     `SELECT u.user_id, u.company_id, u.password_hash, u.is_active,
-            u.first_name, u.last_name,
+            u.first_name, u.last_name, u.must_reset_password,
             r.role_name,
             c.subscription_status
        FROM users u
@@ -90,13 +90,14 @@ const login = async ({ email, password }) => {
     accessToken,
     refreshToken,
     user: {
-      userId:       user.user_id,
-      firstName:    user.first_name,
-      lastName:     user.last_name,
-      role:         user.role_name,
-      companyId:    user.company_id,
-      branchIds:    payload.branchIds,
-      planFeatures: payload.planFeatures,
+      userId:            user.user_id,
+      firstName:         user.first_name,
+      lastName:          user.last_name,
+      role:              user.role_name,
+      companyId:         user.company_id,
+      branchIds:         payload.branchIds,
+      planFeatures:      payload.planFeatures,
+      mustResetPassword: user.must_reset_password ?? false,
     },
   };
 };
@@ -162,7 +163,10 @@ const changePassword = async (userId, { currentPassword, newPassword }) => {
   if (!valid) throw AppError.badRequest('Current password is incorrect', 'WRONG_PASSWORD');
 
   const hash = await bcrypt.hash(newPassword, env.bcryptRounds);
-  await query('UPDATE users SET password_hash = $1, updated_at = now() WHERE user_id = $2', [hash, userId]);
+  await query(
+    'UPDATE users SET password_hash = $1, must_reset_password = FALSE, updated_at = now() WHERE user_id = $2',
+    [hash, userId]
+  );
 
   // Revoke all active sessions — force re-login everywhere after password change
   await query(
@@ -240,7 +244,10 @@ const resetPassword = async ({ token, newPassword }) => {
   const { token_id, user_id } = rows[0];
   const hash = await bcrypt.hash(newPassword, env.bcryptRounds);
 
-  await query(`UPDATE users SET password_hash = $1, updated_at = now() WHERE user_id = $2`, [hash, user_id]);
+  await query(
+    `UPDATE users SET password_hash = $1, must_reset_password = FALSE, updated_at = now() WHERE user_id = $2`,
+    [hash, user_id]
+  );
   await query(`UPDATE password_reset_tokens SET used_at = now() WHERE token_id = $1`, [token_id]);
   // Revoke all sessions to force fresh login
   await query(

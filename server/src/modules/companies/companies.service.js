@@ -446,6 +446,50 @@ async function requestUpgrade(companyId, { planName, message }) {
   });
 }
 
+async function submitSubscriptionRequest(companyId, { planId, period, message }) {
+  if (!planId) throw AppError.badRequest('planId is required');
+  const validPeriods = ['monthly', 'quarterly', 'semi_annual', 'annual', 'biennial', 'custom'];
+  if (!validPeriods.includes(period)) throw AppError.badRequest('Invalid period');
+
+  const { rows: [plan] } = await query(
+    `SELECT plan_id FROM subscription_plans WHERE plan_id = $1 AND is_active = TRUE`, [planId]
+  );
+  if (!plan) throw AppError.notFound('Subscription plan');
+
+  const { rows: [req] } = await query(`
+    INSERT INTO subscription_requests (company_id, plan_id, period, message)
+    VALUES ($1, $2, $3, $4)
+    RETURNING request_id, company_id, plan_id, period, message, status, created_at
+  `, [companyId, planId, period, message || null]);
+
+  return req;
+}
+
+async function listMySubscriptionRequests(companyId, { page = 1, limit = 20 } = {}) {
+  const pg = Math.max(1, parseInt(page, 10));
+  const lm = Math.min(100, Math.max(1, parseInt(limit, 10)));
+
+  const { rows } = await query(`
+    SELECT sr.request_id, sr.period, sr.message, sr.status,
+           sr.rejection_reason, sr.created_at, sr.actioned_at,
+           sp.plan_name, sp.price::numeric AS plan_price,
+           u.first_name || ' ' || u.last_name AS actioned_by_name,
+           COUNT(*) OVER() AS total_count
+      FROM subscription_requests sr
+      JOIN subscription_plans sp ON sp.plan_id = sr.plan_id
+      LEFT JOIN users u ON u.user_id = sr.actioned_by
+     WHERE sr.company_id = $1
+     ORDER BY sr.created_at DESC
+     LIMIT $2 OFFSET $3
+  `, [companyId, lm, (pg - 1) * lm]);
+
+  const total = rows.length ? parseInt(rows[0].total_count) : 0;
+  return {
+    requests: rows.map(({ total_count: _, ...r }) => r),
+    total, page: pg, limit: lm, pages: Math.ceil(total / lm),
+  };
+}
+
 async function deleteCompany(companyId) {
   const { rows: open } = await query(
     `SELECT COUNT(*) AS cnt
@@ -481,4 +525,6 @@ module.exports = {
   updateLoyaltySettings,
   getMySubscription,
   requestUpgrade,
+  submitSubscriptionRequest,
+  listMySubscriptionRequests,
 };

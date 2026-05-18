@@ -19,8 +19,10 @@ router.patch('/mine/loyalty', authenticate, requireRole('company_admin'), contro
 router.patch('/mine/profile', authenticate, requireRole('company_admin'), controller.updateMyProfile);
 
 // Subscription self-service — any authenticated tenant user can view; company_admin can request upgrade
-router.get('/mine/subscription',      authenticate, controller.getMySubscription);
-router.post('/mine/upgrade-request',  authenticate, requireRole('company_admin'), controller.requestUpgrade);
+router.get('/mine/subscription',              authenticate, controller.getMySubscription);
+router.post('/mine/upgrade-request',          authenticate, requireRole('company_admin'), controller.requestUpgrade);
+router.get('/mine/subscription-requests',     authenticate, requireRole('company_admin'), controller.listMySubscriptionRequests);
+router.post('/mine/subscription-requests',    authenticate, requireRole('company_admin'), controller.submitSubscriptionRequest);
 
 // All remaining routes are super_admin only — no tenant context required
 router.use(authenticate, requireRole('super_admin'));

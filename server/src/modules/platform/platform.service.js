@@ -852,6 +852,80 @@ async function recordSubscription(companyId, { planId, period, startDate, endDat
   return sub;
 }
 
+async function listSubscriptionRequests({ status, companyId, page, limit } = {}) {
+  const { pg, lm, offset } = paginate(page, limit);
+  const qb = new QueryBuilder();
+  const conds = ['1=1'];
+  if (status)    conds.push(`sr.status = $${qb.add(status)}`);
+  if (companyId) conds.push(`sr.company_id = $${qb.add(companyId)}`);
+  const limIdx = qb.add(lm);
+  const offIdx = qb.add(offset);
+
+  const { rows } = await query(`
+    SELECT sr.request_id, sr.period, sr.message, sr.status,
+           sr.rejection_reason, sr.created_at, sr.actioned_at,
+           c.company_id, c.company_name,
+           sp.plan_id, sp.plan_name, sp.price::numeric AS plan_price,
+           sp.annual_price::numeric,
+           u.first_name || ' ' || u.last_name AS actioned_by_name,
+           COUNT(*) OVER() AS total_count
+      FROM subscription_requests sr
+      JOIN companies          c  ON c.company_id = sr.company_id
+      JOIN subscription_plans sp ON sp.plan_id   = sr.plan_id
+      LEFT JOIN users         u  ON u.user_id    = sr.actioned_by
+     WHERE ${conds.join(' AND ')}
+     ORDER BY CASE WHEN sr.status = 'pending' THEN 0 ELSE 1 END, sr.created_at DESC
+     LIMIT $${limIdx} OFFSET $${offIdx}
+  `, qb.params);
+
+  return shape(rows, pg, lm, 'requests');
+}
+
+async function actionSubscriptionRequest(requestId, { action, rejectionReason, startDate, endDate, amountPaid }, adminUserId) {
+  if (!['approved', 'rejected'].includes(action))
+    throw AppError.badRequest('action must be "approved" or "rejected"');
+
+  const { rows: [req] } = await query(
+    `SELECT * FROM subscription_requests WHERE request_id = $1`, [requestId]
+  );
+  if (!req) throw AppError.notFound('Subscription request');
+  if (req.status !== 'pending') throw AppError.badRequest('This request has already been actioned');
+
+  if (action === 'rejected') {
+    await query(`
+      UPDATE subscription_requests
+         SET status = 'rejected', actioned_by = $2, actioned_at = now(), rejection_reason = $3
+       WHERE request_id = $1
+    `, [requestId, adminUserId, rejectionReason || null]);
+    return { status: 'rejected' };
+  }
+
+  // approved — validate then record the subscription
+  if (!startDate) throw AppError.badRequest('startDate is required for approval');
+  if (!endDate)   throw AppError.badRequest('endDate is required for approval');
+
+  const sub = await recordSubscription(
+    req.company_id,
+    {
+      planId:     req.plan_id,
+      period:     req.period,
+      startDate,
+      endDate,
+      amountPaid: amountPaid != null ? parseFloat(amountPaid) : null,
+      notes:      `Approved from subscription request ${requestId}`,
+    },
+    adminUserId
+  );
+
+  await query(`
+    UPDATE subscription_requests
+       SET status = 'approved', actioned_by = $2, actioned_at = now()
+     WHERE request_id = $1
+  `, [requestId, adminUserId]);
+
+  return { status: 'approved', subscription: sub };
+}
+
 async function autoSuspendExpired() {
   const { rows } = await query(`
     UPDATE companies
@@ -968,4 +1042,5 @@ module.exports = {
   changeCompanyPlan, changeCompanyStatus,
   listSubscriptions, recordSubscription, autoSuspendExpired,
   createSuperAdmin, updateAnyUser,
+  listSubscriptionRequests, actionSubscriptionRequest,
 };

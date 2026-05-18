@@ -7,7 +7,7 @@ import {
   Monitor, ShoppingCart, Package, BarChart2, UserCheck,
   Layers, ArrowRight, Pencil, Trash2, DollarSign,
   Power, Truck, BookOpen, Landmark, ScrollText, Smartphone, Settings, FileText,
-  CalendarRange, Copy, KeyRound,
+  CalendarRange, Copy, KeyRound, CheckCircle2, Ban, ThumbsUp,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -3115,86 +3115,344 @@ function ReportsPanel({ companies }) {
   );
 }
 
+// ── Approve Request Modal ─────────────────────────────────────────────────────
+
+function ApproveRequestModal({ request, plans, onClose }) {
+  const qc    = useQueryClient();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const plan = plans.find((p) => p.plan_id === request.plan_id);
+
+  const [form, setFormState] = useState(() => {
+    const p = PERIODS.find((x) => x.value === request.period);
+    const end = p?.months ? addMonths(today, p.months) : today;
+    return {
+      startDate:  today,
+      endDate:    end,
+      amountPaid: computeAmount(plan, request.period) || '',
+    };
+  });
+  const set = (k, v) => setFormState((f) => ({ ...f, [k]: v }));
+
+  const handleStartChange = (startDate) => {
+    const p = PERIODS.find((x) => x.value === request.period);
+    setFormState((f) => ({
+      ...f,
+      startDate,
+      endDate: p?.months ? addMonths(startDate, p.months) : f.endDate,
+    }));
+  };
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => api.patch(`/platform/subscription-requests/${request.request_id}`, {
+      action: 'approved',
+      startDate:  form.startDate,
+      endDate:    form.endDate,
+      amountPaid: form.amountPaid !== '' ? parseFloat(form.amountPaid) : null,
+    }),
+    onSuccess: () => {
+      toast.success('Subscription approved and activated');
+      qc.invalidateQueries({ queryKey: ['platform-sub-requests'] });
+      qc.invalidateQueries({ queryKey: ['platform-subscriptions'] });
+      qc.invalidateQueries({ queryKey: ['admin-companies'] });
+      onClose();
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Approval failed'),
+  });
+
+  return (
+    <Modal open onClose={onClose} title="Approve Subscription Request" size="sm"
+      footer={
+        <div className="flex gap-3">
+          <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+          <Button fullWidth loading={isPending} icon={<ThumbsUp className="h-4 w-4" />} onClick={() => mutate()}>
+            Approve & Activate
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2.5 text-sm space-y-0.5">
+          <p><span className="text-gray-500">Company:</span> <span className="font-medium text-gray-800">{request.company_name}</span></p>
+          <p><span className="text-gray-500">Plan:</span> <span className="font-medium text-gray-800">{request.plan_name}</span></p>
+          <p><span className="text-gray-500">Period:</span> <span className="capitalize text-gray-800">{request.period?.replace('_', '-')}</span></p>
+          {request.message && <p><span className="text-gray-500">Note:</span> <span className="text-gray-700 italic">{request.message}</span></p>}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Start Date</label>
+            <input type="date" value={form.startDate} max={form.endDate}
+              onChange={(e) => handleStartChange(e.target.value)}
+              className={inp} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">End Date</label>
+            <input type="date" value={form.endDate} min={form.startDate}
+              onChange={(e) => set('endDate', e.target.value)}
+              className={inp} />
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Amount Paid (KES)</label>
+          <input type="number" min="0" step="0.01" value={form.amountPaid}
+            onChange={(e) => set('amountPaid', e.target.value)}
+            placeholder="0.00" className={inp} />
+        </div>
+
+        <div className="rounded-lg bg-green-50 border border-green-100 px-3 py-2 text-xs text-green-700">
+          This will set the company status to <strong>active</strong> and update their plan and subscription dates.
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Reject Request Modal ──────────────────────────────────────────────────────
+
+function RejectRequestModal({ request, onClose }) {
+  const qc = useQueryClient();
+  const [reason, setReason] = useState('');
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => api.patch(`/platform/subscription-requests/${request.request_id}`, {
+      action: 'rejected',
+      rejectionReason: reason || null,
+    }),
+    onSuccess: () => {
+      toast.success('Request rejected');
+      qc.invalidateQueries({ queryKey: ['platform-sub-requests'] });
+      onClose();
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
+  });
+
+  return (
+    <Modal open onClose={onClose} title="Reject Subscription Request" size="sm"
+      footer={
+        <div className="flex gap-3">
+          <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+          <Button fullWidth loading={isPending} variant="danger" icon={<Ban className="h-4 w-4" />} onClick={() => mutate()}>
+            Reject Request
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2.5 text-sm space-y-0.5">
+          <p><span className="text-gray-500">Company:</span> <span className="font-medium">{request.company_name}</span></p>
+          <p><span className="text-gray-500">Plan:</span> <span className="font-medium">{request.plan_name}</span></p>
+          <p><span className="text-gray-500">Period:</span> <span className="capitalize">{request.period?.replace('_', '-')}</span></p>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Reason <span className="font-normal text-gray-400">(optional — shown to company)</span></label>
+          <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. Payment not received, please contact billing…"
+            className={inp + ' resize-none'} />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Subscriptions Panel ───────────────────────────────────────────────────────
 
+const REQ_STATUS_STYLE = {
+  pending:  { cls: 'bg-amber-100 text-amber-700', label: 'Pending'  },
+  approved: { cls: 'bg-green-100 text-green-700', label: 'Approved' },
+  rejected: { cls: 'bg-red-100  text-red-600',   label: 'Rejected' },
+};
+
 function SubscriptionsPanel({ companies }) {
+  const [subTab,     setSubTab]     = useState('requests'); // 'requests' | 'recorded'
   const [companyId,  setCompanyId]  = useState('');
+  const [statusFilt, setStatusFilt] = useState('');
   const [page,       setPage]       = useState(1);
   const [recordOpen, setRecordOpen] = useState(false);
+  const [approving,  setApproving]  = useState(null);
+  const [rejecting,  setRejecting]  = useState(null);
 
   const { data: plansData = [] } = useQuery({
     queryKey: ['platform-plans'],
     queryFn: () => api.get('/platform/plans').then((r) => r.data.data),
   });
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['platform-subscriptions', companyId, page],
-    queryFn: () => api.get('/platform/subscriptions', { params: { companyId: companyId || undefined, page, limit: 25 } }).then((r) => r.data.data),
+  const { data: reqData, isLoading: reqLoading } = useQuery({
+    queryKey: ['platform-sub-requests', companyId, statusFilt, page],
+    queryFn: () => api.get('/platform/subscription-requests', {
+      params: { companyId: companyId || undefined, status: statusFilt || undefined, page, limit: 25 },
+    }).then((r) => r.data.data),
     placeholderData: (prev) => prev,
+    enabled: subTab === 'requests',
   });
 
-  const rows  = data?.subscriptions ?? [];
-  const pages = data?.pages ?? 1;
-  const total = data?.total ?? 0;
+  const { data: subData, isLoading: subLoading } = useQuery({
+    queryKey: ['platform-subscriptions', companyId, page],
+    queryFn: () => api.get('/platform/subscriptions', {
+      params: { companyId: companyId || undefined, page, limit: 25 },
+    }).then((r) => r.data.data),
+    placeholderData: (prev) => prev,
+    enabled: subTab === 'recorded',
+  });
+
+  const reqRows  = reqData?.requests      ?? [];
+  const subRows  = subData?.subscriptions ?? [];
+  const pendingCount = reqData?.total ?? 0;
+
+  const pages = subTab === 'requests' ? (reqData?.pages ?? 1) : (subData?.pages ?? 1);
+  const total = subTab === 'requests' ? (reqData?.total  ?? 0) : (subData?.total  ?? 0);
+  const isLoading = subTab === 'requests' ? reqLoading : subLoading;
+
+  const handleTabChange = (t) => { setSubTab(t); setPage(1); };
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      {/* Sub-tabs + filters */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex rounded-lg border border-gray-200 bg-white overflow-hidden text-sm font-medium">
+          {[
+            { id: 'requests', label: 'Requests' },
+            { id: 'recorded', label: 'Recorded' },
+          ].map((t) => (
+            <button key={t.id} onClick={() => handleTabChange(t.id)}
+              className={`px-4 py-2 transition-colors ${subTab === t.id ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-center gap-2">
           <select value={companyId} onChange={(e) => { setCompanyId(e.target.value); setPage(1); }}
             className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:border-primary-500">
             <option value="">All Companies</option>
             {companies.map((c) => <option key={c.company_id} value={c.company_id}>{c.company_name}</option>)}
           </select>
+
+          {subTab === 'requests' && (
+            <select value={statusFilt} onChange={(e) => { setStatusFilt(e.target.value); setPage(1); }}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:border-primary-500">
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          )}
+
+          {subTab === 'recorded' && (
+            <Button size="sm" icon={<CalendarRange className="h-4 w-4" />} onClick={() => setRecordOpen(true)}>
+              Record Subscription
+            </Button>
+          )}
         </div>
-        <Button size="sm" icon={<CalendarRange className="h-4 w-4" />} onClick={() => setRecordOpen(true)}>
-          Record Subscription
-        </Button>
       </div>
 
-      {isLoading ? <PageSpinner /> : rows.length === 0 ? (
-        <div className="rounded-xl border border-gray-100 bg-white py-16 text-center text-gray-400 text-sm">
-          No subscription records found
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Company</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Plan</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Period</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Start</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">End</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">Amount (KES)</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Recorded by</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {rows.map((s) => {
-                const expired      = s.end_date && new Date(s.end_date) < new Date();
-                const expiringSoon = !expired && s.end_date && (new Date(s.end_date) - new Date()) < 30 * 86400000;
-                return (
-                  <tr key={s.subscription_id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-800">{s.company_name}</td>
-                    <td className="px-4 py-3 text-gray-600">{s.plan_name}</td>
-                    <td className="px-4 py-3 capitalize text-gray-600">{s.period?.replace('_', '-') || '—'}</td>
-                    <td className="px-4 py-3 text-gray-600">{s.start_date ? String(s.start_date).slice(0,10) : '—'}</td>
-                    <td className={`px-4 py-3 font-medium ${expired ? 'text-red-600' : expiringSoon ? 'text-amber-600' : 'text-gray-600'}`}>
-                      {s.end_date ? String(s.end_date).slice(0,10) : '—'}
-                      {expired      && <span className="ml-1.5 rounded-full bg-red-100 text-red-600 px-1.5 py-0.5 text-xs">expired</span>}
-                      {expiringSoon && <span className="ml-1.5 rounded-full bg-amber-100 text-amber-600 px-1.5 py-0.5 text-xs">soon</span>}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-700">
-                      {s.amount_paid != null ? formatCurrency(s.amount_paid) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{s.recorded_by || '—'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+      {/* Requests table */}
+      {subTab === 'requests' && (
+        isLoading ? <PageSpinner /> : reqRows.length === 0 ? (
+          <div className="rounded-xl border border-gray-100 bg-white py-16 text-center text-gray-400 text-sm">
+            No subscription requests found
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Company</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Plan</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Period</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Submitted</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {reqRows.map((r) => {
+                  const s = REQ_STATUS_STYLE[r.status] ?? REQ_STATUS_STYLE.pending;
+                  return (
+                    <tr key={r.request_id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-gray-800">{r.company_name}</td>
+                      <td className="px-4 py-3 text-gray-600">{r.plan_name}</td>
+                      <td className="px-4 py-3 capitalize text-gray-600">{r.period?.replace('_', '-')}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{r.created_at ? String(r.created_at).slice(0, 10) : '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${s.cls}`}>{s.label}</span>
+                        {r.status === 'rejected' && r.rejection_reason && (
+                          <p className="mt-0.5 text-xs text-red-500 max-w-[160px] truncate" title={r.rejection_reason}>{r.rejection_reason}</p>
+                        )}
+                        {r.status !== 'pending' && r.actioned_by_name && (
+                          <p className="mt-0.5 text-xs text-gray-400">by {r.actioned_by_name}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {r.status === 'pending' && (
+                          <div className="flex gap-2">
+                            <button onClick={() => setApproving(r)}
+                              className="flex items-center gap-1 rounded-lg bg-green-50 border border-green-200 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-100 transition-colors">
+                              <ThumbsUp className="h-3 w-3" /> Approve
+                            </button>
+                            <button onClick={() => setRejecting(r)}
+                              className="flex items-center gap-1 rounded-lg bg-red-50 border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors">
+                              <Ban className="h-3 w-3" /> Reject
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+
+      {/* Recorded subscriptions table */}
+      {subTab === 'recorded' && (
+        isLoading ? <PageSpinner /> : subRows.length === 0 ? (
+          <div className="rounded-xl border border-gray-100 bg-white py-16 text-center text-gray-400 text-sm">
+            No subscription records found
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Company</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Plan</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Period</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Start</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">End</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">Amount (KES)</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Recorded by</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {subRows.map((s) => {
+                  const expired      = s.end_date && new Date(s.end_date) < new Date();
+                  const expiringSoon = !expired && s.end_date && (new Date(s.end_date) - new Date()) < 30 * 86400000;
+                  return (
+                    <tr key={s.subscription_id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-gray-800">{s.company_name}</td>
+                      <td className="px-4 py-3 text-gray-600">{s.plan_name}</td>
+                      <td className="px-4 py-3 capitalize text-gray-600">{s.period?.replace('_', '-') || '—'}</td>
+                      <td className="px-4 py-3 text-gray-600">{s.start_date ? String(s.start_date).slice(0, 10) : '—'}</td>
+                      <td className={`px-4 py-3 font-medium ${expired ? 'text-red-600' : expiringSoon ? 'text-amber-600' : 'text-gray-600'}`}>
+                        {s.end_date ? String(s.end_date).slice(0, 10) : '—'}
+                        {expired      && <span className="ml-1.5 rounded-full bg-red-100 text-red-600 px-1.5 py-0.5 text-xs">expired</span>}
+                        {expiringSoon && <span className="ml-1.5 rounded-full bg-amber-100 text-amber-600 px-1.5 py-0.5 text-xs">soon</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700">
+                        {s.amount_paid != null ? formatCurrency(s.amount_paid) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{s.recorded_by || '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
       )}
 
       {pages > 1 && (
@@ -3215,6 +3473,21 @@ function SubscriptionsPanel({ companies }) {
           companies={companyId ? [] : companies}
           plans={plansData}
           onClose={() => setRecordOpen(false)}
+        />
+      )}
+
+      {approving && (
+        <ApproveRequestModal
+          request={approving}
+          plans={plansData}
+          onClose={() => setApproving(null)}
+        />
+      )}
+
+      {rejecting && (
+        <RejectRequestModal
+          request={rejecting}
+          onClose={() => setRejecting(null)}
         />
       )}
     </div>

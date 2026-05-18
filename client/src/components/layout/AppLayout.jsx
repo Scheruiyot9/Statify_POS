@@ -8,6 +8,86 @@ import { useAuthStore } from '@/app/store';
 import api from '@/services/api';
 import Button from '@/components/ui/Button';
 
+// ── Forced Password Reset (first-login) ───────────────────────────────────────
+function ForcedPasswordReset() {
+  const user        = useAuthStore((s) => s.user);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const setAuth     = useAuthStore((s) => s.setAuth);
+
+  const [form, setForm]   = useState({ currentPassword: '', newPassword: '', confirm: '' });
+  const [show, setShow]   = useState({ cur: false, new: false, con: false });
+  const [loading, setLoading] = useState(false);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (form.newPassword.length < 8) { toast.error('New password must be at least 8 characters'); return; }
+    if (form.newPassword !== form.confirm) { toast.error('Passwords do not match'); return; }
+    setLoading(true);
+    try {
+      await api.patch('/auth/change-password', {
+        currentPassword: form.currentPassword,
+        newPassword:     form.newPassword,
+      });
+      toast.success('Password updated — welcome!');
+      setAuth({ ...user, mustResetPassword: false }, accessToken);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update password');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm pr-10 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500';
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl overflow-hidden">
+        <div className="bg-amber-50 border-b border-amber-100 px-6 py-4 flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100">
+            <KeyRound className="h-5 w-5 text-amber-600" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-amber-900">Set your password</p>
+            <p className="text-xs text-amber-700">You must set a new password before continuing</p>
+          </div>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {[
+            { key: 'currentPassword', label: 'Temporary Password', showKey: 'cur' },
+            { key: 'newPassword',     label: 'New Password',       showKey: 'new' },
+            { key: 'confirm',         label: 'Confirm Password',   showKey: 'con' },
+          ].map(({ key, label, showKey }) => (
+            <div key={key}>
+              <label className="mb-1 block text-xs font-medium text-gray-700">{label}</label>
+              <div className="relative">
+                <input
+                  required
+                  type={show[showKey] ? 'text' : 'password'}
+                  value={form[key]}
+                  onChange={(e) => set(key, e.target.value)}
+                  className={inputCls}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShow((s) => ({ ...s, [showKey]: !s[showKey] }))}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {show[showKey] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          ))}
+          {form.newPassword.length > 0 && form.newPassword.length < 8 && (
+            <p className="text-xs text-red-500">Password must be at least 8 characters</p>
+          )}
+          <Button fullWidth type="submit" loading={loading}>Set Password & Continue</Button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Change Password Modal ─────────────────────────────────────────────────────
 function ChangePasswordModal({ onClose }) {
   const [form, setForm]   = useState({ currentPassword: '', newPassword: '', confirm: '' });
@@ -303,6 +383,9 @@ export default function AppLayout() {
 
       {/* Change password modal */}
       {changePwdOpen && <ChangePasswordModal onClose={() => setChangePwdOpen(false)} />}
+
+      {/* Forced first-login password reset */}
+      {user?.mustResetPassword && <ForcedPasswordReset />}
     </div>
   );
 }

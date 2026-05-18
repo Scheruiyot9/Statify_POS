@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CreditCard, Plus, Pencil, ToggleLeft, ToggleRight, Check,
   Monitor, GitBranch, Package, Users, Star, Percent, Trash2,
-  RotateCcw, Layers, ArrowUpCircle, CheckCircle2,
+  RotateCcw, Layers, ArrowUpCircle, CheckCircle2, Clock, XCircle, Send,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -1271,11 +1271,26 @@ const STATUS_BADGE = {
   cancelled: { cls: 'bg-gray-100 text-gray-600',     label: 'Cancelled' },
 };
 
+const SUB_PERIODS = [
+  { value: 'monthly',     label: 'Monthly',     months: 1  },
+  { value: 'quarterly',   label: 'Quarterly',   months: 3  },
+  { value: 'semi_annual', label: 'Semi-Annual', months: 6  },
+  { value: 'annual',      label: 'Annual',      months: 12 },
+  { value: 'biennial',    label: 'Biennial',    months: 24 },
+];
+
+const REQ_STATUS = {
+  pending:  { cls: 'bg-amber-100 text-amber-700',  label: 'Pending',  Icon: Clock     },
+  approved: { cls: 'bg-green-100 text-green-700',  label: 'Approved', Icon: CheckCircle2 },
+  rejected: { cls: 'bg-red-100  text-red-600',     label: 'Rejected', Icon: XCircle   },
+};
+
 function SubscriptionTab() {
   const qc = useQueryClient();
-  const [upgradeOpen, setUpgradeOpen] = useState(false);
-  const [targetPlan,  setTargetPlan]  = useState('');
-  const [upgradeMsg,  setUpgradeMsg]  = useState('');
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [reqPlanId,   setReqPlanId]   = useState('');
+  const [reqPeriod,   setReqPeriod]   = useState('annual');
+  const [reqMessage,  setReqMessage]  = useState('');
 
   const { data: sub, isLoading: subLoading } = useQuery({
     queryKey: ['my-subscription'],
@@ -1287,21 +1302,31 @@ function SubscriptionTab() {
     queryFn:  () => api.get('/companies/plans').then((r) => r.data.data),
   });
 
-  const upgradeMut = useMutation({
-    mutationFn: (body) => api.post('/companies/mine/upgrade-request', body),
-    onSuccess: (res) => {
-      toast.success(res.data.message);
-      setUpgradeOpen(false);
-      setTargetPlan('');
-      setUpgradeMsg('');
+  const { data: reqData } = useQuery({
+    queryKey: ['my-subscription-requests'],
+    queryFn:  () => api.get('/companies/mine/subscription-requests').then((r) => r.data.data),
+  });
+  const myRequests = reqData?.requests ?? [];
+
+  const submitMut = useMutation({
+    mutationFn: (body) => api.post('/companies/mine/subscription-requests', body),
+    onSuccess: () => {
+      toast.success('Subscription request submitted');
+      qc.invalidateQueries({ queryKey: ['my-subscription-requests'] });
+      setRequestOpen(false);
+      setReqPlanId('');
+      setReqPeriod('annual');
+      setReqMessage('');
     },
     onError: (e) => toast.error(e.response?.data?.message || 'Request failed'),
   });
 
+  const openRequest = (planId = '') => { setReqPlanId(planId); setRequestOpen(true); };
+
   if (subLoading) return <PageSpinner />;
 
   const badge = STATUS_BADGE[sub?.subscription_status] ?? { cls: 'bg-gray-100 text-gray-600', label: sub?.subscription_status };
-  const userPct   = sub?.max_users   ? Math.round((sub.current_users   / sub.max_users)   * 100) : 0;
+  const userPct   = sub?.max_users    ? Math.round((sub.current_users   / sub.max_users)   * 100) : 0;
   const branchPct = sub?.max_branches ? Math.round((sub.current_branches / sub.max_branches) * 100) : 0;
 
   return (
@@ -1337,8 +1362,7 @@ function SubscriptionTab() {
         <div className="space-y-3 border-t border-gray-50 pt-3">
           <div>
             <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>Users</span>
-              <span>{sub?.current_users} / {sub?.max_users ?? '∞'}</span>
+              <span>Users</span><span>{sub?.current_users} / {sub?.max_users ?? '∞'}</span>
             </div>
             {sub?.max_users && (
               <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
@@ -1349,8 +1373,7 @@ function SubscriptionTab() {
           </div>
           <div>
             <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>Branches</span>
-              <span>{sub?.current_branches} / {sub?.max_branches ?? '∞'}</span>
+              <span>Branches</span><span>{sub?.current_branches} / {sub?.max_branches ?? '∞'}</span>
             </div>
             {sub?.max_branches && (
               <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
@@ -1395,18 +1418,20 @@ function SubscriptionTab() {
                   <div className="text-xs text-gray-500 space-y-0.5">
                     <p>Up to {p.max_users} users · {p.max_branches} branches</p>
                     <p className="flex gap-3">
-                      {p.has_finance && <span className="text-green-600">Finance</span>}
+                      {p.has_finance    && <span className="text-green-600">Finance</span>}
                       {p.has_api_access && <span className="text-green-600">API</span>}
                     </p>
                   </div>
-                  {!isCurrent && (
-                    <button
-                      onClick={() => { setTargetPlan(p.plan_name); setUpgradeOpen(true); }}
-                      className="mt-1 w-full rounded-lg border border-primary-400 py-1.5 text-xs font-medium text-primary-600 hover:bg-primary-50 transition-colors"
-                    >
-                      Request Upgrade
-                    </button>
-                  )}
+                  <button
+                    onClick={() => openRequest(p.plan_id)}
+                    className={`mt-1 w-full rounded-lg border py-1.5 text-xs font-medium transition-colors ${
+                      isCurrent
+                        ? 'border-primary-300 text-primary-600 hover:bg-primary-100'
+                        : 'border-primary-400 text-primary-600 hover:bg-primary-50'
+                    }`}
+                  >
+                    {isCurrent ? 'Renew' : 'Subscribe'}
+                  </button>
                 </div>
               );
             })}
@@ -1414,39 +1439,93 @@ function SubscriptionTab() {
         </div>
       )}
 
+      {/* My subscription requests */}
+      {myRequests.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">My Subscription Requests</h3>
+          <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Plan</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Period</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Submitted</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {myRequests.map((r) => {
+                  const s = REQ_STATUS[r.status] ?? REQ_STATUS.pending;
+                  return (
+                    <tr key={r.request_id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-gray-800">{r.plan_name}</td>
+                      <td className="px-4 py-3 capitalize text-gray-600">{r.period?.replace('_', '-')}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{new Date(r.created_at).toLocaleDateString()}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${s.cls}`}>
+                          <s.Icon className="h-3 w-3" />{s.label}
+                        </span>
+                        {r.status === 'rejected' && r.rejection_reason && (
+                          <p className="mt-0.5 text-xs text-red-500">{r.rejection_reason}</p>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <p className="text-xs text-gray-400">
-        To renew or manage billing, contact{' '}
+        Questions? Contact{' '}
         <a href="mailto:support@statify.co.ke" className="text-primary-600 hover:underline">support@statify.co.ke</a>{' '}
         or call +254796265933.
       </p>
 
-      {/* Upgrade request modal */}
-      <Modal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} title="Request Plan Upgrade" size="sm">
+      {/* Submit subscription request modal */}
+      <Modal open={requestOpen} onClose={() => setRequestOpen(false)} title="Submit Subscription Request" size="sm"
+        footer={
+          <div className="flex gap-3">
+            <Button variant="secondary" fullWidth onClick={() => setRequestOpen(false)}>Cancel</Button>
+            <Button fullWidth loading={submitMut.isPending} disabled={!reqPlanId}
+              icon={<Send className="h-4 w-4" />}
+              onClick={() => submitMut.mutate({ planId: reqPlanId, period: reqPeriod, message: reqMessage || null })}>
+              Submit Request
+            </Button>
+          </div>
+        }
+      >
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Plan you want to upgrade to</label>
-            <select value={targetPlan} onChange={(e) => setTargetPlan(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Plan</label>
+            <select value={reqPlanId} onChange={(e) => setReqPlanId(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none bg-white">
               <option value="">Select plan…</option>
-              {plans.filter((p) => p.plan_name !== sub?.plan_name).map((p) => (
-                <option key={p.plan_id} value={p.plan_name}>{p.plan_name} — KES {parseFloat(p.price).toLocaleString()}/mo</option>
+              {plans.map((p) => (
+                <option key={p.plan_id} value={p.plan_id}>
+                  {p.plan_name}{parseFloat(p.price) > 0 ? ` — KES ${parseFloat(p.price).toLocaleString()}/mo` : ' (Free)'}
+                </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Message (optional)</label>
-            <textarea rows={3} value={upgradeMsg} onChange={(e) => setUpgradeMsg(e.target.value)}
-              placeholder="Any specific requirements or preferred start date…"
+            <label className="block text-xs font-medium text-gray-700 mb-1">Billing Period</label>
+            <select value={reqPeriod} onChange={(e) => setReqPeriod(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none bg-white">
+              {SUB_PERIODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Message <span className="font-normal text-gray-400">(optional)</span></label>
+            <textarea rows={3} value={reqMessage} onChange={(e) => setReqMessage(e.target.value)}
+              placeholder="Preferred start date, payment method, or any questions…"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none resize-none" />
           </div>
-          <div className="flex gap-3">
-            <Button variant="secondary" fullWidth onClick={() => setUpgradeOpen(false)}>Cancel</Button>
-            <Button fullWidth loading={upgradeMut.isPending} disabled={!targetPlan}
-              icon={<ArrowUpCircle className="h-4 w-4" />}
-              onClick={() => upgradeMut.mutate({ planName: targetPlan, message: upgradeMsg || null })}>
-              Send Request
-            </Button>
-          </div>
+          <p className="text-xs text-blue-700 bg-blue-50 rounded-lg px-3 py-2">
+            Our team will review and activate your subscription once payment is confirmed.
+          </p>
         </div>
       </Modal>
     </div>

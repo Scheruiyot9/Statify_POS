@@ -139,6 +139,7 @@ export default function SalesPage() {
   const [voidTarget,    setVoidTarget]    = useState(null);
   const [receiptTxn,    setReceiptTxn]    = useState(null);
   const [returnTxn,     setReturnTxn]     = useState(null);
+  const [exporting,     setExporting]     = useState(false);
 
   const { data: payMethods = [] } = useQuery({
     queryKey: ['payment-methods-sales'],
@@ -173,6 +174,26 @@ export default function SalesPage() {
   const transactions = data?.transactions ?? [];
   const total        = data?.total        ?? 0;
   const pages        = data?.pages        ?? 1;
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const exportFilters = { search, startDate, endDate, paymentMethod, minAmount, maxAmount, page: 1, limit: 100000 };
+      const res = await api.get('/sales/transactions', { params: exportFilters });
+      const all = res.data.data?.transactions ?? [];
+      if (!all.length) { toast('No records to export'); return; }
+      exportToExcel('sales-transactions', all, [
+        'transaction_number','transaction_date','customer_name','cashier_name',
+        'branch_name','payment_method','subtotal','tax_amount','discount_amount','total_amount','status',
+      ], [
+        'TXN #','Date','Customer','Cashier','Branch','Payment','Subtotal','Tax','Discount','Total','Status',
+      ]);
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -210,12 +231,7 @@ export default function SalesPage() {
             className="text-xs text-gray-400 hover:text-gray-600 px-2">Clear</button>
         )}
         <Button variant="secondary" size="sm" icon={<Download className="h-4 w-4" />}
-          onClick={() => exportToExcel('sales-transactions', transactions, [
-            'transaction_number','transaction_date','customer_name','cashier_name',
-            'branch_name','payment_method','subtotal','tax_amount','discount_amount','total_amount','status',
-          ], [
-            'TXN #','Date','Customer','Cashier','Branch','Payment','Subtotal','Tax','Discount','Total','Status',
-          ])}>
+          loading={exporting} onClick={handleExport}>
           Export
         </Button>
       </div>

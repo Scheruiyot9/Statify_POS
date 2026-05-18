@@ -62,7 +62,9 @@ router.get('/reports/balance-sheet', ctrl.platformBalanceSheet);
 router.get('/reports/ar-aging',      ctrl.platformARAgingReport);
 
 // ── Subscriptions ─────────────────────────────────────────────────────────────
-router.get('/subscriptions',   ctrl.listSubscriptions);
-router.post('/subscriptions',  ctrl.recordSubscription);
+router.get('/subscriptions',                        ctrl.listSubscriptions);
+router.post('/subscriptions',                       ctrl.recordSubscription);
+router.get('/subscription-requests',                ctrl.listSubscriptionRequests);
+router.patch('/subscription-requests/:id',          ctrl.actionSubscriptionRequest);
 
 module.exports = router;

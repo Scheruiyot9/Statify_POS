@@ -5,6 +5,9 @@ const AppError                      = require('../../shared/AppError');
 const env                           = require('../../config/env');
 const { checkUserLimit }            = require('../../shared/subscriptionLimits');
 const QueryBuilder                  = require('../../shared/qb');
+const { sendMail }                  = require('../../shared/mailer');
+
+const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
 // Generate a secure random temporary password: 12 chars, url-safe base64
 const generateTempPassword = () => crypto.randomBytes(9).toString('base64url');
@@ -156,32 +159,62 @@ async function createUser(companyId, data) {
     resolvedUsername = `${baseUsername}_${suffix++}`;
   }
 
-  return transaction(async (client) => {
+  const user = await transaction(async (client) => {
     const { rows } = await client.query(`
-      INSERT INTO users (company_id, first_name, last_name, email, username, phone, password_hash)
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      INSERT INTO users (company_id, first_name, last_name, email, username, phone, password_hash, must_reset_password)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE)
       RETURNING user_id, first_name, last_name, email, username, phone, is_active, created_at
     `, [companyId, first_name, last_name, emailLower, resolvedUsername, phone || null, password_hash]);
 
-    const user = rows[0];
+    const newUser = rows[0];
 
     if (role_id) {
       await client.query(`
         INSERT INTO user_roles (user_role_id, user_id, role_id)
         VALUES (gen_random_uuid(), $1, $2) ON CONFLICT DO NOTHING
-      `, [user.user_id, role_id]);
+      `, [newUser.user_id, role_id]);
     }
 
     if (branch_id) {
       await client.query(`
         INSERT INTO user_branch_assignments (assignment_id, user_id, branch_id, is_default_branch)
         VALUES (gen_random_uuid(), $1, $2, TRUE) ON CONFLICT DO NOTHING
-      `, [user.user_id, branch_id]);
+      `, [newUser.user_id, branch_id]);
     }
 
-    // Return temp password once so the admin can hand it to the new user
-    return { ...user, temp_password: password };
+    return newUser;
   });
+
+  // Generate a set-password token (48 h) and email it to the new user
+  await query(`UPDATE password_reset_tokens SET used_at = now() WHERE user_id = $1 AND used_at IS NULL`, [user.user_id]);
+  const rawToken  = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+  await query(
+    `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+    [user.user_id, hashToken(rawToken), expiresAt]
+  );
+
+  const setupLink = `${env.appUrl}/reset-password?token=${rawToken}`;
+  const displayName = [first_name, last_name].filter(Boolean).join(' ');
+  await sendMail({
+    to: emailLower,
+    subject: 'Your Statify POS account is ready — set your password',
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#f9fafb;border-radius:12px">
+        <h2 style="color:#024A59;margin-bottom:8px">Welcome to Statify POS</h2>
+        <p style="color:#374151">Hi ${displayName},</p>
+        <p style="color:#374151">An account has been created for you. Click the button below to set your password and sign in. This link expires in 48 hours.</p>
+        <a href="${setupLink}" style="display:inline-block;margin:20px 0;padding:12px 28px;background:#024A59;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Set my password</a>
+        <p style="color:#6B7280;font-size:13px">If you weren't expecting this, you can safely ignore it.</p>
+        <hr style="border:none;border-top:1px solid #E5E7EB;margin:24px 0"/>
+        <p style="color:#9CA3AF;font-size:12px">Statify POS · support@statify.co.ke · +254796265933</p>
+      </div>
+    `,
+    text: `Hi ${displayName},\n\nYour Statify POS account is ready. Set your password here:\n${setupLink}\n\nThis link expires in 48 hours.\n\n— Statify POS`,
+  });
+
+  // Return temp password once so the admin can share it as a fallback
+  return { ...user, temp_password: password };
 }
 
 async function updateUser(companyId, userId, data) {
