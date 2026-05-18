@@ -989,6 +989,57 @@ async function updateAnyUser(userId, data) {
   });
 }
 
+async function platformStockValuation({ companyId } = {}) {
+  const conds = ['p.is_active = TRUE', 'pbi.quantity_available > 0'];
+  const vals  = [];
+
+  if (companyId) {
+    vals.push(companyId);
+    conds.push(`p.company_id = $${vals.length}`);
+  }
+
+  const { rows } = await query(`
+    SELECT
+      c.company_name,
+      p.product_id, p.product_name, p.sku, p.unit_of_measure,
+      COALESCE(pc.category_name, 'Uncategorized') AS category_name,
+      b.branch_name, b.branch_id,
+      pbi.quantity_available::numeric  AS qty,
+      COALESCE(p.cost_price, 0)::numeric AS unit_cost,
+      (pbi.quantity_available * COALESCE(p.cost_price, 0))::numeric AS total_value,
+      pbi.reorder_level
+    FROM product_branch_inventory pbi
+    JOIN products  p  ON p.product_id  = pbi.product_id
+    JOIN branches  b  ON b.branch_id   = pbi.branch_id
+    JOIN companies c  ON c.company_id  = p.company_id
+    LEFT JOIN categories pc ON pc.category_id = p.category_id
+    WHERE ${conds.join(' AND ')}
+    ORDER BY c.company_name, total_value DESC
+  `, vals);
+
+  const items = rows.map((r) => ({
+    companyName:  r.company_name,
+    productId:    r.product_id,
+    productName:  r.product_name,
+    sku:          r.sku,
+    uom:          r.unit_of_measure,
+    category:     r.category_name,
+    branchName:   r.branch_name,
+    branchId:     r.branch_id,
+    qty:          parseFloat(r.qty),
+    unitCost:     parseFloat(r.unit_cost),
+    totalValue:   parseFloat(r.total_value),
+    reorderLevel: r.reorder_level,
+    belowReorder: parseFloat(r.qty) <= (r.reorder_level || 0),
+  }));
+
+  return {
+    items,
+    totalValue: +items.reduce((s, i) => s + i.totalValue, 0).toFixed(2),
+    totalUnits: +items.reduce((s, i) => s + i.qty,        0).toFixed(3),
+  };
+}
+
 async function createSuperAdmin({ first_name, last_name, email, phone }) {
   if (!first_name || !email) throw AppError.badRequest('first_name and email are required');
 
@@ -1041,6 +1092,7 @@ module.exports = {
   listPlans, createPlan, updatePlan, deletePlan,
   changeCompanyPlan, changeCompanyStatus,
   listSubscriptions, recordSubscription, autoSuspendExpired,
+  platformStockValuation,
   createSuperAdmin, updateAnyUser,
   listSubscriptionRequests, actionSubscriptionRequest,
 };

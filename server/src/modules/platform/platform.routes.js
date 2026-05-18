@@ -53,6 +53,9 @@ router.get('/accounts',        ctrl.accounts);
 router.get('/bank-accounts',   ctrl.bankAccounts);
 router.get('/journals',        ctrl.journals);
 
+// ── Platform Stock Valuation (all companies or ?companyId filter) ────────────
+router.get('/stock-valuation', ctrl.platformStockValuation);
+
 // ── Finance Reports (platform-wide, optional ?companyId filter) ───────────────
 router.get('/reports/sales',         ctrl.platformSalesReport);
 router.get('/reports/pl',            ctrl.platformPLReport);

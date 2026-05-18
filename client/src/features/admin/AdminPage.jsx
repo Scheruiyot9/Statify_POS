@@ -2871,14 +2871,14 @@ function JournalsPanel({ companies }) {
 // ── Reports Panel ─────────────────────────────────────────────────────────────
 
 const REPORT_DEFS = [
-  { id: 'sales',             label: 'Sales Report',      endpoint: '/reports/sales',             needsDate: true,  needsBranch: true,  finance: false },
-  { id: 'stock-valuation',   label: 'Stock Valuation',   endpoint: '/reports/stock-valuation',   needsDate: false, needsBranch: true,  finance: false },
-  { id: 'pl',                label: 'Profit & Loss',     endpoint: '/reports/pl',                needsDate: true,  needsBranch: false, finance: true  },
-  { id: 'ap-aging',          label: 'AP Aging',          endpoint: '/reports/ap-aging',          needsDate: false, needsBranch: false, finance: true  },
-  { id: 'balance-sheet',     label: 'Balance Sheet',     endpoint: '/reports/balance-sheet',     needsDate: false, needsBranch: false, finance: true  },
-  { id: 'purchases-summary', label: 'Purchases Summary', endpoint: '/reports/purchases-summary', needsDate: true,  needsBranch: false, finance: true  },
-  { id: 'trial-balance',     label: 'Trial Balance',     endpoint: '/reports/trial-balance',     needsDate: true,  needsBranch: false, finance: true  },
-  { id: 'cash-flow',         label: 'Cash Flow',         endpoint: '/reports/cash-flow',         needsDate: true,  needsBranch: false, finance: true  },
+  { id: 'sales',             label: 'Sales Report',      endpoint: '/reports/sales',             needsDate: true,  needsBranch: true,  finance: false, platformLevel: false },
+  { id: 'stock-valuation',   label: 'Stock Valuation',   endpoint: '/platform/stock-valuation',  needsDate: false, needsBranch: false, finance: false, platformLevel: true  },
+  { id: 'pl',                label: 'Profit & Loss',     endpoint: '/reports/pl',                needsDate: true,  needsBranch: false, finance: true,  platformLevel: false },
+  { id: 'ap-aging',          label: 'AP Aging',          endpoint: '/reports/ap-aging',          needsDate: false, needsBranch: false, finance: true,  platformLevel: false },
+  { id: 'balance-sheet',     label: 'Balance Sheet',     endpoint: '/reports/balance-sheet',     needsDate: false, needsBranch: false, finance: true,  platformLevel: false },
+  { id: 'purchases-summary', label: 'Purchases Summary', endpoint: '/reports/purchases-summary', needsDate: true,  needsBranch: false, finance: true,  platformLevel: false },
+  { id: 'trial-balance',     label: 'Trial Balance',     endpoint: '/reports/trial-balance',     needsDate: true,  needsBranch: false, finance: true,  platformLevel: false },
+  { id: 'cash-flow',         label: 'Cash Flow',         endpoint: '/reports/cash-flow',         needsDate: true,  needsBranch: false, finance: true,  platformLevel: false },
 ];
 
 function extractReportData(reportId, data) {
@@ -2887,7 +2887,12 @@ function extractReportData(reportId, data) {
     case 'sales':
       return { summary: data.summary ?? {}, rows: data.topProducts ?? [] };
     case 'stock-valuation':
-      return { summary: { totalValue: data.totalValue, totalUnits: data.totalUnits }, rows: data.items ?? [] };
+      return {
+        summary: { totalValue: data.totalValue, totalUnits: data.totalUnits },
+        rows: (data.items ?? []).map(({ companyName, productName, sku, category, branchName, qty, uom, unitCost, totalValue }) =>
+          ({ company: companyName, product: productName, sku, category, branch: branchName, qty: `${qty} ${uom}`, unitCost, totalValue })
+        ),
+      };
     case 'pl':
       return { summary: { grossProfit: data.grossProfit, grossMargin: data.grossMargin, operatingProfit: data.operatingProfit, operatingMargin: data.operatingMargin }, rows: data.expenseBreakdown ?? [] };
     case 'ap-aging':
@@ -2968,12 +2973,16 @@ function ReportsPanel({ companies }) {
   const params = {
     ...(def?.needsDate ? { startDate, endDate } : {}),
     ...(def?.needsBranch && branchId ? { branchId } : {}),
+    // For platform-level reports, pass companyId as a query param (optional filter)
+    ...(def?.platformLevel && companyId ? { companyId } : {}),
   };
 
   const { data: reportData, isLoading: reportLoading, isError, error } = useQuery({
     queryKey: ['platform-report', companyId, reportId, params, runKey],
-    queryFn: () => api.get(def.endpoint, { params, ...withCo(companyId) }).then((r) => r.data.data),
-    enabled: !!companyId && !!runKey,
+    queryFn: () => def.platformLevel
+      ? api.get(def.endpoint, { params }).then((r) => r.data.data)
+      : api.get(def.endpoint, { params, ...withCo(companyId) }).then((r) => r.data.data),
+    enabled: (def?.platformLevel ? true : !!companyId) && !!runKey,
     retry: false,
   });
 
@@ -2981,7 +2990,7 @@ function ReportsPanel({ companies }) {
   const columns = rows.length ? Object.keys(rows[0]) : [];
 
   const handleRun = () => {
-    if (!companyId) { toast.error('Select a company first'); return; }
+    if (!def?.platformLevel && !companyId) { toast.error('Select a company first'); return; }
     setRunKey(Date.now());
   };
 
@@ -3003,7 +3012,9 @@ function ReportsPanel({ companies }) {
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-4">
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <p className="text-xs font-medium text-gray-600 mb-1">Company</p>
+            <p className="text-xs font-medium text-gray-600 mb-1">
+              Company{def?.platformLevel ? <span className="ml-1 font-normal text-gray-400">(optional filter)</span> : ''}
+            </p>
             <CompanyFilter companies={companies} value={companyId} onChange={(v) => {
             setCompanyId(v); setRunKey(null); setBranchId('');
             const co = companies.find((c) => c.company_id === v);

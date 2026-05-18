@@ -7,6 +7,9 @@ const r = (res, data, status = 200) => res.status(status).json({ success: true, 
 // Overview
 const stats          = async (req, res) => r(res, await svc.platformStats());
 
+// Platform-wide stock valuation (all companies or filtered by ?companyId)
+const platformStockValuation = async (req, res) => r(res, await svc.platformStockValuation(req.query));
+
 // Subscription Plans
 const listPlans      = async (req, res) => r(res, await svc.listPlans());
 const createPlan     = async (req, res) => r(res, await svc.createPlan(req.body), 201);
@@ -108,4 +111,5 @@ module.exports = {
   createSuperAdminUser, updateAnyUser,
   platformSalesReport,
   platformPLReport, platformCashFlow, platformAPAging, platformBalanceSheet, platformARAgingReport,
+  platformStockValuation,
 };
