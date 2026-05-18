@@ -401,7 +401,7 @@ async function querySTKStatus(companyId, checkoutRequestId) {
           (company_id, branch_id, checkout_request_id, payment_mode, phone_number, amount,
            account_reference, description, status, result_code, completed_at)
         VALUES ($1,$2,$3,'stk_push',$4,$5,$6,$7,'completed',$8,now())
-        ON CONFLICT (checkout_request_id) DO NOTHING
+        ON CONFLICT (checkout_request_id) WHERE checkout_request_id IS NOT NULL DO NOTHING
         RETURNING mpesa_txn_id
       `, [
         companyId, session.branchId, checkoutRequestId,
@@ -510,7 +510,7 @@ async function processCallback(body) {
        account_reference, description, status, mpesa_receipt_number,
        result_code, callback_payload, completed_at)
     VALUES ($1,$2,$3,'stk_push',$4,$5,$6,$7,'completed',$8,$9,$10,now())
-    ON CONFLICT (checkout_request_id) DO UPDATE SET
+    ON CONFLICT (checkout_request_id) WHERE checkout_request_id IS NOT NULL DO UPDATE SET
       mpesa_receipt_number = COALESCE(EXCLUDED.mpesa_receipt_number, mpesa_transactions.mpesa_receipt_number),
       status               = 'completed',
       result_code          = EXCLUDED.result_code,
