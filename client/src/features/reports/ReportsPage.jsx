@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -883,9 +884,15 @@ const ALL_TABS = [
 ];
 
 export default function ReportsPage() {
-  const [tab, setTab] = useState('sales');
+  const [searchParams, setSearchParams] = useSearchParams();
   const user = useAuthStore((s) => s.user);
   const hasFinance = user?.role === 'super_admin' || !!user?.planFeatures?.hasFinance;
+
+  const validIds = ALL_TABS.filter((t) => !t.finance || hasFinance).map((t) => t.id);
+  const urlTab = searchParams.get('tab');
+  const tab = validIds.includes(urlTab) ? urlTab : 'sales';
+
+  const setTab = (id) => setSearchParams({ tab: id }, { replace: true });
 
   const visibleTabs = ALL_TABS.filter((t) => !t.finance || hasFinance);
 

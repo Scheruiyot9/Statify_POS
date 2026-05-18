@@ -7,7 +7,7 @@ import {
   Monitor, ShoppingCart, Package, BarChart2, UserCheck,
   Layers, ArrowRight, Pencil, Trash2, DollarSign,
   Power, Truck, BookOpen, Landmark, ScrollText, Smartphone, Settings, FileText,
-  CalendarRange,
+  CalendarRange, Copy, KeyRound,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -949,9 +949,68 @@ function CompaniesPanel({ plans }) {
 const FINANCE_ROLES = ['accountant'];
 const API_ROLES     = ['mpesa_operator']; // future-proof: hide if plan has no API access
 
-function UserModal({ companyId, user, onClose, hasFinance, hasApiAccess }) {
+function TempPasswordModal({ name, email, password, onClose }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(password);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl overflow-hidden">
+        <div className="bg-green-50 border-b border-green-100 px-6 py-4 flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-green-100">
+            <KeyRound className="h-5 w-5 text-green-600" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-green-800">User Created</p>
+            <p className="text-xs text-green-600">Share this temporary password with the user</p>
+          </div>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <p className="text-xs text-gray-500 mb-0.5">User</p>
+            <p className="text-sm font-medium text-gray-800">{name}</p>
+            <p className="text-xs text-gray-500">{email}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Temporary Password</p>
+            <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+              <code className="flex-1 text-sm font-mono font-semibold tracking-wider text-gray-900 select-all">{password}</code>
+              <button onClick={copy} className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800 transition-colors font-medium">
+                <Copy className="h-3.5 w-3.5" />
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+            This password is shown only once. The user should change it immediately after first login.
+          </p>
+          <button onClick={onClose} className="w-full rounded-lg bg-primary-600 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 transition-colors">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UserModal({ companyId: initialCompanyId, user, onClose, companies = [] }) {
   const qc     = useQueryClient();
   const isEdit = !!user;
+
+  const [tempPassword, setTempPassword] = useState(null);
+
+  // Super-admin creation mode — no company, no role/branch selection
+  const [asSuperAdmin, setAsSuperAdmin] = useState(false);
+
+  const [pickedCompanyId, setPickedCompanyId] = useState(initialCompanyId || user?.company_id || '');
+  const effectiveCompanyId = isEdit ? (user?.company_id || initialCompanyId) : (asSuperAdmin ? '' : pickedCompanyId);
+
+  const selectedCompany = companies.find((c) => c.company_id === effectiveCompanyId);
+  const hasFinance   = selectedCompany?.has_finance    ?? false;
+  const hasApiAccess = selectedCompany?.has_api_access ?? false;
 
   const [form, setFormState] = useState({
     first_name: user?.first_name ?? '',
@@ -964,13 +1023,18 @@ function UserModal({ companyId, user, onClose, hasFinance, hasApiAccess }) {
   });
   const set = (k, v) => setFormState((f) => ({ ...f, [k]: v }));
 
-  const { data: allRoles = [] } = useQuery({ queryKey: ['co-roles', companyId], queryFn: () => api.get('/users/roles', withCo(companyId)).then((r) => r.data.data), enabled: !!companyId });
+  // Reset role/branch when company changes or super-admin mode toggled
+  useEffect(() => {
+    if (!isEdit) setFormState((f) => ({ ...f, role_id: '', branch_id: '' }));
+  }, [pickedCompanyId, asSuperAdmin, isEdit]);
+
+  const { data: allRoles = [] } = useQuery({ queryKey: ['co-roles', effectiveCompanyId], queryFn: () => api.get('/users/roles', withCo(effectiveCompanyId)).then((r) => r.data.data), enabled: !!effectiveCompanyId });
   const roles = allRoles.filter((r) => {
     if (!hasFinance   && FINANCE_ROLES.includes(r.role_name)) return false;
     if (!hasApiAccess && API_ROLES.includes(r.role_name))     return false;
     return true;
   });
-  const { data: branches = [] } = useQuery({ queryKey: ['co-branches', companyId], queryFn: () => api.get('/branches',    withCo(companyId)).then((r) => r.data.data), enabled: !!companyId });
+  const { data: branches = [] } = useQuery({ queryKey: ['co-branches', effectiveCompanyId], queryFn: () => api.get('/branches', withCo(effectiveCompanyId)).then((r) => r.data.data), enabled: !!effectiveCompanyId });
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['platform-users'] });
@@ -978,46 +1042,73 @@ function UserModal({ companyId, user, onClose, hasFinance, hasApiAccess }) {
   };
 
   const { mutate, isPending } = useMutation({
-    mutationFn: (data) => isEdit
-      ? api.put(`/users/${user.user_id}`, data, withCo(companyId))
-      : api.post('/users', data, withCo(companyId)),
+    mutationFn: (data) => {
+      if (!isEdit && asSuperAdmin) return api.post('/platform/users/super-admin', data);
+      if (isEdit) return api.put(`/platform/users/${user.user_id}`, data);
+      return api.post('/users', data, withCo(effectiveCompanyId));
+    },
     onSuccess: (res) => {
       const u = res.data.data;
-      if (!isEdit && u.temp_password) toast.success(`Created! Temp password: ${u.temp_password}`, { duration: 10000 });
-      else toast.success(isEdit ? 'User updated' : 'User created');
       invalidate();
-      onClose();
+      if (!isEdit && u.temp_password) {
+        setTempPassword(u.temp_password);
+      } else {
+        toast.success(isEdit ? 'User updated' : 'User created');
+        onClose();
+      }
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Save failed'),
   });
 
   const handleSubmit = () => {
-    if (!form.first_name)       { toast.error('First name is required'); return; }
-    if (!isEdit && !form.email) { toast.error('Email is required');      return; }
+    if (!form.first_name)                          { toast.error('First name is required'); return; }
+    if (!isEdit && !form.email)                    { toast.error('Email is required');      return; }
+    if (!isEdit && !asSuperAdmin && !effectiveCompanyId) { toast.error('Select a company first'); return; }
     mutate(form);
   };
 
-  return (
+  const showCompanyPicker = !isEdit && !initialCompanyId;
+
+  return (<>
     <Modal open onClose={onClose} title={isEdit ? `Edit User — ${user.first_name} ${user.last_name}` : 'Create User'}
       footer={<div className="flex gap-3"><Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button><Button fullWidth loading={isPending} onClick={handleSubmit}>{isEdit ? 'Save Changes' : 'Create User'}</Button></div>}
     >
       <div className="grid grid-cols-2 gap-3">
+        {/* Super-admin toggle + company selector — only in create flow without pre-selected company */}
+        {showCompanyPicker && (
+          <div className="col-span-2 space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={asSuperAdmin} onChange={(e) => setAsSuperAdmin(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+              <span className="text-sm font-medium text-gray-700">Create as Super Admin (no company)</span>
+            </label>
+            {!asSuperAdmin && (
+              <Field label="Company" required>
+                <select value={pickedCompanyId} onChange={(e) => setPickedCompanyId(e.target.value)} className={sel}>
+                  <option value="">Select company…</option>
+                  {companies.map((c) => <option key={c.company_id} value={c.company_id}>{c.company_name}</option>)}
+                </select>
+              </Field>
+            )}
+          </div>
+        )}
         <Field label="First Name" required><input value={form.first_name} onChange={(e) => set('first_name', e.target.value)} className={inp} /></Field>
         <Field label="Last Name"><input value={form.last_name} onChange={(e) => set('last_name', e.target.value)} className={inp} /></Field>
         {!isEdit && <div className="col-span-2"><Field label="Email" required><input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} className={inp} /></Field></div>}
         <Field label="Phone"><input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="+254…" className={inp} /></Field>
+        {!asSuperAdmin && (<>
         <Field label="Role">
-          <select value={form.role_id} onChange={(e) => set('role_id', e.target.value)} className={sel}>
+          <select value={form.role_id} onChange={(e) => set('role_id', e.target.value)} className={sel} disabled={!effectiveCompanyId}>
             <option value="">No role</option>
             {roles.map((r) => <option key={r.role_id} value={r.role_id}>{r.role_name.replace(/_/g, ' ')}</option>)}
           </select>
         </Field>
         <Field label="Default Branch">
-          <select value={form.branch_id} onChange={(e) => set('branch_id', e.target.value)} className={sel}>
+          <select value={form.branch_id} onChange={(e) => set('branch_id', e.target.value)} className={sel} disabled={!effectiveCompanyId}>
             <option value="">No branch</option>
             {branches.map((b) => <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>)}
           </select>
         </Field>
+        </>)}
         {isEdit && (
           <Field label="Status">
             <select value={form.is_active ? 'true' : 'false'} onChange={(e) => set('is_active', e.target.value === 'true')} className={sel}>
@@ -1027,9 +1118,17 @@ function UserModal({ companyId, user, onClose, hasFinance, hasApiAccess }) {
           </Field>
         )}
       </div>
-      {!isEdit && <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">A secure temporary password will be auto-generated and shown after creation.</p>}
+      {!isEdit && <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">A secure temporary password will be shown after creation.</p>}
     </Modal>
-  );
+    {tempPassword && (
+      <TempPasswordModal
+        name={`${form.first_name} ${form.last_name}`.trim()}
+        email={form.email}
+        password={tempPassword}
+        onClose={() => { setTempPassword(null); onClose(); }}
+      />
+    )}
+  </>);
 }
 
 // ── Users Panel ───────────────────────────────────────────────────────────────
@@ -1042,10 +1141,6 @@ function UsersPanel({ companies }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
 
-  const selectedCompany = companies.find((c) => c.company_id === companyId);
-  const hasFinance      = selectedCompany?.has_finance    ?? false;
-  const hasApiAccess    = selectedCompany?.has_api_access ?? false;
-
   const { data, isLoading } = useQuery({
     queryKey: ['platform-users', { search, companyId, page }],
     queryFn: () => api.get('/platform/users', { params: { search, companyId, page, limit: 25 } }).then((r) => r.data.data),
@@ -1056,14 +1151,14 @@ function UsersPanel({ companies }) {
   const pages = data?.pages ?? 1;
 
   const deleteMut = useMutation({
-    mutationFn: (id) => api.delete(`/users/${id}`, withCo(companyId)),
+    mutationFn: ({ id, coId }) => api.delete(`/users/${id}`, withCo(coId)),
     onSuccess: () => { toast.success('User deleted'); qc.invalidateQueries({ queryKey: ['platform-users'] }); qc.invalidateQueries({ queryKey: ['platform-stats'] }); },
     onError: (err) => toast.error(err.response?.data?.message || 'Delete failed'),
   });
 
   const handleDelete = (u) => {
     if (!window.confirm(`Delete user "${u.first_name} ${u.last_name}"? This cannot be undone.`)) return;
-    deleteMut.mutate(u.user_id);
+    deleteMut.mutate({ id: u.user_id, coId: u.company_id });
   };
 
   return (
@@ -1075,7 +1170,7 @@ function UsersPanel({ companies }) {
             className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none" />
         </div>
         <CompanyFilter companies={companies} value={companyId} onChange={(v) => { setCompanyId(v); setPage(1); }} />
-        {companyId && <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>Add User</Button>}
+        <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>Add User</Button>
       </div>
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         {isLoading ? <PageSpinner /> : (
@@ -1093,7 +1188,7 @@ function UsersPanel({ companies }) {
                     <td className="px-4 py-3 text-gray-600">{u.company_name}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{u.branch_name ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-400 text-xs">{formatDate(u.created_at)}</td>
-                    <td className="px-4 py-3">{companyId && <RowActions onEdit={() => setEditTarget(u)} onDelete={() => handleDelete(u)} deleting={deleteMut.isPending} />}</td>
+                    <td className="px-4 py-3"><RowActions onEdit={() => setEditTarget(u)} onDelete={() => handleDelete(u)} deleting={deleteMut.isPending} /></td>
                   </tr>
                 ))}
                 {rows.length === 0 && <tr><td colSpan={7} className="py-14 text-center text-gray-400"><Users className="mx-auto mb-2 h-8 w-8 opacity-25" />No users found</td></tr>}
@@ -1103,8 +1198,8 @@ function UsersPanel({ companies }) {
         )}
         <Pagination page={page} pages={pages} total={total} onPage={setPage} />
       </div>
-      {createOpen && <UserModal companyId={companyId} hasFinance={hasFinance} hasApiAccess={hasApiAccess} onClose={() => setCreateOpen(false)} />}
-      {editTarget  && <UserModal companyId={companyId} hasFinance={hasFinance} hasApiAccess={hasApiAccess} user={editTarget} onClose={() => setEditTarget(null)} />}
+      {createOpen && <UserModal companyId={companyId} companies={companies} onClose={() => setCreateOpen(false)} />}
+      {editTarget  && <UserModal companyId={editTarget.company_id} companies={companies} user={editTarget} onClose={() => setEditTarget(null)} />}
     </div>
   );
 }

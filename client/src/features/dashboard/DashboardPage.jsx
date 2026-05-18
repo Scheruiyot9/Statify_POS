@@ -1,9 +1,12 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   TrendingUp, ShoppingCart, Users, Package,
   ArrowUpRight, AlertTriangle, Star, Building2,
   GitBranch, UserCheck, Monitor, DollarSign,
+  Activity, Settings, PlusCircle, ChevronRight,
+  Globe, BarChart3, CreditCard, Layers,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/app/store';
@@ -367,60 +370,215 @@ function LowStockAlertCard({ count }) {
 
 // ── Platform overview (super_admin dashboard) ─────────────────────────────────
 function PlatformOverview() {
+  const navigate = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ['platform-stats'],
     queryFn: () => api.get('/platform/stats').then((r) => r.data.data),
     refetchInterval: 60_000,
   });
 
-  const stats = [
-    { label: 'Total Companies', value: data?.total_companies     ?? '—', sub: `${data?.active_companies ?? 0} active · ${data?.trial_companies ?? 0} trial`, icon: Building2,    iconBg: 'bg-primary-100',  iconCl: 'text-primary-600',  valCl: 'text-primary-800' },
-    { label: 'Suspended',       value: data?.suspended_companies ?? '—', sub: 'companies suspended',                                                          icon: AlertTriangle, iconBg: 'bg-amber-100',    iconCl: 'text-amber-600',    valCl: 'text-amber-800'   },
-    { label: 'Total Users',     value: data?.total_users         ?? '—', sub: 'across all tenants',                                                            icon: Users,         iconBg: 'bg-purple-100',   iconCl: 'text-purple-600',   valCl: 'text-purple-800'  },
-    { label: 'Branches',        value: data?.total_branches      ?? '—', sub: 'active branches',                                                               icon: GitBranch,     iconBg: 'bg-indigo-100',   iconCl: 'text-indigo-600',   valCl: 'text-indigo-800'  },
-    { label: 'Products',        value: data?.total_products      ?? '—', sub: 'catalogue entries',                                                             icon: Package,       iconBg: 'bg-teal-100',     iconCl: 'text-teal-600',     valCl: 'text-teal-800'    },
-    { label: 'Customers',       value: data?.total_customers     ?? '—', sub: 'registered',                                                                    icon: UserCheck,     iconBg: 'bg-orange-100',   iconCl: 'text-orange-600',   valCl: 'text-orange-800'  },
-    { label: 'Open Sessions',   value: data?.open_sessions       ?? '—', sub: 'POS sessions live',                                                             icon: Monitor,       iconBg: 'bg-green-100',    iconCl: 'text-green-600',    valCl: 'text-green-800'   },
-    { label: "Today's Sales",   value: data?.today_sales != null ? formatCurrency(data.today_sales) : '—', sub: 'gross revenue today',                         icon: DollarSign,    iconBg: 'bg-amber-100',    iconCl: 'text-amber-600',    valCl: 'text-amber-800'   },
+  const total     = data?.total_companies     ?? 0;
+  const active    = data?.active_companies    ?? 0;
+  const trial     = data?.trial_companies     ?? 0;
+  const suspended = data?.suspended_companies ?? 0;
+  const other     = Math.max(0, total - active - trial - suspended);
+
+  const activeW    = total ? Math.round((active    / total) * 100) : 0;
+  const trialW     = total ? Math.round((trial     / total) * 100) : 0;
+  const suspendedW = total ? Math.round((suspended / total) * 100) : 0;
+  const otherW     = total ? Math.max(0, 100 - activeW - trialW - suspendedW) : 0;
+
+  const QUICK_ACTIONS = [
+    { label: 'Manage Companies',   icon: Building2,   to: '/app/admin?tab=companies',  color: 'text-primary-600',  bg: 'bg-primary-50',  border: 'border-primary-100',  hbg: 'hover:bg-primary-100'  },
+    { label: 'Manage Users',       icon: Users,       to: '/app/admin?tab=users',      color: 'text-purple-600',   bg: 'bg-purple-50',   border: 'border-purple-100',   hbg: 'hover:bg-purple-100'   },
+    { label: 'Subscription Plans', icon: CreditCard,  to: '/app/admin?tab=plans',      color: 'text-amber-600',    bg: 'bg-amber-50',    border: 'border-amber-100',    hbg: 'hover:bg-amber-100'    },
+    { label: 'Sales Reports',      icon: BarChart3,   to: '/app/reports?tab=sales',    color: 'text-indigo-600',   bg: 'bg-indigo-50',   border: 'border-indigo-100',   hbg: 'hover:bg-indigo-100'   },
+    { label: 'Finance Reports',    icon: TrendingUp,  to: '/app/reports?tab=pl',       color: 'text-green-600',    bg: 'bg-green-50',    border: 'border-green-100',    hbg: 'hover:bg-green-100'    },
+    { label: 'Platform Settings',  icon: Settings,    to: '/app/admin?tab=pricing',    color: 'text-gray-600',     bg: 'bg-gray-50',     border: 'border-gray-200',     hbg: 'hover:bg-gray-100'     },
   ];
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="rounded-xl border border-gray-100 bg-white shadow-sm p-4 flex items-start gap-3 animate-pulse">
-            <div className="h-10 w-10 rounded-lg bg-gray-100 flex-shrink-0" />
-            <div className="flex-1 space-y-2 pt-1">
-              <div className="h-3 w-20 rounded bg-gray-100" />
-              <div className="h-6 w-12 rounded bg-gray-100" />
-              <div className="h-2.5 w-24 rounded bg-gray-100" />
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="rounded-2xl border border-gray-100 bg-white p-5 animate-pulse">
+              <div className="h-3 w-24 rounded bg-gray-100 mb-3" />
+              <div className="h-8 w-16 rounded bg-gray-100 mb-2" />
+              <div className="h-2.5 w-32 rounded bg-gray-100" />
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-gray-100 bg-white p-4 animate-pulse flex items-center gap-3">
+              <div className="h-9 w-9 rounded-lg bg-gray-100 flex-shrink-0" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-2.5 w-16 rounded bg-gray-100" />
+                <div className="h-5 w-10 rounded bg-gray-100" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-      {stats.map(({ label, value, sub, icon: Icon, iconBg, iconCl, valCl }) => (
-        <div key={label} className="rounded-xl border border-gray-100 bg-white shadow-sm p-4 flex items-start gap-3 hover:shadow-md transition-shadow">
-          <div className={`flex-shrink-0 rounded-lg p-2.5 ${iconBg}`}>
-            <Icon className={`h-5 w-5 ${iconCl}`} />
+    <div className="space-y-6">
+
+      {/* ── Primary metrics ── */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+        {/* Companies — hero card */}
+        <div
+          className="relative overflow-hidden rounded-2xl p-5 text-white lg:col-span-1 cursor-pointer"
+          style={{ background: 'linear-gradient(135deg, #024A59 0%, #037080 100%)' }}
+          onClick={() => navigate('/app/admin?tab=companies')}
+        >
+          <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-white/5" />
+          <div className="absolute -right-2 bottom-2 h-16 w-16 rounded-full bg-white/5" />
+          <div className="flex items-start justify-between relative">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-white/60">Total Companies</p>
+              <p className="mt-1 text-4xl font-extrabold leading-none">{total}</p>
+            </div>
+            <div className="rounded-xl bg-white/10 p-2.5">
+              <Globe className="h-5 w-5 text-white/80" />
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-gray-500">{label}</p>
-            <p className={`text-2xl font-bold leading-tight mt-0.5 ${valCl}`}>{value}</p>
-            <p className="text-xs text-gray-400 mt-0.5 truncate">{sub}</p>
+          <div className="mt-4 flex items-center gap-3 text-xs">
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-400 inline-block" />{active} active</span>
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-300 inline-block" />{trial} trial</span>
+            {suspended > 0 && <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400 inline-block" />{suspended} suspended</span>}
           </div>
         </div>
-      ))}
+
+        {/* Today's Revenue */}
+        <div className="relative overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 to-white p-5">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-amber-600/80">Today's Revenue</p>
+              <p className="mt-1 text-3xl font-extrabold leading-none text-amber-800">
+                {data?.today_sales != null ? formatCurrency(data.today_sales) : '—'}
+              </p>
+            </div>
+            <div className="rounded-xl bg-amber-100 p-2.5">
+              <DollarSign className="h-5 w-5 text-amber-600" />
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-amber-600/70">Gross revenue across all tenants today</p>
+        </div>
+
+        {/* Live Sessions */}
+        <div className="relative overflow-hidden rounded-2xl border border-green-100 bg-gradient-to-br from-green-50 to-white p-5">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-green-700/70">Live Sessions</p>
+              <div className="mt-1 flex items-end gap-2">
+                <p className="text-3xl font-extrabold leading-none text-green-800">{data?.open_sessions ?? '—'}</p>
+                {(data?.open_sessions ?? 0) > 0 && (
+                  <span className="mb-1 flex items-center gap-1 text-xs font-medium text-green-600">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+                    </span>
+                    live
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="rounded-xl bg-green-100 p-2.5">
+              <Activity className="h-5 w-5 text-green-600" />
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-green-700/60">Open POS sessions right now</p>
+        </div>
+
+        {/* Total Users */}
+        <div className="relative overflow-hidden rounded-2xl border border-purple-100 bg-gradient-to-br from-purple-50 to-white p-5">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-purple-700/70">Platform Users</p>
+              <p className="mt-1 text-3xl font-extrabold leading-none text-purple-800">{data?.total_users ?? '—'}</p>
+            </div>
+            <div className="rounded-xl bg-purple-100 p-2.5">
+              <Users className="h-5 w-5 text-purple-600" />
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-purple-700/60">Active users across all tenants</p>
+        </div>
+      </div>
+
+      {/* ── Company health bar ── */}
+      {total > 0 && (
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-gray-700">Company Health</p>
+            <p className="text-xs text-gray-400">{total} total companies</p>
+          </div>
+          <div className="flex h-3 w-full overflow-hidden rounded-full bg-gray-100">
+            {activeW    > 0 && <div className="bg-green-500 transition-all"  style={{ width: `${activeW}%` }} />}
+            {trialW     > 0 && <div className="bg-amber-400 transition-all"  style={{ width: `${trialW}%` }} />}
+            {suspendedW > 0 && <div className="bg-red-400 transition-all"    style={{ width: `${suspendedW}%` }} />}
+            {otherW     > 0 && <div className="bg-gray-300 transition-all"   style={{ width: `${otherW}%` }} />}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-4 text-xs">
+            <span className="flex items-center gap-1.5 text-gray-600"><span className="h-2.5 w-2.5 rounded-sm bg-green-500 inline-block" /><strong>{active}</strong> Active</span>
+            <span className="flex items-center gap-1.5 text-gray-600"><span className="h-2.5 w-2.5 rounded-sm bg-amber-400 inline-block" /><strong>{trial}</strong> Trial</span>
+            <span className="flex items-center gap-1.5 text-gray-600"><span className="h-2.5 w-2.5 rounded-sm bg-red-400 inline-block" /><strong>{suspended}</strong> Suspended</span>
+            {other > 0 && <span className="flex items-center gap-1.5 text-gray-600"><span className="h-2.5 w-2.5 rounded-sm bg-gray-300 inline-block" /><strong>{other}</strong> Other</span>}
+          </div>
+        </div>
+      )}
+
+      {/* ── Secondary metrics ── */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {[
+          { label: 'Branches',   value: data?.total_branches  ?? '—', icon: GitBranch, iconBg: 'bg-indigo-100',  iconCl: 'text-indigo-600',  sub: 'active branches'     },
+          { label: 'Products',   value: data?.total_products  ?? '—', icon: Package,   iconBg: 'bg-teal-100',    iconCl: 'text-teal-600',    sub: 'catalogue entries'   },
+          { label: 'Customers',  value: data?.total_customers ?? '—', icon: UserCheck, iconBg: 'bg-orange-100',  iconCl: 'text-orange-600',  sub: 'registered customers'},
+          { label: 'Suspended',  value: suspended,                     icon: AlertTriangle, iconBg: suspended > 0 ? 'bg-red-100' : 'bg-gray-100', iconCl: suspended > 0 ? 'text-red-500' : 'text-gray-400', sub: 'companies suspended' },
+        ].map(({ label, value, icon: Icon, iconBg, iconCl, sub }) => (
+          <div key={label} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
+            <div className={`flex-shrink-0 rounded-lg p-2 ${iconBg}`}>
+              <Icon className={`h-4 w-4 ${iconCl}`} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">{label}</p>
+              <p className="text-xl font-bold text-gray-800 leading-tight">{value}</p>
+              <p className="text-[11px] text-gray-400 truncate">{sub}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Quick actions ── */}
+      <div>
+        <p className="mb-3 text-sm font-semibold text-gray-600">Quick Actions</p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {QUICK_ACTIONS.map(({ label, icon: Icon, to, color, bg, border, hbg }) => (
+            <button
+              key={label}
+              onClick={() => navigate(to)}
+              className={`flex flex-col items-center gap-2 rounded-xl border ${border} ${bg} ${hbg} px-3 py-4 text-center transition-all hover:shadow-sm`}
+            >
+              <div className={`rounded-lg p-2 bg-white shadow-sm`}>
+                <Icon className={`h-4 w-4 ${color}`} />
+              </div>
+              <span className="text-xs font-medium text-gray-700 leading-tight">{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
     </div>
   );
 }
 
 // ── Main dashboard ─────────────────────────────────────────────────────────────
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const activeCompanyId = useAuthStore((s) => s.activeCompanyId);
   const [trendPeriod, setTrendPeriod] = useState('7d');
 
@@ -451,11 +609,29 @@ export default function DashboardPage() {
   }
 
   if (isSuperAdmin) {
+    const today = new Date().toLocaleDateString('en-KE', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    });
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-lg font-bold text-gray-900">Platform Overview</h2>
-          <p className="text-sm text-gray-400 mt-0.5">Platform-wide totals across all tenants</p>
+        {/* Header */}
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-100 px-2.5 py-0.5 text-xs font-bold text-primary-700">
+                <Layers className="h-3 w-3" /> Super Admin
+              </span>
+            </div>
+            <h1 className="text-2xl font-extrabold text-gray-900">Platform Dashboard</h1>
+            <p className="mt-0.5 text-sm text-gray-400">{today}</p>
+          </div>
+          <button
+            onClick={() => navigate('/app/admin')}
+            className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+          >
+            <Settings className="h-4 w-4 text-gray-500" />
+            Admin Panel
+          </button>
         </div>
         <PlatformOverview />
       </div>

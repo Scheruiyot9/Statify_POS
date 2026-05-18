@@ -181,7 +181,7 @@ export default function AppLayout() {
           {/* Left: current page title + date */}
           <div>
             <h1 className="text-base font-bold tracking-wide text-white leading-tight">{pageTitle}</h1>
-            <p className="text-[11px] text-white/40 leading-tight">
+            <p className="text-xs text-white/65 leading-tight">
               {new Date().toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
           </div>
@@ -222,11 +222,11 @@ export default function AppLayout() {
                 <p className="text-sm font-medium text-white leading-tight">
                   {user?.firstName} {user?.lastName}
                 </p>
-                <p className="text-xs text-white/50 capitalize leading-tight">
+                <p className="text-xs text-white/65 capitalize leading-tight">
                   {user?.role?.replace(/_/g, ' ')}
                 </p>
               </div>
-              <ChevronDown className={`h-3.5 w-3.5 text-white/50 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`h-3.5 w-3.5 text-white/65 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {/* Dropdown menu */}
@@ -275,13 +275,13 @@ export default function AppLayout() {
               <div className="flex h-6 w-6 items-center justify-center rounded-md bg-secondary-500 text-primary-900 text-xs font-bold flex-shrink-0">
                 <Building2 className="h-3.5 w-3.5" />
               </div>
-              <span className="text-white/50 text-xs">Managing</span>
+              <span className="text-white/70 text-xs">Managing</span>
               <span className="font-semibold text-secondary-300 text-sm">{activeCompanyName}</span>
             </div>
             <div className="ml-auto flex items-center gap-2">
               <Link
                 to="/app/admin"
-                className="text-xs text-white/50 hover:text-white/80 transition-colors px-2 py-1 rounded-md hover:bg-white/10"
+                className="text-xs text-white/70 hover:text-white/80 transition-colors px-2 py-1 rounded-md hover:bg-white/10"
               >
                 Switch company
               </Link>

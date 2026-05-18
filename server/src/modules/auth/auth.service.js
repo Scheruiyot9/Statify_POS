@@ -181,12 +181,14 @@ const changePassword = async (userId, { currentPassword, newPassword }) => {
 
 const forgotPassword = async ({ email }) => {
   const { rows } = await query(
-    `SELECT user_id, first_name FROM users WHERE email = $1 AND is_active = TRUE LIMIT 1`,
+    `SELECT user_id, first_name FROM users
+      WHERE email = $1 AND is_active = TRUE AND deleted_at IS NULL
+      LIMIT 1`,
     [email.toLowerCase().trim()]
   );
 
-  // Always return success — never reveal whether an email exists
-  if (!rows.length) return;
+  if (!rows.length)
+    throw AppError.badRequest('No account found with that email address.', 'EMAIL_NOT_FOUND');
 
   const user = rows[0];
 

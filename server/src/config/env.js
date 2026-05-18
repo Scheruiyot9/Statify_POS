@@ -30,7 +30,9 @@ module.exports = {
   },
 
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    // Supports comma-separated origins: "http://localhost:5173,https://demo.statify.co.ke"
+    origins: (process.env.CORS_ORIGIN || 'http://localhost:5173')
+      .split(',').map((o) => o.trim()).filter(Boolean),
   },
 
   bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS || '10', 10),

@@ -23,8 +23,10 @@ router.patch('/companies/:id/plan',         ctrl.changeCompanyPlan);
 router.patch('/companies/:id/status',       ctrl.changeCompanyStatus);
 
 // ── People ───────────────────────────────────────────────────────────────────
-router.get('/users',           ctrl.users);
-router.get('/branches',        ctrl.branches);
+router.get('/users',                  ctrl.users);
+router.post('/users/super-admin',     ctrl.createSuperAdminUser);
+router.put('/users/:id',              ctrl.updateAnyUser);
+router.get('/branches',               ctrl.branches);
 
 // ── POS Activity ─────────────────────────────────────────────────────────────
 router.get('/terminals',       ctrl.terminals);

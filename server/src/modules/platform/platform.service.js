@@ -1,7 +1,12 @@
-const { query } = require('../../config/database');
+const { query, transaction } = require('../../config/database');
 const QueryBuilder = require('../../shared/qb');
 const AppError = require('../../shared/AppError');
 const mpesaSvc = require('../mpesa/mpesa.service');
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const env    = require('../../config/env');
+
+const generateTempPassword = () => crypto.randomBytes(9).toString('base64url');
 
 // ── Shared helpers ─────────────────────────────────────────────────────────────
 
@@ -73,7 +78,7 @@ async function listAllUsers({ search, companyId, role, page, limit } = {}) {
       u.user_id, u.first_name, u.last_name, u.email,
       u.is_active, u.last_login, u.created_at,
       c.company_name, c.company_id,
-      r.role_name,
+      r.role_id, r.role_name,
       b.branch_name,
       COUNT(*) OVER() AS total_count
     FROM users u
@@ -872,6 +877,85 @@ async function autoSuspendExpired() {
   return rows;
 }
 
+async function updateAnyUser(userId, data) {
+  const { first_name, last_name, phone, is_active, role_id, branch_id } = data;
+  return transaction(async (client) => {
+    const { rows } = await client.query(`
+      UPDATE users
+      SET first_name = COALESCE($2, first_name),
+          last_name  = COALESCE($3, last_name),
+          phone      = COALESCE($4, phone),
+          is_active  = COALESCE($5, is_active),
+          updated_at = now()
+      WHERE user_id = $1 AND deleted_at IS NULL
+      RETURNING user_id, first_name, last_name, email, phone, is_active
+    `, [userId, first_name ?? null, last_name ?? null, phone ?? null, is_active ?? null]);
+
+    if (!rows.length) throw AppError.notFound('User');
+
+    if (role_id != null && role_id !== '') {
+      await client.query(`DELETE FROM user_roles WHERE user_id = $1`, [userId]);
+      await client.query(`
+        INSERT INTO user_roles (user_role_id, user_id, role_id)
+        VALUES (gen_random_uuid(), $1, $2) ON CONFLICT DO NOTHING
+      `, [userId, role_id]);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(data, 'branch_id')) {
+      await client.query(`DELETE FROM user_branch_assignments WHERE user_id = $1 AND is_default_branch = TRUE`, [userId]);
+      if (branch_id) {
+        await client.query(`
+          INSERT INTO user_branch_assignments (assignment_id, user_id, branch_id, is_default_branch)
+          VALUES (gen_random_uuid(), $1, $2, TRUE) ON CONFLICT DO NOTHING
+        `, [userId, branch_id]);
+      }
+    }
+
+    return rows[0];
+  });
+}
+
+async function createSuperAdmin({ first_name, last_name, email, phone }) {
+  if (!first_name || !email) throw AppError.badRequest('first_name and email are required');
+
+  const emailLower = email.toLowerCase().trim();
+  const { rows: dup } = await query('SELECT 1 FROM users WHERE email = $1', [emailLower]);
+  if (dup.length) throw AppError.conflict('A user with this email already exists');
+
+  const { rows: roleRows } = await query(`SELECT role_id FROM roles WHERE role_name = 'super_admin' LIMIT 1`);
+  if (!roleRows.length) throw AppError.internal('super_admin role not found');
+  const superAdminRoleId = roleRows[0].role_id;
+
+  const password = generateTempPassword();
+  const password_hash = await bcrypt.hash(password, env.bcryptRounds);
+
+  const baseUsername = emailLower.split('@')[0].replace(/[^a-z0-9._-]/gi, '').slice(0, 60) || 'admin';
+  const { rows: existing } = await query(
+    `SELECT username FROM users WHERE username ILIKE $1 OR username ILIKE $2`,
+    [baseUsername, `${baseUsername}\\_%`]
+  );
+  const taken = new Set(existing.map((r) => r.username.toLowerCase()));
+  let resolvedUsername = baseUsername;
+  let suffix = 1;
+  while (taken.has(resolvedUsername.toLowerCase())) resolvedUsername = `${baseUsername}_${suffix++}`;
+
+  return transaction(async (client) => {
+    const { rows } = await client.query(`
+      INSERT INTO users (company_id, first_name, last_name, email, username, phone, password_hash)
+      VALUES (NULL, $1, $2, $3, $4, $5, $6)
+      RETURNING user_id, first_name, last_name, email, username, phone, is_active, created_at
+    `, [first_name, last_name, emailLower, resolvedUsername, phone || null, password_hash]);
+
+    const user = rows[0];
+    await client.query(`
+      INSERT INTO user_roles (user_role_id, user_id, role_id)
+      VALUES (gen_random_uuid(), $1, $2) ON CONFLICT DO NOTHING
+    `, [user.user_id, superAdminRoleId]);
+
+    return { ...user, temp_password: password };
+  });
+}
+
 module.exports = {
   listAllCompanies, listAllUsers, listAllBranches, listAllTerminals,
   listAllSessions,  listAllSales,  listAllProducts,  listAllInventory,
@@ -883,4 +967,5 @@ module.exports = {
   listPlans, createPlan, updatePlan, deletePlan,
   changeCompanyPlan, changeCompanyStatus,
   listSubscriptions, recordSubscription, autoSuspendExpired,
+  createSuperAdmin, updateAnyUser,
 };

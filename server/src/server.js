@@ -2,6 +2,7 @@ const app  = require('./app');
 const env  = require('./config/env');
 const { pool } = require('./config/database');
 const { autoSuspendExpired } = require('./modules/platform/platform.service');
+const { verifyMailer } = require('./shared/mailer');
 
 // ── Auto-suspend scheduler ────────────────────────────────────────────────────
 // Fires once at startup (catches any missed dates) then every 24 hours.
@@ -32,6 +33,7 @@ const start = async () => {
   }
 
   scheduleAutoSuspend();
+  await verifyMailer();
 
   const server = app.listen(env.port, () => {
     console.log(`✓ Server running on port ${env.port} [${env.nodeEnv}]`);

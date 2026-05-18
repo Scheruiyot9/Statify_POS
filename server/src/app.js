@@ -40,7 +40,10 @@ app.use(morgan(env.isDev ? 'dev' : 'combined'));
 
 // ── Security headers ──────────────────────────────────────────────────────────
 app.use(helmet());
-app.use(cors({ origin: env.cors.origin, credentials: true }));
+app.use(cors({
+  origin: env.cors.origins.length === 1 ? env.cors.origins[0] : env.cors.origins,
+  credentials: true,
+}));
 
 // ── Cookie + Body parsing ─────────────────────────────────────────────────────
 app.use(cookieParser());

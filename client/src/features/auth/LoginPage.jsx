@@ -72,7 +72,7 @@ const NAV_LINKS = [
   { label: 'Finance',     href: '#finance' },
   { label: 'Integrations', href: '#integrations' },
   { label: 'Get Started', href: '#get-started' },
-  { label: 'Support',     href: 'mailto:support@statify.co.ke' },
+  { label: 'Support',     href: '#support' },
 ];
 
 // ── Sign-in card (sign-in / forgot-password views) ───────────────────────────
@@ -136,7 +136,7 @@ function SignInCard() {
           {view === 'login' && (
             <>
               <h2 className="text-xl font-bold text-white">Sign in to your workspace</h2>
-              <p className="mt-1 text-sm text-white/50">Enter your credentials to continue.</p>
+              <p className="mt-1 text-sm text-white/70">Enter your credentials to continue.</p>
 
               {serverErr && (
                 <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-red-400/30 bg-red-500/15 px-4 py-3 text-sm text-red-300">
@@ -159,7 +159,7 @@ function SignInCard() {
                       autoFocus
                       className={[
                         'login-input block w-full rounded-xl border text-sm pl-10 pr-4 py-3 transition-colors',
-                        'bg-[#011d26] text-white placeholder-white/50',
+                        'bg-[#011d26] text-white placeholder-white/60',
                         'focus:outline-none focus:ring-2 focus:ring-secondary-400/60 focus:border-secondary-400/60',
                         loginForm.formState.errors.email ? 'border-red-400/50' : 'border-white/10 hover:border-white/20',
                       ].join(' ')}
@@ -195,7 +195,7 @@ function SignInCard() {
                       autoComplete="current-password"
                       className={[
                         'login-input block w-full rounded-xl border text-sm pl-10 pr-11 py-3 transition-colors',
-                        'bg-[#011d26] text-white placeholder-white/50',
+                        'bg-[#011d26] text-white placeholder-white/60',
                         'focus:outline-none focus:ring-2 focus:ring-secondary-400/60 focus:border-secondary-400/60',
                         loginForm.formState.errors.password ? 'border-red-400/50' : 'border-white/10 hover:border-white/20',
                       ].join(' ')}
@@ -260,14 +260,14 @@ function SignInCard() {
             <>
               <button
                 onClick={() => { setServerErr(''); setView('login'); }}
-                className="mb-4 flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors"
+                className="mb-4 flex items-center gap-1.5 text-xs text-white/60 hover:text-white/70 transition-colors"
               >
                 <ArrowLeft className="h-3.5 w-3.5" /> Back to sign in
               </button>
 
               <h2 className="text-xl font-bold text-white">Reset password</h2>
-              <p className="mt-1 text-sm text-white/50">
-                Enter your email and we'll send a reset link if it's registered.
+              <p className="mt-1 text-sm text-white/70">
+                Enter your registered email and we'll send you a reset link.
               </p>
 
               {serverErr && (
@@ -291,7 +291,7 @@ function SignInCard() {
                       autoFocus
                       className={[
                         'login-input block w-full rounded-xl border text-sm pl-10 pr-4 py-3 transition-colors',
-                        'bg-[#011d26] text-white placeholder-white/50',
+                        'bg-[#011d26] text-white placeholder-white/60',
                         'focus:outline-none focus:ring-2 focus:ring-secondary-400/60 focus:border-secondary-400/60',
                         forgotForm.formState.errors.email ? 'border-red-400/50' : 'border-white/10 hover:border-white/20',
                       ].join(' ')}
@@ -329,7 +329,7 @@ function SignInCard() {
               </form>
 
               <div className="mt-5 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                <p className="text-xs text-white/40 leading-relaxed">
+                <p className="text-xs text-white/60 leading-relaxed">
                   Need help? Contact us at{' '}
                   <a href="mailto:support@statify.co.ke" className="text-secondary-400 hover:text-secondary-300">
                     support@statify.co.ke
@@ -417,16 +417,16 @@ function InterestForm() {
 
   return (
     <>
-      <div className="mb-10 text-center">
-        <p className="mb-2 text-xs font-bold uppercase tracking-widest text-secondary-600">Get started today</p>
-        <h2 className="text-3xl font-extrabold text-gray-900">Interested in Statify?</h2>
-        <p className="mx-auto mt-3 max-w-xl text-sm text-gray-500">
-          Leave your details and our team will reach out within 1 business day to walk you through a demo and get your workspace set up.
+      <div className="mb-6">
+        <p className="mb-1 text-xs font-bold uppercase tracking-widest text-secondary-600">Get started today</p>
+        <h2 className="text-2xl font-extrabold text-gray-900">Interested in Statify?</h2>
+        <p className="mt-2 text-sm text-gray-500">
+          Leave your details and our team will reach out within 1 business day.
         </p>
       </div>
 
-      <div className="mx-auto max-w-2xl">
-        <div className="rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
+      <div>
+        <div className="rounded-xl border border-gray-100 bg-white p-7 shadow-sm">
 
           {serverErr && (
             <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
@@ -435,15 +435,15 @@ function InterestForm() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
-            <div className="grid gap-5 sm:grid-cols-2">
+          <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-gray-700">Full name <span className="text-red-400">*</span></label>
                 <input
                   type="text"
                   placeholder="Jane Doe"
                   className={[
-                    'block w-full rounded-xl border px-4 py-2.5 text-sm transition-colors',
+                    'block w-full rounded-xl border px-4 py-3 text-sm transition-colors',
                     'focus:outline-none focus:ring-2 focus:ring-primary-400/50 focus:border-primary-400',
                     errors.fullName ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300',
                   ].join(' ')}
@@ -458,7 +458,7 @@ function InterestForm() {
                   type="text"
                   placeholder="Acme Retail Ltd"
                   className={[
-                    'block w-full rounded-xl border px-4 py-2.5 text-sm transition-colors',
+                    'block w-full rounded-xl border px-4 py-3 text-sm transition-colors',
                     'focus:outline-none focus:ring-2 focus:ring-primary-400/50 focus:border-primary-400',
                     errors.businessName ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300',
                   ].join(' ')}
@@ -468,14 +468,14 @@ function InterestForm() {
               </div>
             </div>
 
-            <div className="grid gap-5 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-gray-700">Email <span className="text-red-400">*</span></label>
                 <input
                   type="email"
                   placeholder="jane@acme.co.ke"
                   className={[
-                    'block w-full rounded-xl border px-4 py-2.5 text-sm transition-colors',
+                    'block w-full rounded-xl border px-4 py-3 text-sm transition-colors',
                     'focus:outline-none focus:ring-2 focus:ring-primary-400/50 focus:border-primary-400',
                     errors.email ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300',
                   ].join(' ')}
@@ -492,7 +492,7 @@ function InterestForm() {
                 <input
                   type="tel"
                   placeholder="+254 7XX XXX XXX"
-                  className="block w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm transition-colors hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-400/50 focus:border-primary-400"
+                  className="block w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm transition-colors hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-400/50 focus:border-primary-400"
                   {...register('phone')}
                 />
               </div>
@@ -503,7 +503,7 @@ function InterestForm() {
               <textarea
                 rows={3}
                 placeholder="Tell us about your business — how many branches, staff, and what you're looking for…"
-                className="block w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm transition-colors hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-400/50 focus:border-primary-400 resize-none"
+                className="block w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm transition-colors hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-400/50 focus:border-primary-400 resize-none"
                 {...register('message')}
               />
             </div>
@@ -512,7 +512,7 @@ function InterestForm() {
               type="submit"
               disabled={loading}
               className={[
-                'flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3.5',
+                'flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3',
                 'bg-primary-700 text-sm font-bold text-white transition-all shadow-sm',
                 'hover:bg-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500',
                 'disabled:opacity-60 disabled:cursor-not-allowed',
@@ -535,16 +535,6 @@ function InterestForm() {
             </button>
           </form>
 
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-6 border-t border-gray-100 pt-5 text-xs text-gray-400">
-            <a href="mailto:support@statify.co.ke" className="flex items-center gap-1.5 hover:text-primary-600 transition-colors">
-              <Mail className="h-3.5 w-3.5" />
-              support@statify.co.ke
-            </a>
-            <a href="tel:+254796265933" className="flex items-center gap-1.5 hover:text-primary-600 transition-colors">
-              <Phone className="h-3.5 w-3.5" />
-              +254 796 265 933
-            </a>
-          </div>
         </div>
       </div>
     </>
@@ -612,11 +602,11 @@ export default function LoginPage() {
         <div className="pointer-events-none absolute -top-32 -left-32 h-80 w-80 rounded-full bg-primary-200/50 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-20 -right-20 h-72 w-72 rounded-full bg-secondary-200/40 blur-3xl" />
 
-        <div className="relative mx-auto grid max-w-7xl grid-cols-1 items-center gap-12 px-8 pb-16 pt-14 lg:grid-cols-[1fr_400px]">
+        <div className="relative mx-auto grid max-w-7xl grid-cols-1 items-center gap-10 px-8 pb-14 pt-12 lg:grid-cols-[1fr_400px]">
 
           {/* Left */}
           <div>
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-secondary-300/50 bg-secondary-50 px-4 py-1.5">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-secondary-300/50 bg-secondary-50 px-4 py-1.5">
               <Sparkles className="h-3.5 w-3.5 text-secondary-600" />
               <span className="text-xs font-bold uppercase tracking-widest text-secondary-700">
                 All-in-one point of sale
@@ -637,12 +627,12 @@ export default function LoginPage() {
               </span>
             </h1>
 
-            <p className="mt-5 max-w-lg text-base leading-relaxed text-gray-500">
+            <p className="mt-4 max-w-lg text-base leading-relaxed text-gray-500">
               A complete retail management platform — blazing-fast checkout, real-time analytics,
               multi-branch control, loyalty programmes, and full accounting. All in one workspace.
             </p>
 
-            <div className="mt-7 flex flex-wrap gap-3">
+            <div className="mt-6 flex flex-wrap gap-3">
               <button
                 onClick={scrollToFeatures}
                 className="inline-flex items-center gap-2 rounded-xl border border-primary-200 bg-white px-5 py-2.5 text-sm font-semibold text-primary-700 shadow-sm transition-all hover:bg-primary-50 hover:border-primary-300"
@@ -662,21 +652,10 @@ export default function LoginPage() {
           <SignInCard />
         </div>
 
-        {/* Dashboard screenshot strip */}
-        <div className="mx-auto max-w-7xl px-8">
-          <div className="overflow-hidden rounded-t-2xl border border-primary-200/40 shadow-2xl shadow-primary-900/20">
-            <img
-              src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1400&q=85&auto=format&fit=crop"
-              alt="Analytics dashboard"
-              className="block w-full object-cover object-center"
-              style={{ maxHeight: 280 }}
-            />
-          </div>
-        </div>
       </section>
 
       {/* ── Features ────────────────────────────────────────────────────────── */}
-      <section id="features" ref={featuresRef} className="bg-gray-50 pb-16 pt-14">
+      <section id="features" ref={featuresRef} className="bg-gray-50 pb-14 pt-14">
         <div className="mx-auto max-w-7xl px-8">
           <div className="mb-10 text-center">
             <p className="mb-2 text-xs font-bold uppercase tracking-widest text-secondary-600">Everything you need</p>
@@ -687,17 +666,17 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {FEATURES.map(({ icon: Icon, title, desc }) => (
               <div
                 key={title}
-                className="group rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md"
+                className="group rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md"
               >
-                <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-primary-50 text-primary-600 transition-colors group-hover:bg-primary-100">
-                  <Icon className="h-[18px] w-[18px]" />
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50 text-primary-600 transition-colors group-hover:bg-primary-100">
+                  <Icon className="h-5 w-5" />
                 </div>
                 <h3 className="mb-1.5 text-sm font-bold text-gray-900">{title}</h3>
-                <p className="text-xs leading-relaxed text-gray-500">{desc}</p>
+                <p className="text-sm leading-relaxed text-gray-500">{desc}</p>
               </div>
             ))}
           </div>
@@ -705,9 +684,9 @@ export default function LoginPage() {
       </section>
 
       {/* ── Finance ─────────────────────────────────────────────────────────── */}
-      <section id="finance" className="bg-primary-800 py-16">
+      <section id="finance" className="bg-primary-800 py-14">
         <div className="mx-auto max-w-7xl px-8">
-          <div className="grid items-center gap-12 lg:grid-cols-2">
+          <div className="grid items-center gap-8 lg:grid-cols-2">
             <div>
               <p className="mb-2 text-xs font-bold uppercase tracking-widest text-secondary-400">Built-in accounting</p>
               <h2 className="text-3xl font-extrabold leading-tight text-white">
@@ -718,7 +697,7 @@ export default function LoginPage() {
                 double-entry ledger, purchase management, supplier payments and financial reports —
                 no integrations required.
               </p>
-              <ul className="mt-7 space-y-2.5">
+              <ul className="mt-5 space-y-3">
                 {[
                   'No per-branch licensing fees',
                   'Offline-capable POS terminals',
@@ -747,7 +726,7 @@ export default function LoginPage() {
       </section>
 
       {/* ── Integrations ────────────────────────────────────────────────────── */}
-      <section id="integrations" className="bg-white py-16">
+      <section id="integrations" className="bg-white py-14">
         <div className="mx-auto max-w-7xl px-8">
           <div className="mb-10 text-center">
             <p className="mb-2 text-xs font-bold uppercase tracking-widest text-secondary-600">Payments & connectivity</p>
@@ -774,7 +753,7 @@ export default function LoginPage() {
                       {badge}
                     </span>
                   </div>
-                  <p className="mt-1 text-xs leading-relaxed text-gray-500">{desc}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-gray-500">{desc}</p>
                 </div>
               </div>
             ))}
@@ -782,10 +761,64 @@ export default function LoginPage() {
         </div>
       </section>
 
-      {/* ── Get Started / Interest form ──────────────────────────────────────── */}
-      <section id="get-started" ref={getStartedRef} className="bg-gray-50 py-16">
+      {/* ── Get Started + Contact Support (side by side) ─────────────────────── */}
+      <section id="get-started" ref={getStartedRef} className="bg-gray-100 py-14">
         <div className="mx-auto max-w-7xl px-8">
-          <InterestForm />
+          <div className="overflow-hidden rounded-3xl shadow-xl flex flex-col lg:flex-row">
+
+            {/* Left — Contact Support */}
+            <div
+              id="support"
+              className="flex flex-col justify-center px-10 py-12 lg:w-[38%] lg:px-12"
+              style={{ background: 'linear-gradient(160deg, #011920 0%, #024A59 60%, #012e3a 100%)' }}
+            >
+              <p className="mb-1.5 text-xs font-bold uppercase tracking-widest text-secondary-400">Support</p>
+              <h2 className="text-2xl font-extrabold text-white leading-tight">We're here to help</h2>
+              <p className="mt-2 text-sm text-white/65 leading-relaxed">
+                Our team typically responds within 4 business hours.
+              </p>
+
+              <div className="mt-7 space-y-3">
+                <a
+                  href="mailto:support@statify.co.ke"
+                  className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 transition-all hover:border-secondary-400/40 hover:bg-white/10"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-secondary-500/20 group-hover:bg-secondary-500/30 transition-colors">
+                    <Mail className="h-[18px] w-[18px] text-secondary-400" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-white/45">Email</p>
+                    <p className="mt-0.5 text-sm font-semibold text-white">support@statify.co.ke</p>
+                  </div>
+                </a>
+
+                <a
+                  href="tel:+254796265933"
+                  className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 transition-all hover:border-secondary-400/40 hover:bg-white/10"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-secondary-500/20 group-hover:bg-secondary-500/30 transition-colors">
+                    <Phone className="h-[18px] w-[18px] text-secondary-400" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-white/45">Phone / WhatsApp</p>
+                    <p className="mt-0.5 text-sm font-semibold text-white">+254 796 265 933</p>
+                  </div>
+                </a>
+              </div>
+
+              <div className="mt-7 border-t border-white/10 pt-5">
+                <p className="text-xs text-white/40 leading-relaxed">
+                  Mon – Fri · 8 am – 6 pm EAT · Nairobi, Kenya
+                </p>
+              </div>
+            </div>
+
+            {/* Right — Interest form */}
+            <div className="flex flex-col justify-center bg-white px-10 py-12 lg:flex-1 lg:px-12">
+              <InterestForm />
+            </div>
+
+          </div>
         </div>
       </section>
 
@@ -802,10 +835,10 @@ export default function LoginPage() {
           </div>
           <p className="text-xs text-white/25">© {new Date().getFullYear()} Statify · Multi-Tenant Point of Sale Platform</p>
           <div className="flex items-center gap-5">
-            <a href="mailto:support@statify.co.ke" className="flex items-center gap-1.5 text-xs text-white/35 transition-colors hover:text-white/60">
+            <a href="mailto:support@statify.co.ke" className="flex items-center gap-1.5 text-xs text-white/60 transition-colors hover:text-white/90">
               <Mail className="h-3 w-3" /> support@statify.co.ke
             </a>
-            <a href="tel:+254796265933" className="flex items-center gap-1.5 text-xs text-white/35 transition-colors hover:text-white/60">
+            <a href="tel:+254796265933" className="flex items-center gap-1.5 text-xs text-white/60 transition-colors hover:text-white/90">
               <Phone className="h-3 w-3" /> +254 796 265 933
             </a>
           </div>

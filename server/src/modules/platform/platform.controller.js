@@ -53,6 +53,10 @@ const recordSubscription = async (req, res) => r(res, await svc.recordSubscripti
   req.body.companyId, req.body, req.user?.userId
 ), 201);
 
+// Super-admin user creation + platform-level edit (no company context required)
+const createSuperAdminUser = async (req, res) => r(res, await svc.createSuperAdmin(req.body), 201);
+const updateAnyUser        = async (req, res) => r(res, await svc.updateAnyUser(req.params.id, req.body));
+
 module.exports = {
   stats,
   listPlans, createPlan, updatePlan, deletePlan,
@@ -64,4 +68,5 @@ module.exports = {
   mpesa, mpesaConfigs, saveMpesaConfig, toggleMpesaConfig,
   suppliers, purchases, apPayments, accounts, bankAccounts, journals,
   listSubscriptions, recordSubscription,
+  createSuperAdminUser, updateAnyUser,
 };

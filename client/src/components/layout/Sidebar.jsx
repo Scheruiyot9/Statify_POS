@@ -6,6 +6,7 @@ import {
   RotateCcw, Menu, ChevronDown, ChevronUp,
   Smartphone, Building2, GitBranch, Layers, ShoppingCart,
   CreditCard, BookOpen, Landmark, Truck, Lock, Star, ScrollText, FileText, CalendarRange,
+  Droplets, ArrowDownLeft, AlertTriangle, Scale,
 } from 'lucide-react';
 import { useAuthStore } from '@/app/store';
 import { usePermission } from '@/hooks/usePermission';
@@ -19,15 +20,15 @@ const COLLAPSED_THRESHOLD = 72; // <= this → icon-only mode
 
 const navBase = 'flex items-center rounded-lg text-sm font-medium transition-all duration-150';
 const navActive = 'bg-secondary-500/[.14] text-white font-semibold border-l-2 border-secondary-400';
-const navHover = 'text-white/60 hover:bg-secondary-500/[.09] hover:text-white border-l-2 border-transparent hover:border-secondary-400/30';
-const navLocked = 'text-white/30 cursor-not-allowed border-l-2 border-transparent';
+const navHover = 'text-white/70 hover:bg-secondary-500/[.09] hover:text-white border-l-2 border-transparent hover:border-secondary-400/30';
+const navLocked = 'text-white/45 cursor-not-allowed border-l-2 border-transparent';
 
 function NavItem({ to, label, Icon, collapsed, locked, isAdmin, search }) {
   const navigate = useNavigate();
+  const location = useLocation();
 
   if (isAdmin) {
     const target = `/app/admin${search ? `?tab=${search}` : ''}`;
-    const location = useLocation();
     const isActive = location.pathname === '/app/admin' &&
       (search ? location.search === `?tab=${search}` : !location.search);
 
@@ -48,24 +49,37 @@ function NavItem({ to, label, Icon, collapsed, locked, isAdmin, search }) {
     );
   }
 
+  // For links with a query string, match both pathname and search
+  const [toPath, toSearch] = to.split('?');
+  const hasQuery = Boolean(toSearch);
+  const isActiveQuery = hasQuery
+    ? location.pathname === toPath && location.search === `?${toSearch}`
+    : undefined;
+
   return (
     <NavLink
       to={to}
+      end={hasQuery}
       title={collapsed ? label : undefined}
-      className={({ isActive }) => [
-        navBase,
-        collapsed ? 'justify-center p-2 border-none' : 'gap-3 pl-2 pr-3 py-2',
-        isActive ? navActive : locked ? navLocked : navHover,
-      ].join(' ')}
+      className={hasQuery
+        ? [navBase, collapsed ? 'justify-center p-2 border-none' : 'gap-3 pl-2 pr-3 py-2', isActiveQuery ? navActive : locked ? navLocked : navHover].join(' ')
+        : ({ isActive }) => [navBase, collapsed ? 'justify-center p-2 border-none' : 'gap-3 pl-2 pr-3 py-2', isActive ? navActive : locked ? navLocked : navHover].join(' ')}
       onClick={locked ? (e) => e.preventDefault() : undefined}
     >
-      {({ isActive }) => (
-        <>
-          <Icon className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-secondary-400' : ''}`} />
-          {!collapsed && <span className="flex-1">{label}</span>}
-          {!collapsed && locked && <Lock className="h-3 w-3 text-secondary-400/70 flex-shrink-0" />}
-        </>
-      )}
+      {hasQuery
+        ? (<>
+            <Icon className={`h-4 w-4 flex-shrink-0 ${isActiveQuery ? 'text-secondary-400' : ''}`} />
+            {!collapsed && <span className="flex-1">{label}</span>}
+            {!collapsed && locked && <Lock className="h-3 w-3 text-secondary-400/70 flex-shrink-0" />}
+          </>)
+        : (({ isActive }) => (
+            <>
+              <Icon className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-secondary-400' : ''}`} />
+              {!collapsed && <span className="flex-1">{label}</span>}
+              {!collapsed && locked && <Lock className="h-3 w-3 text-secondary-400/70 flex-shrink-0" />}
+            </>
+          ))
+      }
     </NavLink>
   );
 }
@@ -93,7 +107,7 @@ function NavGroup({ id, label, collapsed, defaultOpen = true, children }) {
     <div className="space-y-1">
       <button
         onClick={toggle}
-        className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-xs font-semibold uppercase tracking-widest text-secondary-400/55 hover:text-secondary-400/90 transition-colors"
+        className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-xs font-semibold uppercase tracking-widest text-secondary-200 hover:text-secondary-100 transition-colors"
       >
         <span>{label}</span>
         {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -109,22 +123,16 @@ function FinanceGroup({ collapsed, hasCapability }) {
   const user = useAuthStore((s) => s.user);
   const hasFinance = user?.planFeatures?.hasFinance ?? false;
 
-  if (!hasCapability('settings.manage')) return null;
+  if (!hasCapability('settings.manage') || !hasFinance) return null;
 
   return (
     <NavGroup id="finance" label="Finance" collapsed={collapsed} defaultOpen={false}>
-      {!hasFinance && !collapsed && (
-        <div className="mx-3 mb-1.5 rounded-lg bg-secondary-500/20 border border-secondary-400/40 px-2.5 py-2">
-          <p className="text-xs font-semibold text-secondary-300">Finance Module</p>
-          <p className="text-xs text-white/60 mt-0.5">Upgrade your plan to unlock suppliers, purchasing, and financial reports.</p>
-        </div>
-      )}
-      <NavItem to="/app/suppliers" label="Suppliers" Icon={Truck} collapsed={collapsed} locked={!hasFinance} />
-      <NavItem to="/app/purchases" label="Purchases" Icon={ShoppingCart} collapsed={collapsed} locked={!hasFinance} />
-      <NavItem to="/app/payments" label="Payments" Icon={CreditCard} collapsed={collapsed} locked={!hasFinance} />
-      <NavItem to="/app/accounts" label="Accounts" Icon={BookOpen} collapsed={collapsed} locked={!hasFinance} />
-      <NavItem to="/app/bank-accounts" label="Bank Accounts" Icon={Landmark} collapsed={collapsed} locked={!hasFinance} />
-      <NavItem to="/app/journal" label="Journal" Icon={ScrollText} collapsed={collapsed} locked={!hasFinance} />
+      <NavItem to="/app/suppliers"    label="Suppliers"     Icon={Truck}        collapsed={collapsed} />
+      <NavItem to="/app/purchases"    label="Purchases"     Icon={ShoppingCart} collapsed={collapsed} />
+      <NavItem to="/app/payments"     label="Payments"      Icon={CreditCard}   collapsed={collapsed} />
+      <NavItem to="/app/accounts"     label="Accounts"      Icon={BookOpen}     collapsed={collapsed} />
+      <NavItem to="/app/bank-accounts" label="Bank Accounts" Icon={Landmark}   collapsed={collapsed} />
+      <NavItem to="/app/journal"      label="Journal"       Icon={ScrollText}   collapsed={collapsed} />
     </NavGroup>
   );
 }
@@ -168,7 +176,8 @@ function SuperAdminNav({ collapsed }) {
       </NavGroup>
 
       <NavGroup id="sa-reports" label="Reports" collapsed={collapsed} defaultOpen={false}>
-        <NavItem to="/app/admin" label="Reports" Icon={FileText} collapsed={collapsed} isAdmin search="reports" />
+        <NavItem to="/app/reports?tab=sales" label="Sales"       Icon={BarChart2}  collapsed={collapsed} />
+        <NavItem to="/app/reports?tab=stock" label="Stock Value" Icon={Package}    collapsed={collapsed} />
       </NavGroup>
 
       <NavGroup id="sa-finance" label="Finance" collapsed={collapsed} defaultOpen={false}>
@@ -180,6 +189,13 @@ function SuperAdminNav({ collapsed }) {
         <NavItem to="/app/admin" label="Journals"      Icon={ScrollText}  collapsed={collapsed} isAdmin search="journals" />
       </NavGroup>
 
+      <NavGroup id="sa-finance-reports" label="Finance Reports" collapsed={collapsed} defaultOpen={false}>
+        <NavItem to="/app/reports?tab=pl"            label="P&L"           Icon={FileText}      collapsed={collapsed} />
+        <NavItem to="/app/reports?tab=cash-flow"     label="Cash Flow"     Icon={Droplets}      collapsed={collapsed} />
+        <NavItem to="/app/reports?tab=ar-aging"      label="AR Aging"      Icon={ArrowDownLeft} collapsed={collapsed} />
+        <NavItem to="/app/reports?tab=ap-aging"      label="AP Aging"      Icon={AlertTriangle} collapsed={collapsed} />
+        <NavItem to="/app/reports?tab=balance-sheet" label="Balance Sheet" Icon={Scale}         collapsed={collapsed} />
+      </NavGroup>
 
     </nav>
   );
@@ -188,6 +204,10 @@ function SuperAdminNav({ collapsed }) {
 // ── Tenant Nav ────────────────────────────────────────────────────────────────
 
 function TenantNav({ collapsed, hasCapability }) {
+  const user = useAuthStore((s) => s.user);
+  const hasFinance  = user?.planFeatures?.hasFinance   ?? false;
+  const hasApiAccess = user?.planFeatures?.hasApiAccess ?? false;
+
   return (
     <nav className={['flex-1 overflow-y-auto py-3 space-y-3', collapsed ? 'px-2' : 'px-3'].join(' ')}>
 
@@ -195,12 +215,12 @@ function TenantNav({ collapsed, hasCapability }) {
         <NavItem to="/app/dashboard" label="Dashboard" Icon={LayoutDashboard} collapsed={collapsed} />
       )}
 
-      {(hasCapability('sales.view') || hasCapability('returns.view') || hasCapability('shifts.view') || hasCapability('mpesa.view')) && (
+      {(hasCapability('sales.view') || hasCapability('returns.view') || hasCapability('shifts.view') || (hasCapability('mpesa.view') && hasApiAccess)) && (
         <NavGroup id="pos" label="POS" collapsed={collapsed} defaultOpen>
           {hasCapability('sales.view') && <NavItem to="/app/sales" label="Sales" Icon={Receipt} collapsed={collapsed} />}
           {hasCapability('returns.view') && <NavItem to="/app/returns" label="Returns" Icon={RotateCcw} collapsed={collapsed} />}
           {hasCapability('shifts.view') && <NavItem to="/app/shifts" label="Shifts" Icon={Clock} collapsed={collapsed} />}
-          {hasCapability('mpesa.view') && <NavItem to="/app/mpesa" label="M-Pesa" Icon={Smartphone} collapsed={collapsed} />}
+          {hasCapability('mpesa.view') && hasApiAccess && <NavItem to="/app/mpesa" label="M-Pesa" Icon={Smartphone} collapsed={collapsed} />}
         </NavGroup>
       )}
 
@@ -217,9 +237,20 @@ function TenantNav({ collapsed, hasCapability }) {
 
       <FinanceGroup collapsed={collapsed} hasCapability={hasCapability} />
 
+      {hasCapability('reports.view') && hasFinance && (
+        <NavGroup id="finance-reports" label="Finance Reports" collapsed={collapsed} defaultOpen={false}>
+          <NavItem to="/app/reports?tab=pl"            label="P&L"           Icon={FileText}      collapsed={collapsed} />
+          <NavItem to="/app/reports?tab=cash-flow"     label="Cash Flow"     Icon={Droplets}      collapsed={collapsed} />
+          <NavItem to="/app/reports?tab=ar-aging"      label="AR Aging"      Icon={ArrowDownLeft} collapsed={collapsed} />
+          <NavItem to="/app/reports?tab=ap-aging"      label="AP Aging"      Icon={AlertTriangle} collapsed={collapsed} />
+          <NavItem to="/app/reports?tab=balance-sheet" label="Balance Sheet" Icon={Scale}         collapsed={collapsed} />
+        </NavGroup>
+      )}
+
       {hasCapability('reports.view') && (
         <NavGroup id="reports" label="Reports" collapsed={collapsed} defaultOpen={false}>
-          <NavItem to="/app/reports" label="Sales Reports" Icon={BarChart2} collapsed={collapsed} />
+          <NavItem to="/app/reports?tab=sales" label="Sales"       Icon={BarChart2}  collapsed={collapsed} />
+          <NavItem to="/app/reports?tab=stock" label="Stock Value" Icon={Package}    collapsed={collapsed} />
         </NavGroup>
       )}
 
