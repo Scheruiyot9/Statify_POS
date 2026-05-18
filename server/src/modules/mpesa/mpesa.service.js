@@ -621,12 +621,13 @@ async function registerC2BUrl(companyId, branchId) {
 
   // ResponseCode '0' = success; some Daraja responses omit it on 200 OK
   // "already registered" is also treated as success — URLs are already in place
-  const responseCode = String(data.ResponseCode ?? '0');
-  const description  = (data.ResponseDescription || '').toLowerCase();
-  const alreadyDone  = description.includes('already') || description.includes('exists');
-  const failed = !res.ok && !alreadyDone && responseCode !== '0';
+  const responseCode  = String(data.ResponseCode ?? '');
+  const description   = (data.ResponseDescription || '').toLowerCase();
+  const alreadyDone   = description.includes('already') || description.includes('exists');
+  const darajaError   = data.errorCode || data.errorMessage; // error envelope (no ResponseCode)
+  const failed = !alreadyDone && (!res.ok || darajaError) && responseCode !== '0';
   if (failed) {
-    const detail = data.ResponseDescription || data.errorMessage || data.errorCode
+    const detail = data.errorMessage || data.ResponseDescription || data.errorCode
       || `HTTP ${res.status}: ${JSON.stringify(data).slice(0, 300)}`;
     throw AppError.badRequest(`C2B registration failed — ${detail}`, 'C2B_REGISTRATION_FAILED');
   }
