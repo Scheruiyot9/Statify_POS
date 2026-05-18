@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Eye, RotateCcw, CheckCircle, XCircle, Plus, Banknote } from 'lucide-react';
+import { Search, Eye, RotateCcw, CheckCircle, XCircle, Plus, Banknote, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDateTime } from '@/utils/formatters';
@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
 import { usePermission } from '@/hooks/usePermission';
 import CreateReturnModal from './CreateReturnModal';
+import ReturnReceiptModal from '@/components/ui/ReturnReceiptModal';
 
 const STATUS_STYLES = {
   pending:  'bg-yellow-100 text-yellow-700',
@@ -197,6 +198,7 @@ export default function ReturnsPage() {
   const [rejectTarget,  setRejectTarget]    = useState(null);
   const [refundTarget,  setRefundTarget]    = useState(null);
   const [createOpen,    setCreateOpen]      = useState(false);
+  const [printReturn,   setPrintReturn]     = useState(null);
 
   const filters = { search, status, startDate, endDate, page, limit: 25 };
 
@@ -351,9 +353,13 @@ export default function ReturnsPage() {
         onClose={() => setSelected(null)}
         title="Return Details"
         size="lg"
-        footer={canProcess && (isPending || isApproved) ? (
+        footer={(
           <div className="flex gap-3">
-            {isPending && (
+            <Button variant="secondary" icon={<Printer className="h-4 w-4" />}
+              onClick={() => setPrintReturn(selectedRet)}>
+              Print
+            </Button>
+            {canProcess && isPending && (
               <>
                 <Button variant="secondary" fullWidth icon={<XCircle className="h-4 w-4 text-red-500" />}
                   onClick={() => setRejectTarget(selected)}>
@@ -365,14 +371,14 @@ export default function ReturnsPage() {
                 </Button>
               </>
             )}
-            {isApproved && (
+            {canProcess && isApproved && (
               <Button fullWidth icon={<Banknote className="h-4 w-4" />}
                 onClick={() => setRefundTarget(selected)}>
                 Mark as Refunded
               </Button>
             )}
           </div>
-        ) : null}
+        )}
       >
         <ReturnDetail ret={selectedRet} />
       </Modal>
@@ -411,6 +417,14 @@ export default function ReturnsPage() {
             setCreateOpen(false);
             if (created) qc.invalidateQueries(['returns']);
           }}
+        />
+      )}
+
+      {printReturn && (
+        <ReturnReceiptModal
+          open
+          ret={printReturn}
+          onClose={() => setPrintReturn(null)}
         />
       )}
     </div>

@@ -161,6 +161,46 @@ async function postSaleEntry(client, companyId, txn, items, rawPayments) {
   }
 }
 
+// ── Sale Void Entry ───────────────────────────────────────────────────────────
+// Reversal of the original SALE journal entry — mirrors postVoidPaymentEntry pattern.
+// Looks up the posted SALE entry by source_id and swaps all Dr/Cr sides.
+async function postSaleVoidEntry(client, companyId, txn) {
+  try {
+    const { rows: jeRows } = await client.query(
+      `SELECT journal_entry_id FROM journal_entries
+       WHERE company_id = $1 AND source_type = 'SALE' AND source_id = $2 AND status = 'posted'
+       LIMIT 1`,
+      [companyId, txn.transaction_id]
+    );
+    if (!jeRows.length) return; // CoA not seeded or entry was skipped
+
+    const { rows: origLines } = await client.query(
+      `SELECT account_id, debit, credit, description, entity_type, entity_id
+       FROM ledger_entry_lines WHERE journal_entry_id = $1`,
+      [jeRows[0].journal_entry_id]
+    );
+    if (!origLines.length) return;
+
+    await _post(client, companyId, {
+      entryDate:   new Date().toISOString().slice(0, 10),
+      description: `Void sale — ${txn.transaction_number}`,
+      sourceType:  'SALE_VOID',
+      sourceId:    txn.transaction_id,
+      userId:      txn.voided_by_user_id || null,
+      lines: origLines.map((l) => ({
+        accountId:   l.account_id,
+        debit:       parseFloat(l.credit),
+        credit:      parseFloat(l.debit),
+        description: l.description,
+        entityType:  l.entity_type,
+        entityId:    l.entity_id,
+      })),
+    });
+  } catch (err) {
+    console.error('[ledger] postSaleVoidEntry skipped:', err.message);
+  }
+}
+
 // ── GRN Entry ─────────────────────────────────────────────────────────────────
 // DR Inventory (1200), CR AP (2000) — linked to supplier
 async function postGrnEntry(client, companyId, grn) {
@@ -911,7 +951,7 @@ async function getJournalEntry(companyId, jeId) {
 
 module.exports = {
   findAccIds, _post,
-  postSaleEntry, postGrnEntry,
+  postSaleEntry, postSaleVoidEntry, postGrnEntry,
   postPaymentEntry, postVoidPaymentEntry,
   postReturnEntry, postOpeningBalanceEntry,
   postBulkOpeningBalance, postArSettlementEntry,

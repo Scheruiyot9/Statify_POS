@@ -15,18 +15,12 @@ const signRefresh = (payload) =>
 const hashToken = (token) =>
   crypto.createHash('sha256').update(token).digest('hex');
 
-// Build the JWT payload: includes role, assigned branches, and permission codes
+// Build the JWT payload: role, branch assignments, and plan feature flags.
+// Permissions are derived server-side from the role via ROLE_PERMISSIONS map
+// and are no longer embedded in the token, keeping JWT size constant.
 const buildTokenPayload = async (user) => {
-  const [branchRes, permRes, planRes] = await Promise.all([
+  const [branchRes, planRes] = await Promise.all([
     query(`SELECT branch_id FROM user_branch_assignments WHERE user_id = $1`, [user.user_id]),
-    query(
-      `SELECT p.permission_code
-         FROM role_permissions rp
-         JOIN permissions p ON p.permission_id = rp.permission_id
-         JOIN user_roles ur  ON ur.role_id = rp.role_id
-        WHERE ur.user_id = $1`,
-      [user.user_id]
-    ),
     // Fetch plan feature flags for tenant users; super_admin has no company
     user.company_id
       ? query(
@@ -41,11 +35,10 @@ const buildTokenPayload = async (user) => {
 
   const plan = planRes.rows[0];
   return {
-    userId:      user.user_id,
-    companyId:   user.company_id,
-    role:        user.role_name,
-    branchIds:   branchRes.rows.map((r) => r.branch_id),
-    permissions: permRes.rows.map((r) => r.permission_code),
+    userId:    user.user_id,
+    companyId: user.company_id,
+    role:      user.role_name,
+    branchIds: branchRes.rows.map((r) => r.branch_id),
     planFeatures: {
       hasFinance:   user.role_name === 'super_admin' ? true : (plan?.has_finance  ?? false),
       hasApiAccess: user.role_name === 'super_admin' ? true : (plan?.has_api_access ?? false),
@@ -187,8 +180,8 @@ const forgotPassword = async ({ email }) => {
     [email.toLowerCase().trim()]
   );
 
-  if (!rows.length)
-    throw AppError.badRequest('No account found with that email address.', 'EMAIL_NOT_FOUND');
+  // Silently return when email not found — prevents account enumeration
+  if (!rows.length) return;
 
   const user = rows[0];
 
@@ -229,7 +222,7 @@ const forgotPassword = async ({ email }) => {
 
 const resetPassword = async ({ token, newPassword }) => {
   if (!token || !newPassword) throw AppError.badRequest('Token and new password are required');
-  if (newPassword.length < 6) throw AppError.badRequest('Password must be at least 6 characters');
+  if (newPassword.length < 8) throw AppError.badRequest('Password must be at least 8 characters');
 
   const tokenHash = hashToken(token);
   const { rows } = await query(

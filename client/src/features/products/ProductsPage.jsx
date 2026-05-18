@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Download } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Download, Upload, CheckCircle2, XCircle, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency } from '@/utils/formatters';
@@ -141,6 +142,160 @@ function CategoryForm({ onSave, onClose }) {
   );
 }
 
+const CSV_COLUMNS = [
+  'product_name', 'sku', 'barcode', 'base_price', 'cost_price',
+  'unit_of_measure', 'description', 'category_name', 'reorder_level', 'initial_stock',
+];
+
+function normaliseHeaders(raw) {
+  return Object.fromEntries(
+    Object.entries(raw).map(([k, v]) => [
+      k.toLowerCase().replace(/\s+/g, '_'), v,
+    ])
+  );
+}
+
+function downloadTemplate() {
+  const ws = XLSX.utils.aoa_to_sheet([CSV_COLUMNS]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Products');
+  XLSX.writeFile(wb, 'products_import_template.csv', { bookType: 'csv' });
+}
+
+function ImportProductsModal({ open, onClose, onImported }) {
+  const [rows, setRows]         = useState([]);
+  const [result, setResult]     = useState(null);
+  const [importing, setImport]  = useState(false);
+  const fileRef = useRef(null);
+
+  function reset() {
+    setRows([]); setResult(null); setImport(false);
+    if (fileRef.current) fileRef.current.value = '';
+  }
+
+  function handleClose() { reset(); onClose(); }
+
+  function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const wb   = XLSX.read(ev.target.result, { type: 'binary' });
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      setRows(data.map(normaliseHeaders));
+      setResult(null);
+    };
+    reader.readAsBinaryString(file);
+  }
+
+  async function handleImport() {
+    if (!rows.length) return;
+    setImport(true);
+    try {
+      const res = await api.post('/products/import', { products: rows });
+      const r = res.data.data;
+      setResult(r);
+      if (r.imported > 0) onImported();
+      toast.success(`Imported ${r.imported} of ${r.total} products`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Import failed');
+    } finally {
+      setImport(false);
+    }
+  }
+
+  const hasErrors = result?.results?.some((r) => !r.success);
+
+  return (
+    <Modal open={open} onClose={handleClose} title="Import Products from CSV / Excel" size="lg">
+      <div className="space-y-4">
+        {!result && (
+          <>
+            <div className="flex items-center gap-3">
+              <Button variant="secondary" size="sm" icon={<FileSpreadsheet className="h-4 w-4" />} onClick={downloadTemplate}>
+                Download Template
+              </Button>
+              <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFile} />
+              <Button variant="primary" size="sm" icon={<Upload className="h-4 w-4" />} onClick={() => fileRef.current?.click()}>
+                Choose File
+              </Button>
+              {rows.length > 0 && (
+                <span className="text-sm text-gray-500">{rows.length} row{rows.length !== 1 ? 's' : ''} loaded</span>
+              )}
+            </div>
+
+            {rows.length > 0 && (
+              <>
+                <div className="max-h-64 overflow-auto rounded-lg border border-gray-200 text-xs">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        {CSV_COLUMNS.map((c) => (
+                          <th key={c} className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">{c}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {rows.slice(0, 20).map((row, i) => (
+                        <tr key={i} className={!row.product_name || isNaN(parseFloat(row.base_price)) ? 'bg-red-50' : ''}>
+                          {CSV_COLUMNS.map((c) => (
+                            <td key={c} className="px-3 py-1.5 text-gray-700 whitespace-nowrap max-w-[140px] truncate">{String(row[c] ?? '')}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {rows.length > 20 && (
+                    <p className="px-3 py-2 text-gray-400 text-xs">…and {rows.length - 20} more rows</p>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400">Rows highlighted in red are missing <strong>product_name</strong> or <strong>base_price</strong> and will be skipped.</p>
+                <div className="flex justify-end gap-2">
+                  <Button variant="secondary" size="sm" onClick={reset}>Clear</Button>
+                  <Button variant="primary" size="sm" loading={importing} onClick={handleImport}>
+                    Import {rows.length} Products
+                  </Button>
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {result && (
+          <div className="space-y-3">
+            <div className="flex gap-4 rounded-lg bg-gray-50 p-4">
+              <div className="flex items-center gap-2 text-green-700">
+                <CheckCircle2 className="h-5 w-5" />
+                <span className="font-semibold">{result.imported} imported</span>
+              </div>
+              {result.failed > 0 && (
+                <div className="flex items-center gap-2 text-red-600">
+                  <XCircle className="h-5 w-5" />
+                  <span className="font-semibold">{result.failed} failed</span>
+                </div>
+              )}
+            </div>
+            {hasErrors && (
+              <div className="max-h-48 overflow-auto rounded-lg border border-red-100 bg-red-50 p-3 text-xs space-y-1">
+                {result.results.filter((r) => !r.success).map((r) => (
+                  <p key={r.row} className="text-red-700">
+                    <strong>Row {r.row}</strong>{r.product_name ? ` (${r.product_name})` : ''}: {r.error}
+                  </p>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={reset}>Import Another File</Button>
+              <Button variant="primary" size="sm" onClick={handleClose}>Done</Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 export default function ProductsPage() {
   const qc = useQueryClient();
   const { hasCapability } = usePermission();
@@ -149,6 +304,7 @@ export default function ProductsPage() {
   const [catFilter, setCatFilter] = useState('');
   const [page, setPage]           = useState(1);
   const [modal, setModal]         = useState(null);
+  const [showImport, setShowImport] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['products-mgmt', search, catFilter, page],
@@ -215,6 +371,9 @@ export default function ProductsPage() {
         </Button>
         {canManageProducts && (
           <>
+            <Button variant="secondary" size="sm" onClick={() => setShowImport(true)} icon={<Upload className="h-4 w-4" />}>
+              Import CSV
+            </Button>
             <Button variant="secondary" size="sm" onClick={() => setModal('category')} icon={<Plus className="h-4 w-4" />}>
               Category
             </Button>
@@ -317,6 +476,12 @@ export default function ProductsPage() {
       <Modal open={canManageProducts && modal === 'category'} onClose={() => setModal(null)} title="Add Category" size="sm">
         <CategoryForm onClose={() => setModal(null)} onSave={(d) => catMut.mutate(d)} />
       </Modal>
+
+      <ImportProductsModal
+        open={canManageProducts && showImport}
+        onClose={() => setShowImport(false)}
+        onImported={() => qc.invalidateQueries(['products-mgmt'])}
+      />
     </div>
   );
 }

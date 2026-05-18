@@ -52,4 +52,9 @@ const upsertBranchPricing = async (req, res) => {
   res.json({ success: true, data: result });
 };
 
-module.exports = { list, getOne, listCategories, create, update, createCategory, updateCategory, remove, listBranchPricing, upsertBranchPricing };
+const importProducts = async (req, res) => {
+  const result = await svc.bulkImportProducts(req.tenantId, req.body.products);
+  res.status(200).json({ success: true, data: result });
+};
+
+module.exports = { list, getOne, listCategories, create, update, createCategory, updateCategory, remove, listBranchPricing, upsertBranchPricing, importProducts };

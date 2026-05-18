@@ -293,8 +293,97 @@ async function deleteProduct(companyId, productId, deletedBy) {
   if (!rows.length) throw AppError.notFound('Product');
 }
 
+async function bulkImportProducts(companyId, rows) {
+  if (!Array.isArray(rows) || rows.length === 0) throw AppError.badRequest('No products provided');
+  if (rows.length > 500) throw AppError.badRequest('Maximum 500 products per import');
+
+  return transaction(async (client) => {
+    // Pre-fetch categories and branches once
+    const { rows: cats } = await client.query(
+      `SELECT category_id, LOWER(category_name) AS lname FROM categories WHERE company_id = $1 AND is_active = TRUE`,
+      [companyId]
+    );
+    const catMap = Object.fromEntries(cats.map((c) => [c.lname, c.category_id]));
+
+    const { rows: branches } = await client.query(
+      `SELECT branch_id FROM branches WHERE company_id = $1 AND is_active = TRUE AND deleted_at IS NULL`,
+      [companyId]
+    );
+
+    // Fetch existing SKUs to detect duplicates within import + DB
+    const { rows: existingSKUs } = await client.query(
+      `SELECT sku FROM products WHERE company_id = $1 AND deleted_at IS NULL`,
+      [companyId]
+    );
+    const skuSet = new Set(existingSKUs.map((r) => r.sku));
+
+    const results = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 1;
+
+      const product_name  = (row.product_name || '').trim();
+      const sku           = (row.sku || '').trim() || null;
+      const barcode       = (row.barcode || '').trim() || null;
+      const description   = (row.description || '').trim() || null;
+      const base_price    = parseFloat(row.base_price);
+      const cost_price    = row.cost_price !== '' && row.cost_price != null ? parseFloat(row.cost_price) : null;
+      const unit_of_measure = (row.unit_of_measure || 'Unit').trim();
+      const reorder_level = parseInt(row.reorder_level) || 0;
+      const initial_stock = parseFloat(row.initial_stock) || 0;
+      const category_id   = row.category_name
+        ? (catMap[row.category_name.toLowerCase()] ?? null)
+        : null;
+
+      if (!product_name) {
+        results.push({ row: rowNum, success: false, error: 'product_name is required' });
+        continue;
+      }
+      if (isNaN(base_price) || base_price < 0) {
+        results.push({ row: rowNum, success: false, error: 'base_price must be a valid number', product_name });
+        continue;
+      }
+      if (sku && skuSet.has(sku)) {
+        results.push({ row: rowNum, success: false, error: `SKU "${sku}" already exists`, product_name });
+        continue;
+      }
+
+      try {
+        const { rows: inserted } = await client.query(`
+          INSERT INTO products (
+            company_id, product_name, sku, barcode, description,
+            category_id, base_price, cost_price, unit_of_measure
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          RETURNING product_id, product_name, sku
+        `, [companyId, product_name, sku, barcode, description,
+            category_id, base_price, cost_price ?? null, unit_of_measure]);
+
+        const product = inserted[0];
+        if (sku) skuSet.add(sku); // track within this batch
+
+        for (const b of branches) {
+          await client.query(`
+            INSERT INTO product_branch_inventory (product_id, branch_id, quantity_available, reorder_level)
+            VALUES ($1,$2,$3,$4)
+            ON CONFLICT (product_id, branch_id) DO NOTHING
+          `, [product.product_id, b.branch_id, initial_stock, reorder_level]);
+        }
+
+        results.push({ row: rowNum, success: true, product_id: product.product_id, product_name: product.product_name });
+      } catch (err) {
+        results.push({ row: rowNum, success: false, error: err.message, product_name });
+      }
+    }
+
+    const imported = results.filter((r) => r.success).length;
+    const failed   = results.filter((r) => !r.success).length;
+    return { imported, failed, total: rows.length, results };
+  });
+}
+
 module.exports = {
   listProducts, getProductById, listCategories, updateCategory,
   createProduct, updateProduct, createCategory, deleteProduct,
-  listBranchPricing, upsertBranchPricing,
+  listBranchPricing, upsertBranchPricing, bulkImportProducts,
 };

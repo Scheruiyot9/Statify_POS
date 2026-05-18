@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CreditCard, Plus, Pencil, ToggleLeft, ToggleRight, Check,
   Monitor, GitBranch, Package, Users, Star, Percent, Trash2,
-  RotateCcw,
+  RotateCcw, Layers, ArrowUpCircle, CheckCircle2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -1262,6 +1262,197 @@ function ReturnReasonsTab() {
   );
 }
 
+// ── Subscription Tab ──────────────────────────────────────────────────────────
+
+const STATUS_BADGE = {
+  trial:     { cls: 'bg-blue-100 text-blue-700',    label: 'Trial'     },
+  active:    { cls: 'bg-green-100 text-green-700',   label: 'Active'    },
+  suspended: { cls: 'bg-red-100 text-red-600',       label: 'Suspended' },
+  cancelled: { cls: 'bg-gray-100 text-gray-600',     label: 'Cancelled' },
+};
+
+function SubscriptionTab() {
+  const qc = useQueryClient();
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [targetPlan,  setTargetPlan]  = useState('');
+  const [upgradeMsg,  setUpgradeMsg]  = useState('');
+
+  const { data: sub, isLoading: subLoading } = useQuery({
+    queryKey: ['my-subscription'],
+    queryFn:  () => api.get('/companies/mine/subscription').then((r) => r.data.data),
+  });
+
+  const { data: plans = [] } = useQuery({
+    queryKey: ['subscription-plans'],
+    queryFn:  () => api.get('/companies/plans').then((r) => r.data.data),
+  });
+
+  const upgradeMut = useMutation({
+    mutationFn: (body) => api.post('/companies/mine/upgrade-request', body),
+    onSuccess: (res) => {
+      toast.success(res.data.message);
+      setUpgradeOpen(false);
+      setTargetPlan('');
+      setUpgradeMsg('');
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Request failed'),
+  });
+
+  if (subLoading) return <PageSpinner />;
+
+  const badge = STATUS_BADGE[sub?.subscription_status] ?? { cls: 'bg-gray-100 text-gray-600', label: sub?.subscription_status };
+  const userPct   = sub?.max_users   ? Math.round((sub.current_users   / sub.max_users)   * 100) : 0;
+  const branchPct = sub?.max_branches ? Math.round((sub.current_branches / sub.max_branches) * 100) : 0;
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <h2 className="text-base font-semibold text-gray-900">Subscription & Plan</h2>
+
+      {/* Current plan card */}
+      <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Current Plan</p>
+            <p className="text-2xl font-bold text-primary-700 mt-0.5">{sub?.plan_name ?? 'None'}</p>
+          </div>
+          <span className={`rounded-full px-3 py-1 text-sm font-semibold ${badge.cls}`}>{badge.label}</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          {sub?.subscription_start_date && (
+            <div><span className="text-gray-500">Started: </span>
+              <span className="font-medium">{new Date(sub.subscription_start_date).toLocaleDateString()}</span></div>
+          )}
+          {sub?.subscription_end_date && (
+            <div><span className="text-gray-500">Renews: </span>
+              <span className="font-medium">{new Date(sub.subscription_end_date).toLocaleDateString()}</span></div>
+          )}
+          {sub?.plan_price > 0 && (
+            <div><span className="text-gray-500">Monthly: </span>
+              <span className="font-medium">KES {sub.plan_price.toLocaleString()}</span></div>
+          )}
+        </div>
+
+        {/* Usage bars */}
+        <div className="space-y-3 border-t border-gray-50 pt-3">
+          <div>
+            <div className="flex justify-between text-xs text-gray-500 mb-1">
+              <span>Users</span>
+              <span>{sub?.current_users} / {sub?.max_users ?? '∞'}</span>
+            </div>
+            {sub?.max_users && (
+              <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <div className={`h-full rounded-full transition-all ${userPct >= 90 ? 'bg-red-500' : userPct >= 70 ? 'bg-amber-500' : 'bg-primary-500'}`}
+                  style={{ width: `${Math.min(userPct, 100)}%` }} />
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="flex justify-between text-xs text-gray-500 mb-1">
+              <span>Branches</span>
+              <span>{sub?.current_branches} / {sub?.max_branches ?? '∞'}</span>
+            </div>
+            {sub?.max_branches && (
+              <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <div className={`h-full rounded-full transition-all ${branchPct >= 90 ? 'bg-red-500' : branchPct >= 70 ? 'bg-amber-500' : 'bg-primary-500'}`}
+                  style={{ width: `${Math.min(branchPct, 100)}%` }} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Feature flags */}
+        <div className="flex gap-4 border-t border-gray-50 pt-3 text-sm">
+          <span className={`flex items-center gap-1.5 ${sub?.has_finance ? 'text-green-700' : 'text-gray-400'}`}>
+            <CheckCircle2 className={`h-4 w-4 ${sub?.has_finance ? 'text-green-500' : 'text-gray-300'}`} />
+            Finance Module
+          </span>
+          <span className={`flex items-center gap-1.5 ${sub?.has_api_access ? 'text-green-700' : 'text-gray-400'}`}>
+            <CheckCircle2 className={`h-4 w-4 ${sub?.has_api_access ? 'text-green-500' : 'text-gray-300'}`} />
+            API Access
+          </span>
+        </div>
+      </div>
+
+      {/* Available plans */}
+      {plans.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Available Plans</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {plans.map((p) => {
+              const isCurrent = p.plan_name === sub?.plan_name;
+              return (
+                <div key={p.plan_id}
+                  className={`rounded-xl border p-4 space-y-2 ${isCurrent ? 'border-primary-300 bg-primary-50' : 'border-gray-100 bg-white'}`}>
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold text-gray-900">{p.plan_name}</p>
+                    {isCurrent && <span className="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700">Current</span>}
+                  </div>
+                  <p className="text-xl font-bold text-primary-700">
+                    {parseFloat(p.price) > 0 ? `KES ${parseFloat(p.price).toLocaleString()}` : 'Free'}
+                    <span className="text-sm font-normal text-gray-500">/mo</span>
+                  </p>
+                  <div className="text-xs text-gray-500 space-y-0.5">
+                    <p>Up to {p.max_users} users · {p.max_branches} branches</p>
+                    <p className="flex gap-3">
+                      {p.has_finance && <span className="text-green-600">Finance</span>}
+                      {p.has_api_access && <span className="text-green-600">API</span>}
+                    </p>
+                  </div>
+                  {!isCurrent && (
+                    <button
+                      onClick={() => { setTargetPlan(p.plan_name); setUpgradeOpen(true); }}
+                      className="mt-1 w-full rounded-lg border border-primary-400 py-1.5 text-xs font-medium text-primary-600 hover:bg-primary-50 transition-colors"
+                    >
+                      Request Upgrade
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <p className="text-xs text-gray-400">
+        To renew or manage billing, contact{' '}
+        <a href="mailto:support@statify.co.ke" className="text-primary-600 hover:underline">support@statify.co.ke</a>{' '}
+        or call +254796265933.
+      </p>
+
+      {/* Upgrade request modal */}
+      <Modal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} title="Request Plan Upgrade" size="sm">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Plan you want to upgrade to</label>
+            <select value={targetPlan} onChange={(e) => setTargetPlan(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none">
+              <option value="">Select plan…</option>
+              {plans.filter((p) => p.plan_name !== sub?.plan_name).map((p) => (
+                <option key={p.plan_id} value={p.plan_name}>{p.plan_name} — KES {parseFloat(p.price).toLocaleString()}/mo</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Message (optional)</label>
+            <textarea rows={3} value={upgradeMsg} onChange={(e) => setUpgradeMsg(e.target.value)}
+              placeholder="Any specific requirements or preferred start date…"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none resize-none" />
+          </div>
+          <div className="flex gap-3">
+            <Button variant="secondary" fullWidth onClick={() => setUpgradeOpen(false)}>Cancel</Button>
+            <Button fullWidth loading={upgradeMut.isPending} disabled={!targetPlan}
+              icon={<ArrowUpCircle className="h-4 w-4" />}
+              onClick={() => upgradeMut.mutate({ planName: targetPlan, message: upgradeMsg || null })}>
+              Send Request
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -1273,6 +1464,7 @@ const TABS = [
   { id: 'pay-modes',      label: 'Payment Methods',    Icon: CreditCard },
   { id: 'terminals',      label: 'Terminals',           Icon: Monitor    },
   { id: 'return-reasons', label: 'Return Reasons',      Icon: RotateCcw  },
+  { id: 'subscription',   label: 'Subscription',        Icon: Layers     },
 ];
 
 export default function SettingsPage() {
@@ -1309,6 +1501,7 @@ export default function SettingsPage() {
         {activeTab === 'pay-modes'      && <PayModesTab />}
         {activeTab === 'terminals'      && <TerminalsTab />}
         {activeTab === 'return-reasons' && <ReturnReasonsTab />}
+        {activeTab === 'subscription'   && <SubscriptionTab />}
       </div>
     </div>
   );

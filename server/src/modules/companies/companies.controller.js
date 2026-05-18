@@ -63,4 +63,18 @@ const updateMyProfile = async (req, res) => {
   res.json({ success: true, data: company });
 };
 
-module.exports = { list, getOne, create, update, updateStatus, remove, listPlans, getMine, updateMyProfile, getLoyaltySettings, updateLoyaltySettings };
+const getMySubscription = async (req, res) => {
+  const companyId = req.user?.companyId;
+  if (!companyId) return res.status(400).json({ success: false, message: 'No company context' });
+  const data = await svc.getMySubscription(companyId);
+  res.json({ success: true, data });
+};
+
+const requestUpgrade = async (req, res) => {
+  const companyId = req.user?.companyId;
+  if (!companyId) return res.status(400).json({ success: false, message: 'No company context' });
+  await svc.requestUpgrade(companyId, req.body);
+  res.json({ success: true, message: 'Upgrade request sent. Our team will contact you shortly.' });
+};
+
+module.exports = { list, getOne, create, update, updateStatus, remove, listPlans, getMine, updateMyProfile, getLoyaltySettings, updateLoyaltySettings, getMySubscription, requestUpgrade };

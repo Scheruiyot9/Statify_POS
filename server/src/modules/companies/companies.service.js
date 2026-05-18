@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const AppError = require('../../shared/AppError');
 const env = require('../../config/env');
 const QueryBuilder = require('../../shared/qb');
+const { sendMail } = require('../../shared/mailer');
 
 const DEFAULT_ROLE_PERMISSIONS = {
   company_admin: [
@@ -173,15 +174,6 @@ async function createCompany(data) {
       currency,
       subscription_plan_id || null
     ]);
-    // const { rows: [company] } = await client.query(`
-    //   INSERT INTO companies (
-    //     company_name, domain_name, domain, contact_email, timezone, currency,
-    //     subscription_plan_id, subscription_status, is_active
-    //   )
-    //   VALUES ($1, $2, $2, $3, $4, $5, $6, 'trial', TRUE)
-    //   RETURNING *
-    // `, [company_name, domain || null, emailLower, timezone, currency, subscription_plan_id || null]);
-
     // 2. Create headquarters branch
     const bCode = branch_code
       || (company_name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) + '-HQ');
@@ -386,6 +378,74 @@ async function listSubscriptionPlans() {
   return rows;
 }
 
+async function getMySubscription(companyId) {
+  const { rows } = await query(
+    `SELECT
+       c.company_id, c.company_name,
+       c.subscription_status,
+       c.subscription_plan_id,
+       c.subscription_start_date,
+       c.subscription_end_date,
+       sp.plan_name, sp.price::numeric AS plan_price, sp.annual_price::numeric,
+       sp.max_users, sp.max_branches, sp.trial_days,
+       sp.has_finance, sp.has_api_access,
+       (SELECT COUNT(*) FROM users u WHERE u.company_id = c.company_id AND u.is_active = TRUE AND u.deleted_at IS NULL) AS user_count,
+       (SELECT COUNT(*) FROM branches b WHERE b.company_id = c.company_id AND b.is_active = TRUE) AS branch_count
+     FROM companies c
+     LEFT JOIN subscription_plans sp ON sp.plan_id = c.subscription_plan_id
+     WHERE c.company_id = $1`,
+    [companyId]
+  );
+  if (!rows.length) throw AppError.notFound('Company');
+  const r = rows[0];
+  return {
+    subscription_status:     r.subscription_status,
+    plan_name:               r.plan_name ?? 'None',
+    plan_price:              parseFloat(r.plan_price ?? 0),
+    annual_price:            parseFloat(r.annual_price ?? 0),
+    max_users:               r.max_users,
+    max_branches:            r.max_branches,
+    trial_days:              r.trial_days,
+    has_finance:             r.has_finance ?? false,
+    has_api_access:          r.has_api_access ?? false,
+    subscription_start_date: r.subscription_start_date ?? null,
+    subscription_end_date:   r.subscription_end_date ?? null,
+    current_users:           parseInt(r.user_count),
+    current_branches:        parseInt(r.branch_count),
+  };
+}
+
+async function requestUpgrade(companyId, { planName, message }) {
+  const { rows } = await query(
+    `SELECT c.company_name, c.contact_email, sp.plan_name AS current_plan
+     FROM companies c
+     LEFT JOIN subscription_plans sp ON sp.plan_id = c.subscription_plan_id
+     WHERE c.company_id = $1`,
+    [companyId]
+  );
+  if (!rows.length) throw AppError.notFound('Company');
+  const { company_name, contact_email, current_plan } = rows[0];
+
+  await sendMail({
+    to: 'support@statify.co.ke',
+    subject: `Upgrade request: ${company_name}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#f9fafb;border-radius:12px">
+        <h2 style="color:#024A59">Subscription Upgrade Request</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;color:#374151">
+          <tr><td style="padding:6px 0;font-weight:600;width:160px">Company</td><td>${company_name}</td></tr>
+          <tr><td style="padding:6px 0;font-weight:600">Company ID</td><td style="font-family:monospace">${companyId}</td></tr>
+          <tr><td style="padding:6px 0;font-weight:600">Contact Email</td><td>${contact_email ?? '—'}</td></tr>
+          <tr><td style="padding:6px 0;font-weight:600">Current Plan</td><td>${current_plan ?? 'None'}</td></tr>
+          <tr><td style="padding:6px 0;font-weight:600">Requested Plan</td><td>${planName ?? 'Not specified'}</td></tr>
+          <tr><td style="padding:6px 0;font-weight:600;vertical-align:top">Message</td><td>${message || '—'}</td></tr>
+        </table>
+      </div>
+    `,
+    text: `Upgrade request from ${company_name} (${companyId})\nContact: ${contact_email}\nCurrent: ${current_plan}\nRequested: ${planName}\nMessage: ${message}`,
+  });
+}
+
 async function deleteCompany(companyId) {
   const { rows: open } = await query(
     `SELECT COUNT(*) AS cnt
@@ -419,4 +479,6 @@ module.exports = {
   updateMyProfile,
   getLoyaltySettings,
   updateLoyaltySettings,
+  getMySubscription,
+  requestUpgrade,
 };

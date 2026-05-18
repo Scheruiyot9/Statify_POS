@@ -87,7 +87,7 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
         COALESCE(SUM(st.total_amount), 0)::numeric                              AS total,
         COALESCE(COUNT(st.transaction_id), 0)::int                              AS txn_count
       FROM generate_series(
-        CURRENT_DATE - INTERVAL '${trendDays} days',
+        CURRENT_DATE - ($${bParams.length + 1}::int * INTERVAL '1 day'),
         CURRENT_DATE,
         INTERVAL '1 day'
       ) AS gs(day)
@@ -95,10 +95,10 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
         ON st.transaction_date::date = gs.day::date
         AND st.company_id = $1
         AND st.status = 'completed'
-        ${bClause.replace('AND st.branch_id', 'AND st.branch_id')}
+        ${bClause}
       GROUP BY gs.day
       ORDER BY gs.day
-    `, bParams),
+    `, [...bParams, trendDays]),
 
     // 4. Recent 10 transactions
     query(`
@@ -216,16 +216,22 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
   };
 }
 
+// companyId may be null for super-admin platform-wide view (all companies)
 async function getSalesReport(companyId, role, branchIds, { startDate, endDate, branchId } = {}) {
   const start = startDate || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
   const end   = endDate   || new Date().toISOString().slice(0, 10);
 
+  // Nullable companyId: NULL means all companies (platform view)
+  const companyFilter = companyId
+    ? 'st.company_id = $1'
+    : '($1::uuid IS NULL OR st.company_id = $1::uuid)';
+
   let filterParams = [companyId];
   let filterClause = '';
 
-  if (isCompanyWide(role)) {
+  if (companyId && isCompanyWide(role)) {
     if (branchId) { filterParams.push(branchId); filterClause = 'AND st.branch_id = $2'; }
-  } else {
+  } else if (companyId) {
     const ids = branchIds?.length ? branchIds : ['00000000-0000-0000-0000-000000000000'];
     filterParams.push(ids);
     filterClause = 'AND st.branch_id = ANY($2)';
@@ -244,7 +250,7 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
         COALESCE(AVG(total_amount), 0)::numeric  AS avg_txn,
         COUNT(DISTINCT customer_id) FILTER (WHERE customer_id IS NOT NULL)::int AS unique_customers
       FROM sales_transactions st
-      WHERE st.company_id = $1 AND st.status = 'completed' ${filterClause} ${dateFilter}
+      WHERE ${companyFilter} AND st.status = 'completed' ${filterClause} ${dateFilter}
     `, filterParams),
 
     query(`
@@ -254,7 +260,7 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
       FROM generate_series($${d1}::date, $${d2}::date, INTERVAL '1 day') gs(day)
       LEFT JOIN sales_transactions st
         ON st.transaction_date::date = gs.day::date
-        AND st.company_id = $1 AND st.status = 'completed' ${filterClause}
+        AND ${companyFilter} AND st.status = 'completed' ${filterClause}
       GROUP BY gs.day ORDER BY gs.day
     `, filterParams),
 
@@ -265,7 +271,7 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
       FROM sales_transaction_items sti
       JOIN products p ON p.product_id = sti.product_id
       JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
-      WHERE st.company_id = $1 AND st.status = 'completed' ${filterClause} ${dateFilter}
+      WHERE ${companyFilter} AND st.status = 'completed' ${filterClause} ${dateFilter}
       GROUP BY p.product_id, p.product_name, p.sku
       ORDER BY revenue DESC LIMIT 10
     `, filterParams),
@@ -278,7 +284,7 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
       JOIN products p ON p.product_id = sti.product_id
       LEFT JOIN categories pc ON pc.category_id = p.category_id
       JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
-      WHERE st.company_id = $1 AND st.status = 'completed' ${filterClause} ${dateFilter}
+      WHERE ${companyFilter} AND st.status = 'completed' ${filterClause} ${dateFilter}
       GROUP BY pc.category_id, pc.category_name
       ORDER BY revenue DESC
     `, filterParams),
@@ -290,7 +296,7 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
         AVG(st.total_amount)::numeric AS avg_txn
       FROM sales_transactions st
       JOIN users u ON u.user_id = st.cashier_user_id
-      WHERE st.company_id = $1 AND st.status = 'completed' ${filterClause} ${dateFilter}
+      WHERE ${companyFilter} AND st.status = 'completed' ${filterClause} ${dateFilter}
       GROUP BY st.cashier_user_id, u.first_name, u.last_name
       ORDER BY total_sales DESC
     `, filterParams),
@@ -318,11 +324,12 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
   const start = startDate || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
   const end   = endDate   || new Date().toISOString().slice(0, 10);
 
-  const [jeRes, txnCountRes, returnsRes, paymentBreakRes, expenseRes, expenseBreakRes] = await Promise.all([
+  const [jeRes, txnCountRes, returnsRes, paymentBreakRes] = await Promise.all([
     // Journal P&L: revenue, expense, and VAT Payable accounts for the period
     query(`
       SELECT
         a.account_code,
+        a.account_name,
         a.account_type,
         COALESCE(SUM(jel.credit) FILTER (WHERE je.source_type = 'SALE'),   0)::numeric AS sale_credit,
         COALESCE(SUM(jel.debit)  FILTER (WHERE je.source_type = 'RETURN'), 0)::numeric AS return_debit,
@@ -334,7 +341,7 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
       WHERE ($1::uuid IS NULL OR je.company_id = $1::uuid) AND je.status = 'posted'
         AND je.entry_date BETWEEN $2 AND $3
         AND (a.account_type IN ('revenue', 'expense') OR a.account_code = '2100')
-      GROUP BY a.account_code, a.account_type
+      GROUP BY a.account_code, a.account_name, a.account_type
     `, [companyId, start, end]),
 
     // Sales transaction count
@@ -366,29 +373,6 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
       GROUP BY pm.method_name
       ORDER BY amount DESC
     `, [companyId, start, end]),
-
-    // Operating expenses: supplier payments in period
-    query(`
-      SELECT COALESCE(SUM(amount), 0)::numeric AS total_expenses,
-             COUNT(*)::int AS payment_count
-      FROM supplier_payments
-      WHERE ($1::uuid IS NULL OR company_id = $1::uuid) AND is_void = FALSE
-        AND payment_date BETWEEN $2 AND $3
-    `, [companyId, start, end]),
-
-    // Expense breakdown by supplier
-    query(`
-      SELECT s.supplier_name,
-             COALESCE(SUM(sp.amount), 0)::numeric AS amount,
-             COUNT(sp.payment_id)::int             AS payment_count
-      FROM supplier_payments sp
-      JOIN suppliers s ON s.supplier_id = sp.supplier_id
-      WHERE ($1::uuid IS NULL OR sp.company_id = $1::uuid) AND sp.is_void = FALSE
-        AND sp.payment_date BETWEEN $2 AND $3
-      GROUP BY s.supplier_id, s.supplier_name
-      ORDER BY amount DESC
-      LIMIT 10
-    `, [companyId, start, end]),
   ]);
 
   // Build map: account_code → journal row
@@ -412,9 +396,14 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
   const cogsRow  = jeMap['5000'] || {};
   const cogs     = Math.max(0, parseFloat(cogsRow.total_debit || 0) - parseFloat(cogsRow.total_credit || 0));
 
+  // Non-COGS expense accounts (debit-normal): wages, rent, utilities, etc.
+  const opExpenseRows = jeRes.rows.filter((r) => r.account_type === 'expense' && r.account_code !== '5000');
+  const operatingExpenses = opExpenseRows.reduce((s, r) => {
+    return s + Math.max(0, parseFloat(r.total_debit) - parseFloat(r.total_credit));
+  }, 0);
+
   const grossProfit     = netRevenue - cogs;
   const grossMargin     = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0;
-  const operatingExpenses = parseFloat(expenseRes.rows[0].total_expenses);
   const operatingProfit = grossProfit - operatingExpenses;
   const operatingMargin = netRevenue > 0 ? (operatingProfit / netRevenue) * 100 : 0;
 
@@ -435,11 +424,13 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
     operatingExpenses: +operatingExpenses.toFixed(2),
     operatingProfit:  +operatingProfit.toFixed(2),
     operatingMargin:  +operatingMargin.toFixed(2),
-    expenseBreakdown: expenseBreakRes.rows.map((r) => ({
-      supplierName: r.supplier_name,
-      amount:       parseFloat(r.amount),
-      paymentCount: r.payment_count,
-    })),
+    expenseBreakdown: opExpenseRows
+      .map((r) => ({
+        accountCode: r.account_code,
+        accountName: r.account_name,
+        amount:      +Math.max(0, parseFloat(r.total_debit) - parseFloat(r.total_credit)).toFixed(2),
+      }))
+      .filter((r) => r.amount > 0),
     paymentBreakdown: paymentBreakRes.rows.map((r) => ({
       method:   r.method_name,
       txnCount: r.txn_count,
@@ -833,9 +824,9 @@ async function getAPAging(companyId) {
       s.supplier_id, s.supplier_name, s.phone, s.email,
       s.current_balance::numeric                AS balance,
       s.payment_terms,
-      MIN(g.posted_at)::date                    AS oldest_invoice_date,
-      MAX(g.posted_at)::date                    AS latest_invoice_date,
-      CURRENT_DATE - MIN(g.posted_at)::date     AS days_outstanding,
+      MIN(g.received_date)::date                AS oldest_invoice_date,
+      MAX(g.received_date)::date                AS latest_invoice_date,
+      CURRENT_DATE - MIN(g.received_date)::date AS days_outstanding,
       COUNT(g.grn_id)::int                      AS grn_count,
       COALESCE(SUM(g.total_amount), 0)::numeric AS total_invoiced
     FROM suppliers s
@@ -968,6 +959,7 @@ async function getBalanceSheet(companyId) {
 
   return {
     asOf: new Date().toISOString().slice(0, 10),
+    dataSource: hasJournalData ? 'journal' : 'operational',
     assets: {
       cashAndBank: { total: totalBankCash, accounts: bankAccounts },
       inventory:   { total: inventoryValue, totalUnits: parseFloat(inv.total_units || 0), productCount: inv.product_count },
@@ -1197,95 +1189,5 @@ async function getPurchasesSummary(companyId, { startDate, endDate } = {}) {
   };
 }
 
-// ── Platform-level Sales Report (null companyId = all companies) ──────────────
 
-async function getPlatformSalesReport(companyId, { startDate, endDate } = {}) {
-  const start = startDate || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
-  const end   = endDate   || new Date().toISOString().slice(0, 10);
-
-  const [summaryRes, trendRes, topProdsRes, categoriesRes, cashiersRes] = await Promise.all([
-    query(`
-      SELECT
-        COALESCE(SUM(total_amount), 0)::numeric                              AS total_sales,
-        COUNT(*)::int                                                         AS total_txns,
-        COALESCE(AVG(total_amount), 0)::numeric                              AS avg_txn,
-        COUNT(DISTINCT customer_id) FILTER (WHERE customer_id IS NOT NULL)   AS unique_customers
-      FROM sales_transactions st
-      WHERE ($1::uuid IS NULL OR st.company_id = $1::uuid)
-        AND st.status = 'completed'
-        AND st.transaction_date::date BETWEEN $2 AND $3
-    `, [companyId, start, end]),
-
-    query(`
-      SELECT gs.day::date AS sale_date,
-        COALESCE(SUM(st.total_amount), 0)::numeric AS total,
-        COALESCE(COUNT(st.transaction_id), 0)::int AS txn_count
-      FROM generate_series($2::date, $3::date, INTERVAL '1 day') gs(day)
-      LEFT JOIN sales_transactions st
-        ON st.transaction_date::date = gs.day::date
-        AND ($1::uuid IS NULL OR st.company_id = $1::uuid)
-        AND st.status = 'completed'
-      GROUP BY gs.day ORDER BY gs.day
-    `, [companyId, start, end]),
-
-    query(`
-      SELECT p.product_name, p.sku,
-        SUM(sti.quantity)::numeric   AS qty_sold,
-        SUM(sti.line_total)::numeric AS revenue
-      FROM sales_transaction_items sti
-      JOIN products p ON p.product_id = sti.product_id
-      JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
-      WHERE ($1::uuid IS NULL OR st.company_id = $1::uuid)
-        AND st.status = 'completed'
-        AND st.transaction_date::date BETWEEN $2 AND $3
-      GROUP BY p.product_id, p.product_name, p.sku
-      ORDER BY revenue DESC LIMIT 10
-    `, [companyId, start, end]),
-
-    query(`
-      SELECT COALESCE(pc.category_name, 'Uncategorized') AS category_name,
-        SUM(sti.line_total)::numeric AS revenue,
-        SUM(sti.quantity)::numeric   AS qty_sold
-      FROM sales_transaction_items sti
-      JOIN products p ON p.product_id = sti.product_id
-      LEFT JOIN categories pc ON pc.category_id = p.category_id
-      JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
-      WHERE ($1::uuid IS NULL OR st.company_id = $1::uuid)
-        AND st.status = 'completed'
-        AND st.transaction_date::date BETWEEN $2 AND $3
-      GROUP BY pc.category_id, pc.category_name
-      ORDER BY revenue DESC
-    `, [companyId, start, end]),
-
-    query(`
-      SELECT u.first_name || ' ' || u.last_name AS cashier_name,
-        COUNT(st.transaction_id)::int AS txn_count,
-        SUM(st.total_amount)::numeric AS total_sales,
-        AVG(st.total_amount)::numeric AS avg_txn
-      FROM sales_transactions st
-      JOIN users u ON u.user_id = st.cashier_user_id
-      WHERE ($1::uuid IS NULL OR st.company_id = $1::uuid)
-        AND st.status = 'completed'
-        AND st.transaction_date::date BETWEEN $2 AND $3
-      GROUP BY st.cashier_user_id, u.first_name, u.last_name
-      ORDER BY total_sales DESC
-    `, [companyId, start, end]),
-  ]);
-
-  const s = summaryRes.rows[0];
-  return {
-    period:      { startDate: start, endDate: end },
-    summary:     {
-      totalSales:      parseFloat(s.total_sales),
-      totalTxns:       parseInt(s.total_txns),
-      avgTxn:          parseFloat(s.avg_txn),
-      uniqueCustomers: parseInt(s.unique_customers),
-    },
-    trend:       trendRes.rows.map((r) => ({ date: r.sale_date, total: parseFloat(r.total), txnCount: r.txn_count })),
-    topProducts: topProdsRes.rows.map((r) => ({ productName: r.product_name, sku: r.sku, qtySold: parseFloat(r.qty_sold), revenue: parseFloat(r.revenue) })),
-    categories:  categoriesRes.rows.map((r) => ({ categoryName: r.category_name, revenue: parseFloat(r.revenue), qtySold: parseFloat(r.qty_sold) })),
-    cashiers:    cashiersRes.rows.map((r) => ({ cashierName: r.cashier_name, txnCount: parseInt(r.txn_count), totalSales: parseFloat(r.total_sales), avgTxn: parseFloat(r.avg_txn) })),
-  };
-}
-
-module.exports = { getDashboard, getSalesReport, getPlatformSalesReport, getPLReport, getAPAging, getBalanceSheet, getCashFlowStatement, getStockValuation, getPurchasesSummary, getLPOReport, getGRNReport, getTrialBalance, getLedgerEntries };
+module.exports = { getDashboard, getSalesReport, getPLReport, getAPAging, getBalanceSheet, getCashFlowStatement, getStockValuation, getPurchasesSummary, getLPOReport, getGRNReport, getTrialBalance, getLedgerEntries };

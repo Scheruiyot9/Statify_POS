@@ -1,5 +1,5 @@
 const AppError = require('../shared/AppError');
-const { COMPANY_WIDE_ROLES } = require('../shared/roles');
+const { COMPANY_WIDE_ROLES, permissionsForRole } = require('../shared/roles');
 
 // Role hierarchy from the design (§4.1)
 const ROLE_RANK = {
@@ -28,12 +28,13 @@ const requireRole = (...roles) => (req, _res, next) => {
   next();
 };
 
-// Middleware factory: require caller to have a specific permission code
-// Permission codes are loaded into req.user.permissions[] by the auth service
+// Middleware factory: require caller to have a specific permission code.
+// Permissions are derived from the user's role via the canonical ROLE_PERMISSIONS
+// map — they are no longer embedded in the JWT, keeping token size constant.
 const requirePermission = (permissionCode) => (req, _res, next) => {
   if (req.user?.role === 'super_admin') return next();
 
-  const perms = req.user?.permissions || [];
+  const perms = permissionsForRole(req.user?.role);
   if (!perms.includes(permissionCode))
     throw AppError.forbidden(`Missing permission: ${permissionCode}`);
   next();
@@ -42,7 +43,7 @@ const requirePermission = (permissionCode) => (req, _res, next) => {
 const requireAnyPermission = (...permissionCodes) => (req, _res, next) => {
   if (req.user?.role === 'super_admin') return next();
 
-  const perms = req.user?.permissions || [];
+  const perms = permissionsForRole(req.user?.role);
   if (!permissionCodes.some((code) => perms.includes(code)))
     throw AppError.forbidden(`Missing permission: ${permissionCodes.join(' | ')}`);
   next();

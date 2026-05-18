@@ -1,6 +1,7 @@
 const { query, transaction } = require('../../config/database');
 const AppError = require('../../shared/AppError');
 const { isCompanyWide } = require('../../shared/roles');
+const { sendMail } = require('../../shared/mailer');
 const QueryBuilder = require('../../shared/qb');
 
 async function listInventory(companyId, role, branchIds, filters = {}) {
@@ -89,15 +90,22 @@ async function adjustStock(companyId, userId, data) {
 
   return transaction(async (client) => {
     const { rows } = await client.query(`
-      SELECT pbi.quantity_available, p.product_name
+      SELECT pbi.quantity_available, pbi.reorder_level,
+             p.product_name, p.sku,
+             b.branch_name,
+             c.contact_email, c.company_name
       FROM product_branch_inventory pbi
-      JOIN products p ON p.product_id = pbi.product_id AND p.company_id = $1
+      JOIN products  p ON p.product_id = pbi.product_id AND p.company_id = $1
+      JOIN branches  b ON b.branch_id  = $3
+      JOIN companies c ON c.company_id = $1
       WHERE pbi.product_id = $2 AND pbi.branch_id = $3
       FOR UPDATE
     `, [companyId, product_id, branch_id]);
 
     if (!rows.length) throw AppError.notFound('Inventory record');
 
+    const { product_name, sku, branch_name, contact_email, company_name } = rows[0];
+    const reorderLevel = parseInt(rows[0].reorder_level) || 0;
     const current = parseFloat(rows[0].quantity_available);
     const newQty  = current + qty;
     if (newQty < 0) throw AppError.unprocessable(`Cannot reduce below zero. Current stock: ${current}`);
@@ -108,7 +116,27 @@ async function adjustStock(companyId, userId, data) {
       WHERE product_id = $2 AND branch_id = $3
     `, [newQty, product_id, branch_id]);
 
-    return { product_name: rows[0].product_name, quantity_before: current, quantity_after: newQty, adjustment: qty };
+    // Fire low-stock alert when stock crosses (or stays below) the reorder threshold
+    if (reorderLevel > 0 && newQty <= reorderLevel && contact_email) {
+      sendMail({
+        to:      contact_email,
+        subject: `Low Stock Alert — ${product_name} at ${branch_name}`,
+        html: `
+          <p>Hi ${company_name} team,</p>
+          <p>The following product has reached its reorder threshold:</p>
+          <table style="border-collapse:collapse;font-family:sans-serif">
+            <tr><td style="padding:4px 12px 4px 0;font-weight:600">Product</td><td>${product_name}${sku ? ` (${sku})` : ''}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0;font-weight:600">Branch</td><td>${branch_name}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0;font-weight:600">Current Stock</td><td>${newQty}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0;font-weight:600">Reorder Level</td><td>${reorderLevel}</td></tr>
+          </table>
+          <p>Please replenish stock at your earliest convenience.</p>
+        `,
+        text: `Low Stock Alert: ${product_name} at ${branch_name} — current stock ${newQty} is at or below reorder level ${reorderLevel}.`,
+      }).catch(() => {}); // non-blocking; don't fail the adjustment if mail errors
+    }
+
+    return { product_name, quantity_before: current, quantity_after: newQty, adjustment: qty };
   });
 }
 

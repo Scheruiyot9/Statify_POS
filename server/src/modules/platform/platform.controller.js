@@ -62,7 +62,7 @@ const updateAnyUser        = async (req, res) => r(res, await svc.updateAnyUser(
 // Sales Report — platform-wide with optional ?companyId filter
 const platformSalesReport = async (req, res) => {
   const { companyId, startDate, endDate } = req.query;
-  r(res, await reportsSvc.getPlatformSalesReport(companyId || null, { startDate, endDate }));
+  r(res, await reportsSvc.getSalesReport(companyId || null, 'super_admin', [], { startDate, endDate }));
 };
 
 // Finance Reports — platform-wide with optional ?companyId filter

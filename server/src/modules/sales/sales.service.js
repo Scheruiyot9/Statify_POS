@@ -319,13 +319,14 @@ async function voidTransaction(companyId, transactionId, userId, reason, role, b
   }
 
   const { rows } = await query(
-    `SELECT status, branch_id FROM sales_transactions WHERE ${conditions.join(' AND ')}`,
+    `SELECT status, branch_id, transaction_number FROM sales_transactions WHERE ${conditions.join(' AND ')}`,
     params
   );
   if (!rows.length) throw AppError.notFound('Transaction');
   if (rows[0].status !== 'completed') throw AppError.conflict('Only completed transactions can be voided');
 
-  const branchId = rows[0].branch_id;
+  const branchId          = rows[0].branch_id;
+  const transactionNumber = rows[0].transaction_number;
 
   return transaction(async (client) => {
     const { rows: items } = await client.query(
@@ -342,12 +343,20 @@ async function voidTransaction(companyId, transactionId, userId, reason, role, b
 
     await client.query(`
       UPDATE sales_transactions
-      SET status         = 'void',
-          payment_status = 'refunded',
-          notes          = COALESCE(notes || ' | ', '') || 'Voided: ' || $3,
-          updated_at     = now()
+      SET status              = 'void',
+          payment_status      = 'refunded',
+          voided_by_user_id   = $3,
+          voided_at           = now(),
+          void_reason         = $4,
+          updated_at          = now()
       WHERE company_id = $1 AND transaction_id = $2
-    `, [companyId, transactionId, reason || 'No reason provided']);
+    `, [companyId, transactionId, userId, reason || 'No reason provided']);
+
+    await jrn.postSaleVoidEntry(client, companyId, {
+      transaction_id:      transactionId,
+      transaction_number:  transactionNumber,
+      voided_by_user_id:   userId,
+    });
   });
 }
 

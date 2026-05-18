@@ -8,6 +8,7 @@ import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
 import { useAuthStore } from '@/app/store';
+import ReturnReceiptModal from '@/components/ui/ReturnReceiptModal';
 
 const CONDITIONS = ['resellable', 'damaged', 'expired', 'other'];
 
@@ -408,11 +409,12 @@ export default function CreateReturnModal({ onClose, preloadedTxn }) {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
 
-  const [step,        setStep]        = useState(preloadedTxn ? 1 : 0);
-  const [transaction, setTransaction] = useState(preloadedTxn ?? null);
-  const [items,       setItems]       = useState([]);
-  const [refunds,     setRefunds]     = useState([{ paymentMethodId: '', amountRefunded: 0, referenceNumber: '', issuedAsStoreCredit: false }]);
-  const [notes,       setNotes]       = useState('');
+  const [step,          setStep]          = useState(preloadedTxn ? 1 : 0);
+  const [transaction,   setTransaction]   = useState(preloadedTxn ?? null);
+  const [items,         setItems]         = useState([]);
+  const [refunds,       setRefunds]       = useState([{ paymentMethodId: '', amountRefunded: 0, referenceNumber: '', issuedAsStoreCredit: false }]);
+  const [notes,         setNotes]         = useState('');
+  const [createdReturn, setCreatedReturn] = useState(null);
 
   const { data: reasons = [] } = useQuery({
     queryKey: ['return-reasons'],
@@ -447,10 +449,10 @@ export default function CreateReturnModal({ onClose, preloadedTxn }) {
   const createMut = useMutation({
     mutationFn: (payload) => api.post('/returns', payload),
     onSuccess: (res) => {
-      const { return_number } = res.data.data;
-      toast.success(`Return ${return_number} created`);
+      const returnData = res.data.data;
+      toast.success(`Return ${returnData.return_number} created`);
       qc.invalidateQueries(['returns']);
-      onClose(res.data.data);
+      setCreatedReturn(returnData);
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to create return'),
   });
@@ -506,6 +508,16 @@ export default function CreateReturnModal({ onClose, preloadedTxn }) {
       )}
     </div>
   );
+
+  if (createdReturn) {
+    return (
+      <ReturnReceiptModal
+        open
+        ret={createdReturn}
+        onClose={() => { setCreatedReturn(null); onClose(createdReturn); }}
+      />
+    );
+  }
 
   return (
     <Modal open onClose={onClose} title="Create Return" size="lg" footer={footer}>

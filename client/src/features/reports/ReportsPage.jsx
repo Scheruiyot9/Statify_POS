@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   TrendingUp, ShoppingCart, Users, BarChart2, Calendar,
   FileText, Scale, AlertTriangle, Package, Truck,
-  ArrowDownLeft, ArrowUpRight, Droplets, CreditCard,
+  ArrowDownLeft, ArrowUpRight, Droplets, CreditCard, Printer,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/app/store';
@@ -17,6 +17,31 @@ import { PageSpinner } from '@/components/ui/Spinner';
 function toISO(d) { return d.toISOString().slice(0, 10); }
 
 const today = toISO(new Date());
+
+const PRINT_CSS = `
+  body{font-family:Arial,sans-serif;padding:24px;color:#111;font-size:12px}
+  h1{font-size:17px;margin:0 0 2px}
+  .period{color:#666;font-size:11px;margin-bottom:18px}
+  h2{font-size:13px;font-weight:700;margin:20px 0 8px;border-bottom:1px solid #ccc;padding-bottom:4px}
+  table{width:100%;border-collapse:collapse;margin-bottom:18px}
+  th{text-align:left;border-bottom:1px solid #999;padding:5px 8px;font-size:11px;font-weight:600;background:#f5f5f5}
+  td{padding:4px 8px;border-bottom:1px solid #eee}
+  .r{text-align:right} .b{font-weight:700} .red{color:#dc2626} .grn{color:#16a34a}
+  tfoot td{font-weight:700;border-top:2px solid #999;border-bottom:none}
+  @media print{@page{margin:15mm}}
+`;
+
+function printReport(title, period, html) {
+  const w = window.open('', '_blank', 'width=900,height=650');
+  if (!w) return;
+  w.document.write(
+    `<!DOCTYPE html><html><head><title>${title}</title><style>${PRINT_CSS}</style></head>` +
+    `<body><h1>${title}</h1><p class="period">${period}</p>${html}</body></html>`
+  );
+  w.document.close();
+  w.focus();
+  setTimeout(() => { w.print(); }, 300);
+}
 
 const PRESETS = [
   { label: 'Today',     days: 0  },
@@ -174,6 +199,34 @@ function SalesTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies
   const trend = groupTrend(data?.trend ?? [], days);
   const bucketLabel = days <= 31 ? 'Daily' : days <= 89 ? 'Weekly' : 'Monthly';
 
+  function handlePrint() {
+    const fc = (v) => formatCurrency(v ?? 0);
+    const period = `${startDate} — ${endDate}`;
+    let html = `
+      <h2>KPI Summary</h2>
+      <table><thead><tr><th>Metric</th><th class="r">Value</th></tr></thead><tbody>
+        <tr><td>Total Revenue</td><td class="r b">${fc(s?.totalSales)}</td></tr>
+        <tr><td>Transactions</td><td class="r">${(s?.totalTxns ?? 0).toLocaleString()}</td></tr>
+        <tr><td>Average Transaction</td><td class="r">${fc(s?.avgTxn)}</td></tr>
+        <tr><td>Unique Customers</td><td class="r">${(s?.uniqueCustomers ?? 0).toLocaleString()}</td></tr>
+      </tbody></table>`;
+    if (data?.topProducts?.length) {
+      html += `<h2>Top Products</h2><table><thead><tr><th>Product</th><th>SKU</th><th class="r">Units</th><th class="r">Revenue</th></tr></thead><tbody>`;
+      data.topProducts.forEach((p) => {
+        html += `<tr><td>${p.productName}</td><td>${p.sku ?? ''}</td><td class="r">${p.qtySold}</td><td class="r">${fc(p.revenue)}</td></tr>`;
+      });
+      html += `</tbody></table>`;
+    }
+    if (data?.categories?.length) {
+      html += `<h2>By Category</h2><table><thead><tr><th>Category</th><th class="r">Revenue</th><th class="r">Units</th></tr></thead><tbody>`;
+      data.categories.forEach((c) => {
+        html += `<tr><td>${c.categoryName}</td><td class="r">${fc(c.revenue)}</td><td class="r">${c.qtySold}</td></tr>`;
+      });
+      html += `</tbody></table>`;
+    }
+    printReport('Sales Report', period, html);
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
@@ -184,6 +237,9 @@ function SalesTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies
         {isSuperAdmin && (
           <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
         )}
+        <button onClick={handlePrint} className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+          <Printer className="h-3.5 w-3.5" />Print / PDF
+        </button>
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -307,6 +363,31 @@ function PLTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = 
 
   const { income, cogs, grossProfit, grossMargin, operatingExpenses, operatingProfit, operatingMargin, expenseBreakdown, paymentBreakdown } = data;
 
+  function handlePrint() {
+    const fc = (v) => formatCurrency(v ?? 0);
+    const period = `${startDate} — ${endDate}`;
+    let html = `<h2>Income Statement</h2>
+      <table><thead><tr><th>Line Item</th><th class="r">Amount</th></tr></thead><tbody>
+        <tr><td>Gross Sales Revenue</td><td class="r">${fc(income.grossRevenue)}</td></tr>
+        <tr><td>Less: VAT Collected</td><td class="r red">(${fc(income.taxCollected)})</td></tr>
+        <tr><td>Revenue (ex-VAT)</td><td class="r">${fc(income.revenueExVat)}</td></tr>
+        <tr><td>Less: Sales Returns</td><td class="r red">(${fc(income.totalReturns)})</td></tr>
+        <tr><td class="b">Net Revenue</td><td class="r b">${fc(income.netRevenue)}</td></tr>
+        <tr><td>Cost of Goods Sold</td><td class="r red">(${fc(cogs)})</td></tr>
+        <tr><td class="b">Gross Profit</td><td class="r b ${grossProfit >= 0 ? 'grn' : 'red'}">${fc(grossProfit)} (${grossMargin.toFixed(1)}%)</td></tr>
+        <tr><td>Operating Expenses</td><td class="r red">(${fc(operatingExpenses)})</td></tr>
+        <tr><td class="b">Operating Profit</td><td class="r b ${operatingProfit >= 0 ? 'grn' : 'red'}">${fc(operatingProfit)} (${operatingMargin.toFixed(1)}%)</td></tr>
+      </tbody></table>`;
+    if (expenseBreakdown?.length) {
+      html += `<h2>Expense Breakdown</h2><table><thead><tr><th>Account</th><th class="r">Code</th><th class="r">Amount</th></tr></thead><tbody>`;
+      expenseBreakdown.forEach((e) => {
+        html += `<tr><td>${e.accountName}</td><td class="r">${e.accountCode}</td><td class="r red">${fc(e.amount)}</td></tr>`;
+      });
+      html += `<tfoot><tr><td colspan="2">Total</td><td class="r">${fc(operatingExpenses)}</td></tr></tfoot></table>`;
+    }
+    printReport('Profit & Loss Statement', period, html);
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
@@ -317,6 +398,9 @@ function PLTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = 
         {isSuperAdmin && (
           <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
         )}
+        <button onClick={handlePrint} className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+          <Printer className="h-3.5 w-3.5" />Print / PDF
+        </button>
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -353,7 +437,7 @@ function PLTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = 
               </tr>
               <PLRow separator />
               <tr><td colSpan={2} className="py-1 text-xs font-bold uppercase tracking-widest text-gray-400">Operating Expenses</td></tr>
-              <PLRow label="Supplier Payments (period)" value={-operatingExpenses} indent negative={operatingExpenses > 0} />
+              <PLRow label="Operating Expenses" value={-operatingExpenses} indent negative={operatingExpenses > 0} />
               <PLRow separator />
               <PLRow label="Operating Profit"         value={operatingProfit} bold positive={operatingProfit > 0} negative={operatingProfit < 0} />
               <tr>
@@ -396,20 +480,20 @@ function PLTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = 
             ) : <p className="text-center text-gray-400 text-sm py-6">No payment data</p>}
           </SectionCard>
 
-          {/* Expense Breakdown by Supplier */}
+          {/* Expense Breakdown by Account */}
           {expenseBreakdown?.length > 0 && (
-            <SectionCard title="Expenses by Supplier">
+            <SectionCard title="Expense Accounts">
               <table className="w-full text-sm">
                 <thead><tr className="border-b border-gray-100">
-                  <th className="pb-2 text-left text-xs font-medium text-gray-500">Supplier</th>
-                  <th className="pb-2 text-right text-xs font-medium text-gray-500">Pmts</th>
+                  <th className="pb-2 text-left text-xs font-medium text-gray-500">Account</th>
+                  <th className="pb-2 text-right text-xs font-medium text-gray-500">Code</th>
                   <th className="pb-2 text-right text-xs font-medium text-gray-500">Amount</th>
                 </tr></thead>
                 <tbody className="divide-y divide-gray-50">
                   {expenseBreakdown.map((e) => (
-                    <tr key={e.supplierName}>
-                      <td className="py-1.5 text-gray-700 font-medium">{e.supplierName}</td>
-                      <td className="py-1.5 text-right text-gray-500">{e.paymentCount}</td>
+                    <tr key={e.accountCode}>
+                      <td className="py-1.5 text-gray-700 font-medium">{e.accountName}</td>
+                      <td className="py-1.5 text-right text-gray-500">{e.accountCode}</td>
                       <td className="py-1.5 text-right font-semibold text-red-600">{formatCurrency(e.amount)}</td>
                     </tr>
                   ))}
@@ -452,11 +536,35 @@ function APAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compani
 
   const { suppliers, totals } = data;
 
+  function handlePrint() {
+    const fc = (v) => formatCurrency(v ?? 0);
+    let html = `<h2>Summary</h2>
+      <table><thead><tr><th>Bucket</th><th class="r">Amount</th></tr></thead><tbody>
+        ${AGING_BUCKETS.map((b) => `<tr><td>${b.label}</td><td class="r">${fc(totals[b.key])}</td></tr>`).join('')}
+        <tr class="b"><td>Total</td><td class="r">${fc(totals.total)}</td></tr>
+      </tbody></table>`;
+    if (suppliers.length) {
+      html += `<h2>Outstanding AP — ${suppliers.length} suppliers</h2>
+        <table><thead><tr><th>Supplier</th><th>Oldest Invoice</th><th class="r">Days</th><th>Bucket</th><th class="r">Balance</th></tr></thead><tbody>`;
+      suppliers.forEach((s) => {
+        const b = AGING_BUCKETS.find((bk) => bk.key === s.bucket) ?? AGING_BUCKETS[0];
+        html += `<tr><td>${s.supplierName}</td><td>${s.oldestInvoice ?? '—'}</td><td class="r">${s.daysOutstanding ?? '—'}</td><td>${b.label}</td><td class="r red">${fc(s.balance)}</td></tr>`;
+      });
+      html += `<tfoot><tr><td colspan="4">Total AP Outstanding</td><td class="r">${fc(totals.total)}</td></tr></tfoot></table>`;
+    }
+    printReport('AP Aging Report', `As of ${today}`, html);
+  }
+
   return (
     <div className="space-y-5">
-      {isSuperAdmin && (
-        <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
-      )}
+      <div className="flex flex-wrap items-center gap-3">
+        {isSuperAdmin && (
+          <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
+        )}
+        <button onClick={handlePrint} className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+          <Printer className="h-3.5 w-3.5" />Print / PDF
+        </button>
+      </div>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {AGING_BUCKETS.map((b) => (
           <div key={b.key} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -545,13 +653,43 @@ function BalanceSheetTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, co
 
   const { assets, liabilities, equity } = data;
 
+  function handlePrint() {
+    const fc = (v) => formatCurrency(v ?? 0);
+    let html = `<h2>Assets</h2>
+      <table><thead><tr><th>Item</th><th class="r">Amount</th></tr></thead><tbody>`;
+    assets.cashAndBank.accounts.forEach((a) => {
+      html += `<tr><td style="padding-left:16px">${a.account_name} (${a.bank_name})</td><td class="r">${fc(a.balance)}</td></tr>`;
+    });
+    html += `<tr class="b"><td>Total Cash & Bank</td><td class="r">${fc(assets.cashAndBank.total)}</td></tr>
+      <tr><td style="padding-left:16px">Inventory (${assets.inventory.totalUnits.toFixed(0)} units)</td><td class="r">${fc(assets.inventory.total)}</td></tr>
+      <tr class="b"><td>TOTAL ASSETS</td><td class="r">${fc(assets.total)}</td></tr>
+      </tbody></table>
+      <h2>Liabilities</h2>
+      <table><thead><tr><th>Supplier</th><th class="r">Balance</th></tr></thead><tbody>`;
+    liabilities.accountsPayable.suppliers.forEach((s) => {
+      html += `<tr><td>${s.supplierName}</td><td class="r red">${fc(s.balance)}</td></tr>`;
+    });
+    html += `<tr class="b"><td>TOTAL LIABILITIES</td><td class="r red">${fc(liabilities.total)}</td></tr>
+      </tbody></table>
+      <h2>Equity</h2>
+      <table><tbody>
+        <tr class="b"><td>Net Equity (Assets − Liabilities)</td><td class="r ${equity >= 0 ? 'grn' : 'red'}">${fc(equity)}</td></tr>
+      </tbody></table>`;
+    printReport('Balance Sheet', `As of ${data.asOf}`, html);
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">Snapshot as of <strong>{data.asOf}</strong></p>
-        {isSuperAdmin && (
-          <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
-        )}
+        <div className="flex items-center gap-3">
+          {isSuperAdmin && (
+            <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
+          )}
+          <button onClick={handlePrint} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+            <Printer className="h-3.5 w-3.5" />Print / PDF
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -638,6 +776,26 @@ function CashFlowTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compan
   const op = d.operating ?? {};
   const fi = d.financing ?? {};
 
+  function handlePrint() {
+    const fc = (v) => { const n = v ?? 0; return n < 0 ? `(${formatCurrency(Math.abs(n))})` : formatCurrency(n); };
+    const period = `${startDate} — ${endDate}`;
+    const html = `
+      <h2>Operating Activities</h2>
+      <table><tbody>
+        <tr><td style="padding-left:16px">Receipts from customers</td><td class="r">${fc(op.receiptsFromCustomers)}</td></tr>
+        <tr><td style="padding-left:16px">Refunds to customers</td><td class="r">${fc(op.refundsToCustomers)}</td></tr>
+        <tr><td style="padding-left:16px">Payments to suppliers</td><td class="r">${fc(op.paymentsToSuppliers)}</td></tr>
+        <tr class="b"><td>Net Operating Cash Flow</td><td class="r ${(op.net ?? 0) >= 0 ? 'grn' : 'red'}">${fc(op.net)}</td></tr>
+      </tbody></table>
+      <h2>Cash Position</h2>
+      <table><tbody>
+        <tr><td>Opening Balance</td><td class="r">${fc(d.openingBalance)}</td></tr>
+        <tr><td>Net Cash Change</td><td class="r">${fc(d.netCashChange)}</td></tr>
+        <tr class="b"><td>Closing Balance</td><td class="r ${(d.closingBalance ?? 0) >= 0 ? 'grn' : 'red'}">${fc(d.closingBalance)}</td></tr>
+      </tbody></table>`;
+    printReport('Cash Flow Statement', period, html);
+  }
+
   const Row = ({ label, value, indent, bold, positive }) => (
     <div className={`flex justify-between py-1.5 border-b border-gray-100 last:border-0 ${bold ? 'font-semibold' : ''} ${indent ? 'pl-5' : ''}`}>
       <span className={bold ? 'text-gray-900' : 'text-gray-600'}>{label}</span>
@@ -657,6 +815,9 @@ function CashFlowTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compan
         {isSuperAdmin && (
           <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
         )}
+        <button onClick={handlePrint} className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+          <Printer className="h-3.5 w-3.5" />Print / PDF
+        </button>
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -749,11 +910,37 @@ function ARAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compani
 
   const bucketLabel = (b) => ({ current: '0–30d', '31_60': '31–60d', '61_90': '61–90d', over_90: '>90d' }[b] ?? b);
 
+  function handlePrint() {
+    const fc = (v) => formatCurrency(v ?? 0);
+    let html = `<h2>Summary</h2>
+      <table><tbody>
+        <tr><td>Total AR</td><td class="r">${fc(totals.total)}</td></tr>
+        <tr><td>Current (0–30d)</td><td class="r">${fc(totals.current)}</td></tr>
+        <tr><td>31–60 days</td><td class="r">${fc(totals['31_60'])}</td></tr>
+        <tr><td>61–90 days</td><td class="r">${fc(totals['61_90'])}</td></tr>
+        <tr><td>Over 90 days</td><td class="r red">${fc(totals.over_90)}</td></tr>
+      </tbody></table>`;
+    if (receivables.length) {
+      html += `<h2>Outstanding Receivables</h2>
+        <table><thead><tr><th>Invoice</th><th>Customer</th><th class="r">Date</th><th class="r">Days</th><th class="r">Original</th><th class="r">Outstanding</th></tr></thead><tbody>`;
+      receivables.forEach((r) => {
+        html += `<tr><td>${r.transactionNumber}</td><td>${r.customerName}</td><td class="r">${formatDate(r.transactionDate)}</td><td class="r">${r.daysOutstanding}</td><td class="r">${fc(r.arCreated)}</td><td class="r b">${fc(r.outstanding)}</td></tr>`;
+      });
+      html += `<tfoot><tr><td colspan="5">Total</td><td class="r">${fc(totals.total)}</td></tr></tfoot></table>`;
+    }
+    printReport('AR Aging Report', `As of ${today}`, html);
+  }
+
   return (
     <div className="space-y-5">
-      {isSuperAdmin && (
-        <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
-      )}
+      <div className="flex flex-wrap items-center gap-3">
+        {isSuperAdmin && (
+          <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
+        )}
+        <button onClick={handlePrint} className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+          <Printer className="h-3.5 w-3.5" />Print / PDF
+        </button>
+      </div>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KPICard label="Total AR"    value={formatCurrency(totals.total   ?? 0)} icon={AlertTriangle} accent />
         <KPICard label="Current"     value={formatCurrency(totals.current ?? 0)} icon={TrendingUp} />
@@ -866,6 +1053,24 @@ function StockTab() {
 
   const { items = [], totalValue = 0, totalUnits = 0 } = data ?? {};
   const belowReorder = items.filter((i) => i.belowReorder);
+  const branchLabel = branchId ? (branches.find((b) => b.branch_id === branchId)?.branch_name ?? branchId) : 'All Branches';
+
+  function handlePrint() {
+    const fc = (v) => formatCurrency(v ?? 0);
+    let html = `<h2>Summary</h2>
+      <table><tbody>
+        <tr><td>Total Stock Value</td><td class="r b">${fc(totalValue)}</td></tr>
+        <tr><td>Total Units</td><td class="r">${totalUnits.toLocaleString()}</td></tr>
+        <tr><td>Below Reorder Level</td><td class="r">${belowReorder.length}</td></tr>
+      </tbody></table>
+      <h2>Stock by Product</h2>
+      <table><thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Branch</th><th class="r">Qty</th><th class="r">Unit Cost</th><th class="r">Total Value</th></tr></thead><tbody>`;
+    items.forEach((item) => {
+      html += `<tr${item.belowReorder ? ' style="background:#fffbeb"' : ''}><td>${item.productName}</td><td>${item.sku ?? ''}</td><td>${item.category ?? ''}</td><td>${item.branchName ?? ''}</td><td class="r">${item.qty.toLocaleString()} ${item.uom}</td><td class="r">${item.unitCost > 0 ? fc(item.unitCost) : '—'}</td><td class="r">${item.totalValue > 0 ? fc(item.totalValue) : '—'}</td></tr>`;
+    });
+    html += `<tfoot><tr><td colspan="6">Total</td><td class="r">${fc(totalValue)}</td></tr></tfoot></table>`;
+    printReport('Stock Valuation Report', branchLabel, html);
+  }
 
   return (
     <div className="space-y-5">
@@ -875,6 +1080,9 @@ function StockTab() {
           <option value="">All branches</option>
           {branches.map((b) => <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>)}
         </select>
+        <button onClick={handlePrint} className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+          <Printer className="h-3.5 w-3.5" />Print / PDF
+        </button>
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
