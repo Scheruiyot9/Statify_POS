@@ -50,6 +50,25 @@ function DateRange({ startDate, endDate, preset, onStart, onEnd, onPreset }) {
   );
 }
 
+// Company filter shown to super admin on finance tabs
+function CompanyPicker({ companies, value, onChange }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-3 py-1.5">
+      <Users className="h-3.5 w-3.5 text-primary-500 shrink-0" />
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="text-xs font-medium text-primary-800 bg-transparent border-none outline-none cursor-pointer"
+      >
+        <option value="">All Companies</option>
+        {companies.map((c) => (
+          <option key={c.company_id} value={c.company_id}>{c.company_name}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function KPICard({ label, value, icon: Icon, sub, accent }) {
   return (
     <div className={`rounded-xl border bg-white p-4 shadow-sm ${accent ? 'border-primary-200' : 'border-gray-100'}`}>
@@ -130,7 +149,7 @@ function BarChart({ data, height = 130 }) {
 
 // ── Tab: Sales Summary ────────────────────────────────────────────────────────
 
-function SalesTab() {
+function SalesTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = [] }) {
   const [startDate, setStart] = useState(toISO(new Date(Date.now() - 29 * 86400000)));
   const [endDate,   setEnd]   = useState(today);
   const [preset,    setPreset] = useState('Last 30d');
@@ -141,9 +160,12 @@ function SalesTab() {
     setStart(toISO(start)); setEnd(toISO(end)); setPreset(p.label);
   };
 
+  const endpoint = isSuperAdmin ? '/platform/reports/sales' : '/reports/sales';
+  const params   = { startDate, endDate, ...(isSuperAdmin && filterCompanyId ? { companyId: filterCompanyId } : {}) };
+
   const { data, isLoading } = useQuery({
-    queryKey: ['reports-sales', startDate, endDate],
-    queryFn:  () => api.get('/reports/sales', { params: { startDate, endDate } }).then((r) => r.data.data),
+    queryKey: ['reports-sales', startDate, endDate, isSuperAdmin ? (filterCompanyId || 'all') : null],
+    queryFn:  () => api.get(endpoint, { params }).then((r) => r.data.data),
   });
 
   if (isLoading) return <PageSpinner />;
@@ -154,10 +176,15 @@ function SalesTab() {
 
   return (
     <div className="space-y-5">
-      <DateRange startDate={startDate} endDate={endDate} preset={preset}
-        onStart={(v) => { setStart(v); setPreset(''); }}
-        onEnd={(v) => { setEnd(v); setPreset(''); }}
-        onPreset={applyPreset} />
+      <div className="flex flex-wrap items-center gap-3">
+        <DateRange startDate={startDate} endDate={endDate} preset={preset}
+          onStart={(v) => { setStart(v); setPreset(''); }}
+          onEnd={(v) => { setEnd(v); setPreset(''); }}
+          onPreset={applyPreset} />
+        {isSuperAdmin && (
+          <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
+        )}
+      </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KPICard label="Total Revenue"     value={formatCurrency(s?.totalSales ?? 0)} icon={TrendingUp} accent />
@@ -256,7 +283,7 @@ function PLRow({ label, value, bold, indent, positive, negative, separator }) {
   );
 }
 
-function PLTab() {
+function PLTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = [] }) {
   const [startDate, setStart] = useState(toISO(new Date(Date.now() - 29 * 86400000)));
   const [endDate,   setEnd]   = useState(today);
   const [preset,    setPreset] = useState('Last 30d');
@@ -267,9 +294,12 @@ function PLTab() {
     setStart(toISO(start)); setEnd(toISO(end)); setPreset(p.label);
   };
 
+  const endpoint = isSuperAdmin ? '/platform/reports/pl' : '/reports/pl';
+  const params   = { startDate, endDate, ...(isSuperAdmin && filterCompanyId ? { companyId: filterCompanyId } : {}) };
+
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['reports-pl', startDate, endDate],
-    queryFn:  () => api.get('/reports/pl', { params: { startDate, endDate } }).then((r) => r.data.data),
+    queryKey: ['reports-pl', startDate, endDate, isSuperAdmin ? (filterCompanyId || 'all') : null],
+    queryFn:  () => api.get(endpoint, { params }).then((r) => r.data.data),
   });
 
   if (isLoading) return <PageSpinner />;
@@ -279,10 +309,15 @@ function PLTab() {
 
   return (
     <div className="space-y-5">
-      <DateRange startDate={startDate} endDate={endDate} preset={preset}
-        onStart={(v) => { setStart(v); setPreset(''); }}
-        onEnd={(v) => { setEnd(v); setPreset(''); }}
-        onPreset={applyPreset} />
+      <div className="flex flex-wrap items-center gap-3">
+        <DateRange startDate={startDate} endDate={endDate} preset={preset}
+          onStart={(v) => { setStart(v); setPreset(''); }}
+          onEnd={(v) => { setEnd(v); setPreset(''); }}
+          onPreset={applyPreset} />
+        {isSuperAdmin && (
+          <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
+        )}
+      </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KPICard label="Net Revenue (ex-VAT)" value={formatCurrency(income.netRevenue)} icon={TrendingUp} accent />
@@ -403,10 +438,13 @@ const AGING_BUCKETS = [
   { key: 'over_90', label: '90+ days',   color: 'bg-red-100 text-red-700' },
 ];
 
-function APAgingTab() {
+function APAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = [] }) {
+  const endpoint = isSuperAdmin ? '/platform/reports/ap-aging' : '/reports/ap-aging';
+  const params   = isSuperAdmin && filterCompanyId ? { companyId: filterCompanyId } : {};
+
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['reports-ap-aging'],
-    queryFn:  () => api.get('/reports/ap-aging').then((r) => r.data.data),
+    queryKey: ['reports-ap-aging', isSuperAdmin ? (filterCompanyId || 'all') : null],
+    queryFn:  () => api.get(endpoint, { params }).then((r) => r.data.data),
   });
 
   if (isLoading) return <PageSpinner />;
@@ -416,6 +454,9 @@ function APAgingTab() {
 
   return (
     <div className="space-y-5">
+      {isSuperAdmin && (
+        <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
+      )}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {AGING_BUCKETS.map((b) => (
           <div key={b.key} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -490,10 +531,13 @@ function BSRow({ label, value, indent, bold, highlight }) {
   );
 }
 
-function BalanceSheetTab() {
+function BalanceSheetTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = [] }) {
+  const endpoint = isSuperAdmin ? '/platform/reports/balance-sheet' : '/reports/balance-sheet';
+  const params   = isSuperAdmin && filterCompanyId ? { companyId: filterCompanyId } : {};
+
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['reports-balance-sheet'],
-    queryFn:  () => api.get('/reports/balance-sheet').then((r) => r.data.data),
+    queryKey: ['reports-balance-sheet', isSuperAdmin ? (filterCompanyId || 'all') : null],
+    queryFn:  () => api.get(endpoint, { params }).then((r) => r.data.data),
   });
 
   if (isLoading) return <PageSpinner />;
@@ -503,7 +547,12 @@ function BalanceSheetTab() {
 
   return (
     <div className="space-y-5">
-      <p className="text-sm text-gray-500">Snapshot as of <strong>{data.asOf}</strong></p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-gray-500">Snapshot as of <strong>{data.asOf}</strong></p>
+        {isSuperAdmin && (
+          <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
+        )}
+      </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KPICard label="Total Assets"      value={formatCurrency(assets.total)}      icon={Scale}   accent />
@@ -564,7 +613,7 @@ function BalanceSheetTab() {
 
 // ── Tab: Cash Flow ────────────────────────────────────────────────────────────
 
-function CashFlowTab() {
+function CashFlowTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = [] }) {
   const [startDate, setStart] = useState(toISO(new Date(Date.now() - 29 * 86400000)));
   const [endDate,   setEnd]   = useState(today);
   const [preset,    setPreset] = useState('Last 30d');
@@ -575,9 +624,12 @@ function CashFlowTab() {
     setStart(toISO(start)); setEnd(toISO(end)); setPreset(p.label);
   };
 
+  const endpoint = isSuperAdmin ? '/platform/reports/cash-flow' : '/reports/cash-flow';
+  const params   = { startDate, endDate, ...(isSuperAdmin && filterCompanyId ? { companyId: filterCompanyId } : {}) };
+
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['reports-cashflow', startDate, endDate],
-    queryFn:  () => api.get('/reports/cash-flow', { params: { startDate, endDate } }).then((r) => r.data.data),
+    queryKey: ['reports-cashflow', startDate, endDate, isSuperAdmin ? (filterCompanyId || 'all') : null],
+    queryFn:  () => api.get(endpoint, { params }).then((r) => r.data.data),
   });
 
   if (isLoading) return <PageSpinner />;
@@ -597,10 +649,15 @@ function CashFlowTab() {
 
   return (
     <div className="space-y-5">
-      <DateRange startDate={startDate} endDate={endDate} preset={preset}
-        onStart={(v) => { setStart(v); setPreset(''); }}
-        onEnd={(v)   => { setEnd(v);   setPreset(''); }}
-        onPreset={applyPreset} />
+      <div className="flex flex-wrap items-center gap-3">
+        <DateRange startDate={startDate} endDate={endDate} preset={preset}
+          onStart={(v) => { setStart(v); setPreset(''); }}
+          onEnd={(v)   => { setEnd(v);   setPreset(''); }}
+          onPreset={applyPreset} />
+        {isSuperAdmin && (
+          <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
+        )}
+      </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KPICard label="Opening Cash"  value={formatCurrency(d.openingBalance  ?? 0)} icon={Droplets} />
@@ -651,15 +708,18 @@ function CashFlowTab() {
 
 // ── Tab: AR Aging ─────────────────────────────────────────────────────────────
 
-function ARAgingTab() {
-  const [settling, setSettling] = useState(null); // { transactionId, transactionNumber, outstanding }
+function ARAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = [] }) {
+  const [settling, setSettling] = useState(null);
   const [settleAmt, setSettleAmt] = useState('');
   const [pmId, setPmId] = useState('');
   const qc = useQueryClient();
 
+  const endpoint = isSuperAdmin ? '/platform/reports/ar-aging' : '/journal/ar-aging';
+  const params   = isSuperAdmin && filterCompanyId ? { companyId: filterCompanyId } : {};
+
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['ar-aging'],
-    queryFn:  () => api.get('/journal/ar-aging').then((r) => r.data.data),
+    queryKey: ['ar-aging', isSuperAdmin ? (filterCompanyId || 'all') : null],
+    queryFn:  () => api.get(endpoint, { params }).then((r) => r.data.data),
   });
 
   const { data: paymentMethods = [] } = useQuery({
@@ -691,6 +751,9 @@ function ARAgingTab() {
 
   return (
     <div className="space-y-5">
+      {isSuperAdmin && (
+        <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
+      )}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KPICard label="Total AR"    value={formatCurrency(totals.total   ?? 0)} icon={AlertTriangle} accent />
         <KPICard label="Current"     value={formatCurrency(totals.current ?? 0)} icon={TrendingUp} />
@@ -886,7 +949,18 @@ const ALL_TABS = [
 export default function ReportsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const user = useAuthStore((s) => s.user);
-  const hasFinance = user?.role === 'super_admin' || !!user?.planFeatures?.hasFinance;
+  const isSuperAdmin = user?.role === 'super_admin';
+  const hasFinance = isSuperAdmin || !!user?.planFeatures?.hasFinance;
+
+  const [filterCompanyId, setFilterCompanyId] = useState('');
+
+  const { data: companiesData } = useQuery({
+    queryKey: ['platform-companies-filter'],
+    queryFn:  () => api.get('/platform/companies', { params: { limit: 200 } }).then((r) => r.data.data?.companies ?? []),
+    enabled:  isSuperAdmin,
+    staleTime: 5 * 60_000,
+  });
+  const companies = companiesData ?? [];
 
   const validIds = ALL_TABS.filter((t) => !t.finance || hasFinance).map((t) => t.id);
   const urlTab = searchParams.get('tab');
@@ -895,6 +969,10 @@ export default function ReportsPage() {
   const setTab = (id) => setSearchParams({ tab: id }, { replace: true });
 
   const visibleTabs = ALL_TABS.filter((t) => !t.finance || hasFinance);
+
+  const saProps = isSuperAdmin
+    ? { isSuperAdmin: true, filterCompanyId, setFilterCompanyId, companies }
+    : {};
 
   return (
     <div className="space-y-5">
@@ -911,12 +989,12 @@ export default function ReportsPage() {
       </div>
 
       {/* Tab content */}
-      {tab === 'sales'         && <SalesTab />}
-      {tab === 'pl'            && <PLTab />}
-      {tab === 'cash-flow'     && <CashFlowTab />}
-      {tab === 'ar-aging'      && <ARAgingTab />}
-      {tab === 'ap-aging'      && <APAgingTab />}
-      {tab === 'balance-sheet' && <BalanceSheetTab />}
+      {tab === 'sales'         && <SalesTab {...saProps} />}
+      {tab === 'pl'            && <PLTab {...saProps} />}
+      {tab === 'cash-flow'     && <CashFlowTab {...saProps} />}
+      {tab === 'ar-aging'      && <ARAgingTab {...saProps} />}
+      {tab === 'ap-aging'      && <APAgingTab {...saProps} />}
+      {tab === 'balance-sheet' && <BalanceSheetTab {...saProps} />}
       {tab === 'stock'         && <StockTab />}
     </div>
   );

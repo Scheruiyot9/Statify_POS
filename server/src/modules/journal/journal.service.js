@@ -677,7 +677,7 @@ async function getArAging(companyId) {
       FROM journal_entries je
       JOIN ledger_entry_lines lel ON lel.journal_entry_id = je.journal_entry_id
       JOIN accounts a              ON a.account_id = lel.account_id AND a.account_code = '1100'
-      WHERE je.company_id = $1 AND je.status = 'posted' AND je.source_type = 'SALE'
+      WHERE ($1::uuid IS NULL OR je.company_id = $1::uuid) AND je.status = 'posted' AND je.source_type = 'SALE'
       GROUP BY je.journal_entry_id, je.source_id, je.entry_date
       HAVING COALESCE(SUM(lel.debit), 0) > 0.005
     ),
@@ -687,7 +687,7 @@ async function getArAging(companyId) {
       FROM journal_entries je
       JOIN ledger_entry_lines lel ON lel.journal_entry_id = je.journal_entry_id
       JOIN accounts a              ON a.account_id = lel.account_id AND a.account_code = '1100'
-      WHERE je.company_id = $1 AND je.status = 'posted' AND je.source_type = 'AR_SETTLEMENT'
+      WHERE ($1::uuid IS NULL OR je.company_id = $1::uuid) AND je.status = 'posted' AND je.source_type = 'AR_SETTLEMENT'
       GROUP BY je.source_id
     )
     SELECT

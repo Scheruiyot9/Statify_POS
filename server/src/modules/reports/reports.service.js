@@ -331,7 +331,7 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
       FROM ledger_entry_lines jel
       JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
       JOIN accounts a         ON a.account_id        = jel.account_id
-      WHERE je.company_id = $1 AND je.status = 'posted'
+      WHERE ($1::uuid IS NULL OR je.company_id = $1::uuid) AND je.status = 'posted'
         AND je.entry_date BETWEEN $2 AND $3
         AND (a.account_type IN ('revenue', 'expense') OR a.account_code = '2100')
       GROUP BY a.account_code, a.account_type
@@ -341,7 +341,7 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
     query(`
       SELECT COUNT(*)::int AS txn_count
       FROM sales_transactions
-      WHERE company_id = $1 AND status = 'completed'
+      WHERE ($1::uuid IS NULL OR company_id = $1::uuid) AND status = 'completed'
         AND transaction_date::date BETWEEN $2 AND $3
     `, [companyId, start, end]),
 
@@ -349,7 +349,7 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
     query(`
       SELECT COUNT(*)::int AS return_count
       FROM returns
-      WHERE company_id = $1 AND status IN ('approved', 'refunded')
+      WHERE ($1::uuid IS NULL OR company_id = $1::uuid) AND status IN ('approved', 'refunded')
         AND return_date::date BETWEEN $2 AND $3
     `, [companyId, start, end]),
 
@@ -361,7 +361,7 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
       FROM transaction_payments tp
       JOIN payment_methods pm ON pm.payment_method_id = tp.payment_method_id
       JOIN sales_transactions st ON st.transaction_id = tp.transaction_id
-      WHERE st.company_id = $1 AND st.status = 'completed'
+      WHERE ($1::uuid IS NULL OR st.company_id = $1::uuid) AND st.status = 'completed'
         AND st.transaction_date::date BETWEEN $2 AND $3
       GROUP BY pm.method_name
       ORDER BY amount DESC
@@ -372,7 +372,7 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
       SELECT COALESCE(SUM(amount), 0)::numeric AS total_expenses,
              COUNT(*)::int AS payment_count
       FROM supplier_payments
-      WHERE company_id = $1 AND is_void = FALSE
+      WHERE ($1::uuid IS NULL OR company_id = $1::uuid) AND is_void = FALSE
         AND payment_date BETWEEN $2 AND $3
     `, [companyId, start, end]),
 
@@ -383,7 +383,7 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
              COUNT(sp.payment_id)::int             AS payment_count
       FROM supplier_payments sp
       JOIN suppliers s ON s.supplier_id = sp.supplier_id
-      WHERE sp.company_id = $1 AND sp.is_void = FALSE
+      WHERE ($1::uuid IS NULL OR sp.company_id = $1::uuid) AND sp.is_void = FALSE
         AND sp.payment_date BETWEEN $2 AND $3
       GROUP BY s.supplier_id, s.supplier_name
       ORDER BY amount DESC
@@ -840,8 +840,8 @@ async function getAPAging(companyId) {
       COALESCE(SUM(g.total_amount), 0)::numeric AS total_invoiced
     FROM suppliers s
     LEFT JOIN grns g ON g.supplier_id = s.supplier_id
-      AND g.company_id = $1 AND g.status = 'posted'
-    WHERE s.company_id = $1 AND s.current_balance > 0
+      AND ($1::uuid IS NULL OR g.company_id = $1::uuid) AND g.status = 'posted'
+    WHERE ($1::uuid IS NULL OR s.company_id = $1::uuid) AND s.current_balance > 0
     GROUP BY s.supplier_id, s.supplier_name, s.phone, s.email, s.current_balance, s.payment_terms
     ORDER BY days_outstanding DESC NULLS LAST
   `, [companyId]);
@@ -891,7 +891,7 @@ async function getBalanceSheet(companyId) {
       FROM ledger_entry_lines jel
       JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
       JOIN accounts a         ON a.account_id        = jel.account_id
-      WHERE je.company_id = $1 AND je.status = 'posted'
+      WHERE ($1::uuid IS NULL OR je.company_id = $1::uuid) AND je.status = 'posted'
         AND a.account_code IN ('1000', '1010', '1100', '1200', '2000', '2100')
       GROUP BY a.account_code
     `, [companyId]),
@@ -901,7 +901,7 @@ async function getBalanceSheet(companyId) {
       SELECT ba.account_name, ba.bank_name, ba.account_number,
              ba.current_balance::numeric AS balance, ba.currency, ba.is_default
       FROM bank_accounts ba
-      WHERE ba.company_id = $1 AND ba.is_active = TRUE
+      WHERE ($1::uuid IS NULL OR ba.company_id = $1::uuid) AND ba.is_active = TRUE
       ORDER BY ba.is_default DESC, ba.account_name
     `, [companyId]),
 
@@ -912,8 +912,8 @@ async function getBalanceSheet(companyId) {
         SUM(pbi.quantity_available)::numeric AS total_units,
         COUNT(DISTINCT p.product_id)::int AS product_count
       FROM product_branch_inventory pbi
-      JOIN products p ON p.product_id = pbi.product_id AND p.company_id = $1 AND p.is_active = TRUE
-      JOIN branches b ON b.branch_id = pbi.branch_id AND b.company_id = $1
+      JOIN products p ON p.product_id = pbi.product_id AND ($1::uuid IS NULL OR p.company_id = $1::uuid) AND p.is_active = TRUE
+      JOIN branches b ON b.branch_id = pbi.branch_id AND ($1::uuid IS NULL OR b.company_id = $1::uuid)
       WHERE pbi.quantity_available > 0
     `, [companyId]),
 
@@ -921,7 +921,7 @@ async function getBalanceSheet(companyId) {
     query(`
       SELECT supplier_name, current_balance::numeric AS balance
       FROM suppliers
-      WHERE company_id = $1 AND current_balance > 0
+      WHERE ($1::uuid IS NULL OR company_id = $1::uuid) AND current_balance > 0
       ORDER BY current_balance DESC
     `, [companyId]),
   ]);
@@ -997,7 +997,7 @@ async function getCashFlowStatement(companyId, { startDate, endDate } = {}) {
       FROM ledger_entry_lines jel
       JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
       JOIN accounts a         ON a.account_id        = jel.account_id
-      WHERE je.company_id = $1 AND je.status = 'posted'
+      WHERE ($1::uuid IS NULL OR je.company_id = $1::uuid) AND je.status = 'posted'
         AND je.entry_date BETWEEN $2 AND $3
         AND a.account_code IN ('1000', '1010')
       GROUP BY je.source_type
@@ -1009,7 +1009,7 @@ async function getCashFlowStatement(companyId, { startDate, endDate } = {}) {
       FROM ledger_entry_lines jel
       JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
       JOIN accounts a         ON a.account_id        = jel.account_id
-      WHERE je.company_id = $1 AND je.status = 'posted'
+      WHERE ($1::uuid IS NULL OR je.company_id = $1::uuid) AND je.status = 'posted'
         AND je.entry_date < $2
         AND a.account_code IN ('1000', '1010')
     `, [companyId, start]),
@@ -1197,4 +1197,95 @@ async function getPurchasesSummary(companyId, { startDate, endDate } = {}) {
   };
 }
 
-module.exports = { getDashboard, getSalesReport, getPLReport, getAPAging, getBalanceSheet, getCashFlowStatement, getStockValuation, getPurchasesSummary, getLPOReport, getGRNReport, getTrialBalance, getLedgerEntries };
+// ── Platform-level Sales Report (null companyId = all companies) ──────────────
+
+async function getPlatformSalesReport(companyId, { startDate, endDate } = {}) {
+  const start = startDate || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
+  const end   = endDate   || new Date().toISOString().slice(0, 10);
+
+  const [summaryRes, trendRes, topProdsRes, categoriesRes, cashiersRes] = await Promise.all([
+    query(`
+      SELECT
+        COALESCE(SUM(total_amount), 0)::numeric                              AS total_sales,
+        COUNT(*)::int                                                         AS total_txns,
+        COALESCE(AVG(total_amount), 0)::numeric                              AS avg_txn,
+        COUNT(DISTINCT customer_id) FILTER (WHERE customer_id IS NOT NULL)   AS unique_customers
+      FROM sales_transactions st
+      WHERE ($1::uuid IS NULL OR st.company_id = $1::uuid)
+        AND st.status = 'completed'
+        AND st.transaction_date::date BETWEEN $2 AND $3
+    `, [companyId, start, end]),
+
+    query(`
+      SELECT gs.day::date AS sale_date,
+        COALESCE(SUM(st.total_amount), 0)::numeric AS total,
+        COALESCE(COUNT(st.transaction_id), 0)::int AS txn_count
+      FROM generate_series($2::date, $3::date, INTERVAL '1 day') gs(day)
+      LEFT JOIN sales_transactions st
+        ON st.transaction_date::date = gs.day::date
+        AND ($1::uuid IS NULL OR st.company_id = $1::uuid)
+        AND st.status = 'completed'
+      GROUP BY gs.day ORDER BY gs.day
+    `, [companyId, start, end]),
+
+    query(`
+      SELECT p.product_name, p.sku,
+        SUM(sti.quantity)::numeric   AS qty_sold,
+        SUM(sti.line_total)::numeric AS revenue
+      FROM sales_transaction_items sti
+      JOIN products p ON p.product_id = sti.product_id
+      JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
+      WHERE ($1::uuid IS NULL OR st.company_id = $1::uuid)
+        AND st.status = 'completed'
+        AND st.transaction_date::date BETWEEN $2 AND $3
+      GROUP BY p.product_id, p.product_name, p.sku
+      ORDER BY revenue DESC LIMIT 10
+    `, [companyId, start, end]),
+
+    query(`
+      SELECT COALESCE(pc.category_name, 'Uncategorized') AS category_name,
+        SUM(sti.line_total)::numeric AS revenue,
+        SUM(sti.quantity)::numeric   AS qty_sold
+      FROM sales_transaction_items sti
+      JOIN products p ON p.product_id = sti.product_id
+      LEFT JOIN categories pc ON pc.category_id = p.category_id
+      JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
+      WHERE ($1::uuid IS NULL OR st.company_id = $1::uuid)
+        AND st.status = 'completed'
+        AND st.transaction_date::date BETWEEN $2 AND $3
+      GROUP BY pc.category_id, pc.category_name
+      ORDER BY revenue DESC
+    `, [companyId, start, end]),
+
+    query(`
+      SELECT u.first_name || ' ' || u.last_name AS cashier_name,
+        COUNT(st.transaction_id)::int AS txn_count,
+        SUM(st.total_amount)::numeric AS total_sales,
+        AVG(st.total_amount)::numeric AS avg_txn
+      FROM sales_transactions st
+      JOIN users u ON u.user_id = st.cashier_user_id
+      WHERE ($1::uuid IS NULL OR st.company_id = $1::uuid)
+        AND st.status = 'completed'
+        AND st.transaction_date::date BETWEEN $2 AND $3
+      GROUP BY st.cashier_user_id, u.first_name, u.last_name
+      ORDER BY total_sales DESC
+    `, [companyId, start, end]),
+  ]);
+
+  const s = summaryRes.rows[0];
+  return {
+    period:      { startDate: start, endDate: end },
+    summary:     {
+      totalSales:      parseFloat(s.total_sales),
+      totalTxns:       parseInt(s.total_txns),
+      avgTxn:          parseFloat(s.avg_txn),
+      uniqueCustomers: parseInt(s.unique_customers),
+    },
+    trend:       trendRes.rows.map((r) => ({ date: r.sale_date, total: parseFloat(r.total), txnCount: r.txn_count })),
+    topProducts: topProdsRes.rows.map((r) => ({ productName: r.product_name, sku: r.sku, qtySold: parseFloat(r.qty_sold), revenue: parseFloat(r.revenue) })),
+    categories:  categoriesRes.rows.map((r) => ({ categoryName: r.category_name, revenue: parseFloat(r.revenue), qtySold: parseFloat(r.qty_sold) })),
+    cashiers:    cashiersRes.rows.map((r) => ({ cashierName: r.cashier_name, txnCount: parseInt(r.txn_count), totalSales: parseFloat(r.total_sales), avgTxn: parseFloat(r.avg_txn) })),
+  };
+}
+
+module.exports = { getDashboard, getSalesReport, getPlatformSalesReport, getPLReport, getAPAging, getBalanceSheet, getCashFlowStatement, getStockValuation, getPurchasesSummary, getLPOReport, getGRNReport, getTrialBalance, getLedgerEntries };

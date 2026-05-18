@@ -53,6 +53,14 @@ router.get('/accounts',        ctrl.accounts);
 router.get('/bank-accounts',   ctrl.bankAccounts);
 router.get('/journals',        ctrl.journals);
 
+// ── Finance Reports (platform-wide, optional ?companyId filter) ───────────────
+router.get('/reports/sales',         ctrl.platformSalesReport);
+router.get('/reports/pl',            ctrl.platformPLReport);
+router.get('/reports/cash-flow',     ctrl.platformCashFlow);
+router.get('/reports/ap-aging',      ctrl.platformAPAging);
+router.get('/reports/balance-sheet', ctrl.platformBalanceSheet);
+router.get('/reports/ar-aging',      ctrl.platformARAgingReport);
+
 // ── Subscriptions ─────────────────────────────────────────────────────────────
 router.get('/subscriptions',   ctrl.listSubscriptions);
 router.post('/subscriptions',  ctrl.recordSubscription);

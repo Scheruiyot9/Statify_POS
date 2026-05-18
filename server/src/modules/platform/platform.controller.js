@@ -1,4 +1,6 @@
-const svc = require('./platform.service');
+const svc        = require('./platform.service');
+const reportsSvc = require('../reports/reports.service');
+const journalSvc = require('../journal/journal.service');
 
 const r = (res, data, status = 200) => res.status(status).json({ success: true, data });
 
@@ -57,6 +59,34 @@ const recordSubscription = async (req, res) => r(res, await svc.recordSubscripti
 const createSuperAdminUser = async (req, res) => r(res, await svc.createSuperAdmin(req.body), 201);
 const updateAnyUser        = async (req, res) => r(res, await svc.updateAnyUser(req.params.id, req.body));
 
+// Sales Report — platform-wide with optional ?companyId filter
+const platformSalesReport = async (req, res) => {
+  const { companyId, startDate, endDate } = req.query;
+  r(res, await reportsSvc.getPlatformSalesReport(companyId || null, { startDate, endDate }));
+};
+
+// Finance Reports — platform-wide with optional ?companyId filter
+const platformPLReport      = async (req, res) => {
+  const { companyId, startDate, endDate } = req.query;
+  r(res, await reportsSvc.getPLReport(companyId || null, { startDate, endDate }));
+};
+const platformCashFlow      = async (req, res) => {
+  const { companyId, startDate, endDate } = req.query;
+  r(res, await reportsSvc.getCashFlowStatement(companyId || null, { startDate, endDate }));
+};
+const platformAPAging       = async (req, res) => {
+  const { companyId } = req.query;
+  r(res, await reportsSvc.getAPAging(companyId || null));
+};
+const platformBalanceSheet  = async (req, res) => {
+  const { companyId } = req.query;
+  r(res, await reportsSvc.getBalanceSheet(companyId || null));
+};
+const platformARAgingReport = async (req, res) => {
+  const { companyId } = req.query;
+  r(res, await journalSvc.getArAging(companyId || null));
+};
+
 module.exports = {
   stats,
   listPlans, createPlan, updatePlan, deletePlan,
@@ -69,4 +99,6 @@ module.exports = {
   suppliers, purchases, apPayments, accounts, bankAccounts, journals,
   listSubscriptions, recordSubscription,
   createSuperAdminUser, updateAnyUser,
+  platformSalesReport,
+  platformPLReport, platformCashFlow, platformAPAging, platformBalanceSheet, platformARAgingReport,
 };
