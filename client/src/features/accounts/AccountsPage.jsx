@@ -33,9 +33,10 @@ const TYPE_COLORS = {
 
 // ── Account Modal ─────────────────────────────────────────────────────────────
 
-function AccountModal({ account, accounts, onClose }) {
+function AccountModal({ account, accounts, onClose, onDelete }) {
   const qc = useQueryClient();
   const isEdit = !!account;
+  const canDelete = isEdit && !account.is_system;
 
   const [form, setForm] = useState({
     account_code:      account?.account_code ?? '',
@@ -45,6 +46,7 @@ function AccountModal({ account, accounts, onClose }) {
     parent_account_id: account?.parent_account_id ?? '',
     description:       account?.description ?? '',
   });
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const parents = accounts.filter(
@@ -68,17 +70,35 @@ function AccountModal({ account, accounts, onClose }) {
     mutate({ ...form, parent_account_id: form.parent_account_id || null });
   };
 
+  const footer = confirmDelete ? (
+    <div className="w-full">
+      <p className="text-sm text-gray-600 mb-3">
+        Deactivate <strong>{account.account_name}</strong>? Historical records are preserved.
+      </p>
+      <div className="flex gap-3">
+        <Button variant="secondary" fullWidth onClick={() => setConfirmDelete(false)}>Cancel</Button>
+        <Button fullWidth className="!bg-red-600 hover:!bg-red-700" onClick={() => onDelete(account.account_id)}>
+          Confirm Deactivate
+        </Button>
+      </div>
+    </div>
+  ) : (
+    <div className="flex gap-3 w-full">
+      {canDelete && (
+        <button onClick={() => setConfirmDelete(true)}
+          className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors mr-auto">
+          <Trash2 className="h-3.5 w-3.5" />Deactivate
+        </button>
+      )}
+      <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+      <Button fullWidth loading={isPending} onClick={handleSave}>
+        {isEdit ? 'Save Changes' : 'Create Account'}
+      </Button>
+    </div>
+  );
+
   return (
-    <Modal open onClose={onClose} title={isEdit ? 'Edit Account' : 'Add Account'}
-      footer={
-        <div className="flex gap-3">
-          <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
-          <Button fullWidth loading={isPending} onClick={handleSave}>
-            {isEdit ? 'Save Changes' : 'Create Account'}
-          </Button>
-        </div>
-      }
-    >
+    <Modal open onClose={onClose} title={isEdit ? 'Edit Account' : 'Add Account'} footer={footer}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Account Code" required>
@@ -294,7 +314,7 @@ function TrialBalanceTab() {
 //                     credit accounts (liability/equity/revenue) → balance shows in Cr column
 const DEBIT_NORMAL = new Set(['asset', 'expense']);
 
-function AccountRow({ account, depth, allAccounts, balanceMap, onEdit, onDelete }) {
+function AccountRow({ account, depth, allAccounts, balanceMap, onEdit }) {
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(true);
   const children = allAccounts.filter((a) => a.parent_account_id === account.account_id);
@@ -352,19 +372,13 @@ function AccountRow({ account, depth, allAccounts, balanceMap, onEdit, onDelete 
               className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
               <Edit2 className="h-3.5 w-3.5" />
             </button>
-            {!account.is_system && (
-              <button onClick={() => onDelete(account)}
-                className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors">
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            )}
           </div>
         </td>
       </tr>
       {expanded && children.map((child) => (
         <AccountRow key={child.account_id} account={child} depth={depth + 1}
           allAccounts={allAccounts} balanceMap={balanceMap}
-          onEdit={onEdit} onDelete={onDelete} />
+          onEdit={onEdit} />
       ))}
     </>
   );
@@ -455,7 +469,6 @@ export default function AccountsPage() {
   const qc = useQueryClient();
   const [editTarget,      setEditTarget]      = useState(null);
   const [createOpen,      setCreateOpen]      = useState(false);
-  const [deleteTarget,    setDeleteTarget]    = useState(null);
   const [typeFilter,      setTypeFilter]      = useState('');
   const [activeTab,       setActiveTab]       = useState('accounts');
   const [openingBalOpen,  setOpeningBalOpen]  = useState(false);
@@ -497,7 +510,7 @@ export default function AccountsPage() {
     onSuccess: () => {
       toast.success('Account deactivated');
       qc.invalidateQueries({ queryKey: ['accounts'] });
-      setDeleteTarget(null);
+      setEditTarget(null);
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Delete failed'),
   });
@@ -598,8 +611,7 @@ export default function AccountsPage() {
                           <AccountRow key={acc.account_id} account={acc} depth={0}
                             allAccounts={typeAccounts}
                             balanceMap={balanceMap}
-                            onEdit={setEditTarget}
-                            onDelete={setDeleteTarget} />
+                            onEdit={setEditTarget} />
                         ))}
                       </tbody>
                     </table>
@@ -626,24 +638,9 @@ export default function AccountsPage() {
         <AccountModal accounts={accounts} onClose={() => setCreateOpen(false)} />
       )}
       {editTarget && (
-        <AccountModal account={editTarget} accounts={accounts} onClose={() => setEditTarget(null)} />
+        <AccountModal account={editTarget} accounts={accounts} onClose={() => setEditTarget(null)}
+          onDelete={(id) => deleteMut.mutate(id)} />
       )}
-      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Deactivate Account" size="sm"
-        footer={
-          <div className="flex gap-3">
-            <Button variant="secondary" fullWidth onClick={() => setDeleteTarget(null)}>Cancel</Button>
-            <Button fullWidth loading={deleteMut.isPending}
-              onClick={() => deleteMut.mutate(deleteTarget?.account_id)}
-              className="!bg-red-600 hover:!bg-red-700">
-              Deactivate
-            </Button>
-          </div>
-        }
-      >
-        <p className="text-sm text-gray-600">
-          Deactivate <strong>{deleteTarget?.account_name}</strong>? It will no longer appear in dropdowns but historical records are preserved.
-        </p>
-      </Modal>
     </div>
   );
 }
