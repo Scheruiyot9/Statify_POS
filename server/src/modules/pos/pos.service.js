@@ -20,36 +20,39 @@ async function listSellableProducts(companyId, { branchId, search, categoryId, p
 
 async function listPaymentMethods(companyId, includeInactive = false) {
   const { rows } = await query(
-    `SELECT payment_method_id, method_name, is_active, requires_reference
-     FROM payment_methods
-     WHERE company_id = $1 ${includeInactive ? '' : 'AND is_active = TRUE'}
-     ORDER BY method_name`,
+    `SELECT pm.payment_method_id, pm.method_name, pm.is_active, pm.requires_reference,
+            pm.bank_account_id, ba.account_name AS bank_account_name, ba.bank_name
+     FROM payment_methods pm
+     LEFT JOIN bank_accounts ba ON ba.bank_account_id = pm.bank_account_id
+     WHERE pm.company_id = $1 ${includeInactive ? '' : 'AND pm.is_active = TRUE'}
+     ORDER BY pm.method_name`,
     [companyId]
   );
   return rows;
 }
 
-async function createPaymentMethod(companyId, { methodName, requiresReference = false }) {
+async function createPaymentMethod(companyId, { methodName, requiresReference = false, bankAccountId }) {
   const { rows } = await query(`
-    INSERT INTO payment_methods (company_id, method_name, requires_reference)
-    VALUES ($1, $2, $3)
-    RETURNING payment_method_id, method_name, is_active, requires_reference
-  `, [companyId, methodName.trim(), requiresReference]);
+    INSERT INTO payment_methods (company_id, method_name, requires_reference, bank_account_id)
+    VALUES ($1, $2, $3, $4)
+    RETURNING payment_method_id, method_name, is_active, requires_reference, bank_account_id
+  `, [companyId, methodName.trim(), requiresReference, bankAccountId || null]);
   return rows[0];
 }
 
-async function updatePaymentMethod(companyId, methodId, { methodName, requiresReference, isActive }) {
+async function updatePaymentMethod(companyId, methodId, { methodName, requiresReference, isActive, bankAccountId }) {
   const qb = new QueryBuilder([methodId, companyId]);
   const fields = [];
   if (methodName        !== undefined) fields.push(`method_name = $${qb.add(methodName.trim())}`);
   if (requiresReference !== undefined) fields.push(`requires_reference = $${qb.add(requiresReference)}`);
   if (isActive          !== undefined) fields.push(`is_active = $${qb.add(isActive)}`);
+  if (bankAccountId     !== undefined) fields.push(`bank_account_id = $${qb.add(bankAccountId || null)}`);
   if (!fields.length) throw AppError.badRequest('Nothing to update');
 
   const { rows } = await query(`
     UPDATE payment_methods SET ${fields.join(', ')}
     WHERE payment_method_id = $1 AND company_id = $2
-    RETURNING payment_method_id, method_name, is_active, requires_reference
+    RETURNING payment_method_id, method_name, is_active, requires_reference, bank_account_id
   `, qb.params);
   if (!rows.length) throw AppError.notFound('Payment method');
   return rows[0];

@@ -14,9 +14,10 @@ import { PageSpinner } from '@/components/ui/Spinner';
 
 // ── Payment Methods Tab ───────────────────────────────────────────────────────
 
-function PayModeForm({ initial, onSave, onClose, isPending }) {
-  const [name,       setName]       = useState(initial?.method_name       ?? '');
-  const [requireRef, setRequireRef] = useState(initial?.requires_reference ?? false);
+function PayModeForm({ initial, bankAccounts, onSave, onClose, isPending }) {
+  const [name,          setName]          = useState(initial?.method_name       ?? '');
+  const [requireRef,    setRequireRef]    = useState(initial?.requires_reference ?? false);
+  const [bankAccountId, setBankAccountId] = useState(initial?.bank_account_id   ?? '');
 
   const valid = name.trim().length >= 2;
 
@@ -38,10 +39,25 @@ function PayModeForm({ initial, onSave, onClose, isPending }) {
         </button>
         <span className="text-xs text-gray-400">{requireRef ? 'Yes (M-Pesa code, card approval #, etc.)' : 'No'}</span>
       </label>
+      {bankAccounts.length > 0 && (
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Linked Bank Account <span className="text-gray-400">(optional)</span></label>
+          <select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none">
+            <option value="">— None —</option>
+            {bankAccounts.map((b) => (
+              <option key={b.bank_account_id} value={b.bank_account_id}>
+                {b.account_name} — {b.bank_name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-gray-400">Funds collected via this payment method will be tracked to this account.</p>
+        </div>
+      )}
       <div className="flex gap-3 pt-2">
         <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
         <Button fullWidth disabled={!valid} loading={isPending}
-          onClick={() => onSave({ methodName: name.trim(), requiresReference: requireRef })}>
+          onClick={() => onSave({ methodName: name.trim(), requiresReference: requireRef, bankAccountId: bankAccountId || null })}>
           {initial ? 'Save Changes' : 'Add Pay Mode'}
         </Button>
       </div>
@@ -54,10 +70,18 @@ function PayModesTab() {
   const [addOpen,  setAddOpen]  = useState(false);
   const [editMode, setEditMode] = useState(null);
 
-  const companyId = useAuthStore((s) => s.user?.companyId);
+  const companyId  = useAuthStore((s) => s.user?.companyId);
+  const hasFinance = useAuthStore((s) => !!s.user?.planFeatures?.hasFinance);
+
   const { data: methods = [], isLoading } = useQuery({
     queryKey: ['payment-methods-all', companyId],
     queryFn:  () => api.get('/pos/payment-methods', { params: { all: 'true' } }).then((r) => r.data.data),
+  });
+
+  const { data: bankAccounts = [] } = useQuery({
+    queryKey: ['bank-accounts'],
+    queryFn:  () => api.get('/bank-accounts').then((r) => r.data.data ?? []),
+    enabled:  hasFinance,
   });
 
   const createMut = useMutation({
@@ -107,6 +131,7 @@ function PayModesTab() {
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Method Name</th>
+                {hasFinance && <th className="px-4 py-3 text-left font-medium text-gray-600">Bank Account</th>}
                 <th className="px-4 py-3 text-center font-medium text-gray-600">Requires Ref #</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
                 <th className="px-4 py-3" />
@@ -123,6 +148,13 @@ function PayModesTab() {
                       <span className="font-medium text-gray-900">{m.method_name}</span>
                     </div>
                   </td>
+                  {hasFinance && (
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {m.bank_account_name
+                        ? <span className="font-medium text-gray-700">{m.bank_account_name}<span className="ml-1 text-xs font-normal text-gray-400">— {m.bank_name}</span></span>
+                        : <span className="text-gray-300">—</span>}
+                    </td>
+                  )}
                   <td className="px-4 py-3 text-center">
                     {m.requires_reference
                       ? <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium"><Check className="h-3 w-3" /> Yes</span>
@@ -146,7 +178,7 @@ function PayModesTab() {
               ))}
               {methods.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="py-12 text-center text-gray-400">
+                  <td colSpan={hasFinance ? 5 : 4} className="py-12 text-center text-gray-400">
                     <CreditCard className="mx-auto mb-2 h-8 w-8 opacity-30" />
                     No payment methods yet.
                   </td>
@@ -158,10 +190,10 @@ function PayModesTab() {
       )}
 
       <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Pay Mode" size="sm">
-        <PayModeForm onSave={(body) => createMut.mutate(body)} onClose={() => setAddOpen(false)} isPending={createMut.isPending} />
+        <PayModeForm bankAccounts={bankAccounts} onSave={(body) => createMut.mutate(body)} onClose={() => setAddOpen(false)} isPending={createMut.isPending} />
       </Modal>
       <Modal open={!!editMode} onClose={() => setEditMode(null)} title="Edit Pay Mode" size="sm">
-        <PayModeForm initial={editMode}
+        <PayModeForm initial={editMode} bankAccounts={bankAccounts}
           onSave={(body) => updateMut.mutate({ id: editMode?.payment_method_id, body })}
           onClose={() => setEditMode(null)} isPending={updateMut.isPending} />
       </Modal>
