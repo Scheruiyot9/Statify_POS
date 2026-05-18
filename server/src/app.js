@@ -78,6 +78,7 @@ app.use(`${API}/reports`, reportsRoutes);
 app.use(`${API}/platform`, platformRoutes);
 app.use(`${API}/tax-rates`,    taxRoutes);
 app.use(`${API}/mpesa`,        mpesaRoutes);
+app.use(`${API}/ipn`,          mpesaRoutes); // alias without "mpesa" in path — Daraja sandbox rejects callback URLs containing that word
 app.use(`${API}/accounts`,     accountsRoutes);
 app.use(`${API}/bank-accounts`,bankAccountsRoutes);
 app.use(`${API}/suppliers`,    suppliersRoutes);

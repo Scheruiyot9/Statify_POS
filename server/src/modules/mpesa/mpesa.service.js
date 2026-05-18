@@ -603,8 +603,8 @@ async function registerC2BUrl(companyId, branchId) {
       'MISSING_API_BASE_URL'
     );
 
-  const confirmationURL = `${apiBase}/api/v1/mpesa/callback/c2b`;
-  const validationURL   = `${apiBase}/api/v1/mpesa/callback/c2b/validate`;
+  const confirmationURL = `${apiBase}/api/v1/ipn/callback/c2b`;
+  const validationURL   = `${apiBase}/api/v1/ipn/callback/c2b/validate`;
 
   const { res, data } = await darajaPost(
     `${base}/mpesa/c2b/v1/registerurl`,
