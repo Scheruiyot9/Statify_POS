@@ -762,11 +762,11 @@ export default function JournalPage() {
                 <tr key={j.journalId} className="border-b hover:bg-gray-50 active:bg-gray-100 cursor-pointer"
                   onClick={() => setSelectedId(j.journalId)}>
                   <td className="px-4 py-3 font-mono text-xs text-gray-700">{j.journalNumber}</td>
-                  <td className="hidden sm:table-cell px-4 py-3 text-gray-600">{String(j.entryDate).slice(0, 10)}</td>
-                  <td className="hidden md:table-cell px-4 py-3 text-gray-800 truncate max-w-xs">{j.description ?? '—'}</td>
+                  <td className="hidden sm:table-cell px-4 py-3 text-xs text-gray-600">{String(j.entryDate).slice(0, 10)}</td>
+                  <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-800 truncate max-w-xs">{j.description ?? '—'}</td>
                   <td className="hidden lg:table-cell px-4 py-3 text-gray-500 text-xs">{j.reference ?? '—'}</td>
-                  <td className="px-4 py-3 text-right font-mono">{fmt(j.totalDebit)}</td>
-                  <td className="hidden sm:table-cell px-4 py-3 text-right font-mono">{fmt(j.totalCredit)}</td>
+                  <td className="px-4 py-3 text-xs text-right font-mono">{fmt(j.totalDebit)}</td>
+                  <td className="hidden sm:table-cell px-4 py-3 text-xs text-right font-mono">{fmt(j.totalCredit)}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[j.status]}`}>
                       {j.status}
