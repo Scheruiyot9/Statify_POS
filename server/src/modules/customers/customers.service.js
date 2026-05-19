@@ -2,15 +2,33 @@ const { query } = require('../../config/database');
 const AppError = require('../../shared/AppError');
 const QueryBuilder = require('../../shared/qb');
 
-async function listCustomers(companyId, { search, groupId, page = 1, limit = 25 } = {}) {
+// Normalize Kenyan phone to 07XXXXXXXX / 01XXXXXXXX local format
+function normalizePhone(raw) {
+  if (!raw) return null;
+  let p = String(raw).trim().replace(/[\s\-().]/g, '');
+  if (p.startsWith('+254')) p = '0' + p.slice(4);
+  else if (/^254\d{9}$/.test(p)) p = '0' + p.slice(3);
+  return p || null;
+}
+
+async function listCustomers(companyId, { search, groupId, phone, customerId, page = 1, limit = 25 } = {}) {
   const qb = new QueryBuilder([companyId]);
   const conditions = ['c.company_id = $1', 'c.deleted_at IS NULL'];
 
   if (search) {
     const p = qb.add(`%${search}%`);
     conditions.push(
-      `(c.customer_name ILIKE $${p} OR c.phone ILIKE $${p} OR c.email ILIKE $${p} OR c.customer_code ILIKE $${p})`
+      `(c.customer_name ILIKE $${p} OR c.phone ILIKE $${p} OR c.email ILIKE $${p} OR c.customer_code ILIKE $${p} OR c.id_number ILIKE $${p})`
     );
+  }
+
+  if (phone) {
+    const normPhone = normalizePhone(phone);
+    const phonePat  = qb.add('%' + (normPhone || phone) + '%');
+    conditions.push(`c.phone ILIKE $${phonePat}`);
+  }
+  if (customerId) {
+    conditions.push(`c.id_number ILIKE $${qb.add('%' + customerId.trim() + '%')}`);
   }
 
   if (groupId) {
@@ -91,9 +109,17 @@ async function getCustomer(companyId, customerId) {
 async function createCustomer(companyId, data) {
   const { customer_name, phone, email, customer_group_id, customer_code, date_of_birth, notes,
           kra_pin, id_number } = data;
-  const code = customer_code || await _generateCode(companyId);
+  const code        = customer_code || await _generateCode(companyId);
+  const normalPhone = normalizePhone(phone);
 
   // Duplicate checks
+  if (normalPhone) {
+    const { rows: dup } = await query(
+      `SELECT 1 FROM customers WHERE company_id=$1 AND phone=$2 AND deleted_at IS NULL`,
+      [companyId, normalPhone]
+    );
+    if (dup.length) throw AppError.conflict('A customer with this phone number already exists');
+  }
   if (kra_pin?.trim()) {
     const { rows: dup } = await query(
       `SELECT 1 FROM customers WHERE company_id=$1 AND kra_pin=$2 AND deleted_at IS NULL`,
@@ -115,7 +141,7 @@ async function createCustomer(companyId, data) {
       customer_code, date_of_birth, kra_pin, id_number, notes
     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
     RETURNING *
-  `, [companyId, customer_name, phone || null, email || null,
+  `, [companyId, customer_name, normalPhone, email || null,
     customer_group_id || null, code, date_of_birth || null,
     kra_pin?.trim() || null, id_number?.trim() || null, notes || null]);
 
@@ -125,8 +151,16 @@ async function createCustomer(companyId, data) {
 async function updateCustomer(companyId, customerId, data) {
   const { customer_name, phone, email, customer_group_id, date_of_birth, notes,
           kra_pin, id_number } = data;
+  const normalPhone = phone !== undefined ? normalizePhone(phone) : undefined;
 
   // Duplicate checks (exclude self)
+  if (normalPhone) {
+    const { rows: dup } = await query(
+      `SELECT 1 FROM customers WHERE company_id=$1 AND phone=$2 AND customer_id!=$3 AND deleted_at IS NULL`,
+      [companyId, normalPhone, customerId]
+    );
+    if (dup.length) throw AppError.conflict('A customer with this phone number already exists');
+  }
   if (kra_pin?.trim()) {
     const { rows: dup } = await query(
       `SELECT 1 FROM customers WHERE company_id=$1 AND kra_pin=$2 AND customer_id!=$3 AND deleted_at IS NULL`,
@@ -156,7 +190,7 @@ async function updateCustomer(companyId, customerId, data) {
     WHERE company_id = $1 AND customer_id = $2 AND deleted_at IS NULL
     RETURNING *
   `, [companyId, customerId,
-    customer_name ?? null, phone ?? null, email ?? null,
+    customer_name ?? null, normalPhone ?? null, email ?? null,
     customer_group_id ?? null, date_of_birth ?? null,
     kra_pin?.trim() || null, id_number?.trim() || null, notes ?? null]);
 

@@ -2,11 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   CreditCard, Smartphone, Banknote, CheckCircle, Plus, Trash2,
-  Gift, WifiOff, Loader2, XCircle, Send, Search,
+  Gift, WifiOff, Loader2, XCircle, Send, Search, UserCircle2, UserPlus,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { useAuthStore, useCartStore, usePosDataStore } from '@/app/store';
+import CustomerSelectModal from './CustomerSelectModal';
 import { formatCurrency } from '@/utils/formatters';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
@@ -558,6 +559,9 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
     if (open) { setPaymentLines([]); setPointsToRedeem(0); }
   }, [open]);
 
+  const setCustomer = useCartStore((s) => s.setCustomer);
+  const [custModalOpen, setCustModalOpen] = useState(false);
+
   const addPaymentLine = (method) => {
     if (paymentLines.some((l) => l.methodId === method.payment_method_id)) return;
     const isCash = method.method_name === 'Cash';
@@ -692,6 +696,7 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
   }, [open]);
 
   return (
+    <>
     <Modal
       open={open}
       onClose={onClose}
@@ -720,6 +725,41 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
             </p>
           </div>
         )}
+
+        {/* Customer section */}
+        <button
+          type="button"
+          onClick={() => setCustModalOpen(true)}
+          className="w-full flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-left hover:border-primary-300 hover:bg-primary-50 transition-all"
+        >
+          {customer ? (
+            <>
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary-600 text-white text-sm font-bold">
+                {customer.customer_name[0]?.toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900 truncate">{customer.customer_name}</p>
+                <p className="text-xs text-gray-400">
+                  {customer.phone ? customer.phone + ' · ' : ''}
+                  {customer.id_number ? `ID ${customer.id_number} · ` : ''}
+                  {customer.customer_id}
+                </p>
+              </div>
+              <span className="text-xs font-medium text-primary-600 flex-shrink-0">Change</span>
+            </>
+          ) : (
+            <>
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-200">
+                <UserPlus className="h-5 w-5 text-gray-400" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-gray-600">Add Customer</p>
+                <p className="text-xs text-gray-400">Optional — for loyalty &amp; records</p>
+              </div>
+              <span className="text-xs font-medium text-primary-600 flex-shrink-0">Select</span>
+            </>
+          )}
+        </button>
 
         {/* Amount summary */}
         <div className="rounded-xl bg-secondary-50 border border-secondary-200 p-4">
@@ -859,5 +899,7 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
         )}
       </div>
     </Modal>
+    <CustomerSelectModal open={custModalOpen} onClose={() => setCustModalOpen(false)} />
+    </>
   );
 }

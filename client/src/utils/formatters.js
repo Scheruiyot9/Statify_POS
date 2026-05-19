@@ -1,5 +1,7 @@
-export const formatCurrency = (amount, currency = 'KES') =>
-  new Intl.NumberFormat('en-KE', { style: 'currency', currency }).format(amount ?? 0);
+export const formatCurrency = (amount, currency = 'KES') => {
+  const raw = new Intl.NumberFormat('en-KE', { style: 'currency', currency }).format(amount ?? 0);
+  return raw.replace(/^KSh\s?|^KES\s?|^\$\s?/, 'Ksh ');
+};
 
 export const formatDate = (date) => {
   if (!date) return '—';

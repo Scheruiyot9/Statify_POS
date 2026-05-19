@@ -161,7 +161,10 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
 
 async function listTransactions(companyId, role, branchIds, filters = {}) {
   const { branchId, search, status, paymentStatus, startDate, endDate, cashierId,
-          paymentMethod, minAmount, maxAmount, page = 1, limit = 25 } = filters;
+          paymentMethod, minAmount, maxAmount,
+          posSessionId, sessionId,
+          page = 1, limit = 25 } = filters;
+  const resolvedSessionId = posSessionId || sessionId || null;
   const isWide = isCompanyWide(role);
 
   const qb = new QueryBuilder([companyId]);
@@ -198,6 +201,7 @@ async function listTransactions(companyId, role, branchIds, filters = {}) {
       `EXISTS (SELECT 1 FROM transaction_payments tp2 JOIN payment_methods pm2 ON pm2.payment_method_id = tp2.payment_method_id WHERE tp2.transaction_id = st.transaction_id AND pm2.method_name ILIKE $${pm})`
     );
   }
+  if (resolvedSessionId) conditions.push(`st.pos_session_id = $${qb.add(resolvedSessionId)}`);
 
   const pg = parseInt(page, 10);
   const lm = parseInt(limit, 10);

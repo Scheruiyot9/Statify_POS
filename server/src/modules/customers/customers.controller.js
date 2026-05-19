@@ -1,8 +1,8 @@
 const svc = require('./customers.service');
 
 const list = async (req, res) => {
-  const { search, groupId, page, limit } = req.query;
-  const result = await svc.listCustomers(req.tenantId, { search, groupId, page, limit });
+  const { search, groupId, phone, customerId, page, limit } = req.query;
+  const result = await svc.listCustomers(req.tenantId, { search, groupId, phone, customerId, page, limit });
   res.json({ success: true, data: result });
 };
 
