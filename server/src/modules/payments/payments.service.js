@@ -75,15 +75,17 @@ async function createPayment(companyId, userId, data) {
   const {
     branch_id, payment_type = 'supplier',
     supplier_id, bank_account_id, po_id,
-    expense_account_id, payee_name,
-    payment_date, amount, payment_method, reference_number, notes,
+    expense_lines = [],
+    payment_date, payment_method, reference_number, notes,
   } = data;
 
   if (!branch_id) throw AppError.badRequest('branch_id is required');
-  if (!amount || parseFloat(amount) <= 0) throw AppError.badRequest('Amount must be greater than zero');
 
   if (payment_type === 'supplier') {
     if (!supplier_id) throw AppError.badRequest('supplier_id is required for supplier payments');
+    const amt = parseFloat(data.amount);
+    if (!amt || amt <= 0) throw AppError.badRequest('Amount must be greater than zero');
+
     const { rows: [supplier] } = await query(
       `SELECT supplier_id FROM suppliers WHERE supplier_id=$1 AND company_id=$2`,
       [supplier_id, companyId]
@@ -98,12 +100,17 @@ async function createPayment(companyId, userId, data) {
       if (!po) throw AppError.badRequest('PO not found or does not belong to this supplier');
     }
   } else {
-    if (!expense_account_id) throw AppError.badRequest('expense_account_id is required for direct payments');
-    const { rows: [acc] } = await query(
-      `SELECT account_id FROM accounts WHERE account_id=$1 AND company_id=$2 AND is_active=TRUE`,
-      [expense_account_id, companyId]
-    );
-    if (!acc) throw AppError.badRequest('Expense account not found or inactive');
+    if (!expense_lines.length) throw AppError.badRequest('At least one expense line is required');
+    for (const l of expense_lines) {
+      if (!l.accountId) throw AppError.badRequest('Each expense line requires an account');
+      if (!parseFloat(l.amount) || parseFloat(l.amount) <= 0)
+        throw AppError.badRequest('Each expense line requires a positive amount');
+      const { rows: [acc] } = await query(
+        `SELECT account_id FROM accounts WHERE account_id=$1 AND company_id=$2 AND is_active=TRUE`,
+        [l.accountId, companyId]
+      );
+      if (!acc) throw AppError.badRequest(`Account not found or inactive: ${l.accountId}`);
+    }
   }
 
   if (bank_account_id) {
@@ -117,19 +124,23 @@ async function createPayment(companyId, userId, data) {
   return transaction(async (client) => {
     const paymentNumber = await nextPaymentNumber(client, companyId);
 
+    const totalAmount = payment_type === 'supplier'
+      ? parseFloat(data.amount)
+      : expense_lines.reduce((s, l) => s + parseFloat(l.amount), 0);
+
     const { rows: [payment] } = await client.query(`
       INSERT INTO supplier_payments
         (company_id, branch_id, supplier_id, bank_account_id, po_id,
-         expense_account_id, payee_name, payment_type, payment_number,
+         expense_lines, payment_type, payment_number,
          payment_date, amount, payment_method, reference_number, notes, created_by_user_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
       RETURNING *
     `, [companyId, branch_id,
         supplier_id || null, bank_account_id || null, po_id || null,
-        expense_account_id || null, payee_name || null,
+        JSON.stringify(expense_lines),
         payment_type, paymentNumber,
         payment_date || new Date().toISOString().slice(0, 10),
-        parseFloat(amount), payment_method || 'bank_transfer',
+        totalAmount, payment_method || 'bank_transfer',
         reference_number || null, notes || null, userId]);
 
     if (payment_type === 'supplier') {

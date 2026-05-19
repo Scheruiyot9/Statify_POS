@@ -339,29 +339,39 @@ async function postVoidPaymentEntry(client, companyId, payment, userId) {
 }
 
 // ── Direct Expense Entry ──────────────────────────────────────────────────────
-// DR selected expense account, CR bank/cash account
+// Multiple DR expense lines, single CR bank/cash account
 async function postDirectExpenseEntry(client, companyId, payment) {
   try {
-    const amt = parseFloat(payment.amount);
-    if (amt <= 0.005 || !payment.expense_account_id) return;
+    const lines = Array.isArray(payment.expense_lines) ? payment.expense_lines : [];
+    if (!lines.length) return;
+
+    const total = lines.reduce((s, l) => s + parseFloat(l.amount || 0), 0);
+    if (total <= 0.005) return;
 
     const accIds = await findAccIds(client, companyId, ['1000', '1010']);
     const { accId: crAccId, entityId: bankEntityId } =
       await resolveBankAccId(client, companyId, payment, accIds);
     if (!crAccId) return;
 
+    const firstPayee = lines[0]?.payeeName || payment.reference_number || payment.payment_id;
+
     await _post(client, companyId, {
       entryDate:   toDateStr(payment.payment_date),
-      description: `Direct expense — ${payment.payee_name || payment.reference_number || payment.payment_id}`,
+      description: `Direct expense — ${firstPayee}`,
       sourceType:  'PAYMENT',
       sourceId:    payment.payment_id,
       userId:      payment.created_by_user_id || null,
       lines: [
-        { accountId: payment.expense_account_id, debit: +amt.toFixed(4), credit: 0 },
+        ...lines.map((l) => ({
+          accountId:   l.accountId,
+          debit:       +parseFloat(l.amount).toFixed(4),
+          credit:      0,
+          description: l.payeeName || null,
+        })),
         {
           accountId:  crAccId,
           debit:      0,
-          credit:     +amt.toFixed(4),
+          credit:     +total.toFixed(4),
           entityType: bankEntityId ? 'bank_account' : null,
           entityId:   bankEntityId || null,
         },
@@ -372,11 +382,14 @@ async function postDirectExpenseEntry(client, companyId, payment) {
   }
 }
 
-// Reversal of direct expense
+// Reversal of direct expense — DR bank, CR each expense account
 async function postVoidDirectExpenseEntry(client, companyId, payment, userId) {
   try {
-    const amt = parseFloat(payment.amount);
-    if (amt <= 0.005 || !payment.expense_account_id) return;
+    const lines = Array.isArray(payment.expense_lines) ? payment.expense_lines : [];
+    if (!lines.length) return;
+
+    const total = lines.reduce((s, l) => s + parseFloat(l.amount || 0), 0);
+    if (total <= 0.005) return;
 
     const accIds = await findAccIds(client, companyId, ['1000', '1010']);
     const { accId: drAccId, entityId: bankEntityId } =
@@ -385,19 +398,24 @@ async function postVoidDirectExpenseEntry(client, companyId, payment, userId) {
 
     await _post(client, companyId, {
       entryDate:   toDateStr(new Date()),
-      description: `Void direct expense — ${payment.payee_name || payment.reference_number || payment.payment_id}`,
+      description: `Void direct expense — ${lines[0]?.payeeName || payment.reference_number || payment.payment_id}`,
       sourceType:  'PAYMENT_VOID',
       sourceId:    payment.payment_id,
       userId:      userId || null,
       lines: [
         {
           accountId:  drAccId,
-          debit:      +amt.toFixed(4),
+          debit:      +total.toFixed(4),
           credit:     0,
           entityType: bankEntityId ? 'bank_account' : null,
           entityId:   bankEntityId || null,
         },
-        { accountId: payment.expense_account_id, debit: 0, credit: +amt.toFixed(4) },
+        ...lines.map((l) => ({
+          accountId:   l.accountId,
+          debit:       0,
+          credit:      +parseFloat(l.amount).toFixed(4),
+          description: l.payeeName || null,
+        })),
       ],
     });
   } catch (err) {
