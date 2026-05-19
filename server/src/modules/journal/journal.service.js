@@ -338,6 +338,73 @@ async function postVoidPaymentEntry(client, companyId, payment, userId) {
   }
 }
 
+// ── Direct Expense Entry ──────────────────────────────────────────────────────
+// DR selected expense account, CR bank/cash account
+async function postDirectExpenseEntry(client, companyId, payment) {
+  try {
+    const amt = parseFloat(payment.amount);
+    if (amt <= 0.005 || !payment.expense_account_id) return;
+
+    const accIds = await findAccIds(client, companyId, ['1000', '1010']);
+    const { accId: crAccId, entityId: bankEntityId } =
+      await resolveBankAccId(client, companyId, payment, accIds);
+    if (!crAccId) return;
+
+    await _post(client, companyId, {
+      entryDate:   toDateStr(payment.payment_date),
+      description: `Direct expense — ${payment.payee_name || payment.reference_number || payment.payment_id}`,
+      sourceType:  'PAYMENT',
+      sourceId:    payment.payment_id,
+      userId:      payment.created_by_user_id || null,
+      lines: [
+        { accountId: payment.expense_account_id, debit: +amt.toFixed(4), credit: 0 },
+        {
+          accountId:  crAccId,
+          debit:      0,
+          credit:     +amt.toFixed(4),
+          entityType: bankEntityId ? 'bank_account' : null,
+          entityId:   bankEntityId || null,
+        },
+      ],
+    });
+  } catch (err) {
+    console.error('[ledger] postDirectExpenseEntry skipped:', err.message);
+  }
+}
+
+// Reversal of direct expense
+async function postVoidDirectExpenseEntry(client, companyId, payment, userId) {
+  try {
+    const amt = parseFloat(payment.amount);
+    if (amt <= 0.005 || !payment.expense_account_id) return;
+
+    const accIds = await findAccIds(client, companyId, ['1000', '1010']);
+    const { accId: drAccId, entityId: bankEntityId } =
+      await resolveBankAccId(client, companyId, payment, accIds);
+    if (!drAccId) return;
+
+    await _post(client, companyId, {
+      entryDate:   toDateStr(new Date()),
+      description: `Void direct expense — ${payment.payee_name || payment.reference_number || payment.payment_id}`,
+      sourceType:  'PAYMENT_VOID',
+      sourceId:    payment.payment_id,
+      userId:      userId || null,
+      lines: [
+        {
+          accountId:  drAccId,
+          debit:      +amt.toFixed(4),
+          credit:     0,
+          entityType: bankEntityId ? 'bank_account' : null,
+          entityId:   bankEntityId || null,
+        },
+        { accountId: payment.expense_account_id, debit: 0, credit: +amt.toFixed(4) },
+      ],
+    });
+  } catch (err) {
+    console.error('[ledger] postVoidDirectExpenseEntry skipped:', err.message);
+  }
+}
+
 // ── Return Entry ──────────────────────────────────────────────────────────────
 // DR Revenue (4000) + DR VAT Payable (2100), CR Cash/Bank per refund method
 // If restocked: DR Inventory (1200), CR COGS (5000)
@@ -953,6 +1020,7 @@ module.exports = {
   findAccIds, _post,
   postSaleEntry, postSaleVoidEntry, postGrnEntry,
   postPaymentEntry, postVoidPaymentEntry,
+  postDirectExpenseEntry, postVoidDirectExpenseEntry,
   postReturnEntry, postOpeningBalanceEntry,
   postBulkOpeningBalance, postArSettlementEntry,
   postManualEntry, bulkImportEntries, voidJournalEntry,

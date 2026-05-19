@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  CreditCard, Plus, Search, AlertCircle, CheckCircle, XCircle,
-} from 'lucide-react';
+import { CreditCard, Plus, Search, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
@@ -49,16 +47,19 @@ function MethodBadge({ method }) {
 function PaymentModal({ onClose }) {
   const qc = useQueryClient();
 
+  const [paymentType, setPaymentType] = useState('supplier');
   const [form, setForm] = useState({
-    supplier_id:     '',
-    branch_id:       '',
-    bank_account_id: '',
-    po_id:           '',
-    payment_date:    new Date().toISOString().slice(0, 10),
-    amount:          '',
-    payment_method:  'bank_transfer',
-    reference_number:'',
-    notes:           '',
+    supplier_id:       '',
+    branch_id:         '',
+    bank_account_id:   '',
+    po_id:             '',
+    expense_account_id:'',
+    payee_name:        '',
+    payment_date:      new Date().toISOString().slice(0, 10),
+    amount:            '',
+    payment_method:    'bank_transfer',
+    reference_number:  '',
+    notes:             '',
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -74,16 +75,20 @@ function PaymentModal({ onClose }) {
     queryKey: ['bank-accounts'],
     queryFn:  () => api.get('/bank-accounts').then((r) => r.data.data ?? []),
   });
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['accounts'],
+    queryFn:  () => api.get('/accounts').then((r) => r.data.data ?? []),
+  });
   const { data: posRaw } = useQuery({
     queryKey: ['purchases-for-payment', form.supplier_id],
-    queryFn:  () => api.get(`/purchases?supplierId=${form.supplier_id}&status=approved&limit=100`).then((r) => r.data.data ?? r.data),
-    enabled:  !!form.supplier_id,
+    queryFn:  () => api.get(`/purchases?supplierId=${form.supplier_id}&limit=100`).then((r) => r.data.data ?? r.data),
+    enabled:  !!form.supplier_id && paymentType === 'supplier',
   });
 
   const suppliers = Array.isArray(suppliersRaw) ? suppliersRaw : (suppliersRaw?.suppliers ?? []);
   const pos       = Array.isArray(posRaw) ? posRaw : (posRaw?.orders ?? []);
+  const expenseAccounts = accounts.filter((a) => a.account_type === 'expense' && a.is_active);
 
-  // Show AP balance of selected supplier
   const selectedSupplier = suppliers.find((s) => s.supplier_id === form.supplier_id);
 
   const { mutate, isPending } = useMutation({
@@ -99,40 +104,100 @@ function PaymentModal({ onClose }) {
   });
 
   const handleSubmit = () => {
-    if (!form.supplier_id)    return toast.error('Select a supplier');
-    if (!form.branch_id)      return toast.error('Select a branch');
+    if (!form.branch_id) return toast.error('Select a branch');
     if (!form.amount || parseFloat(form.amount) <= 0) return toast.error('Enter a valid amount');
+    if (paymentType === 'supplier' && !form.supplier_id) return toast.error('Select a supplier');
+    if (paymentType === 'direct' && !form.expense_account_id) return toast.error('Select an expense account');
+
     mutate({
       ...form,
-      amount:          parseFloat(form.amount),
-      bank_account_id: form.bank_account_id || undefined,
-      po_id:           form.po_id           || undefined,
-      reference_number:form.reference_number || undefined,
-      notes:           form.notes           || undefined,
+      payment_type:      paymentType,
+      amount:            parseFloat(form.amount),
+      supplier_id:       paymentType === 'supplier' ? form.supplier_id : undefined,
+      po_id:             paymentType === 'supplier' ? (form.po_id || undefined) : undefined,
+      expense_account_id:paymentType === 'direct'   ? form.expense_account_id : undefined,
+      payee_name:        paymentType === 'direct'   ? (form.payee_name || undefined) : undefined,
+      bank_account_id:   form.bank_account_id || undefined,
+      reference_number:  form.reference_number || undefined,
+      notes:             form.notes || undefined,
     });
   };
 
   return (
-    <Modal open onClose={onClose} title="Record Supplier Payment" size="md">
+    <Modal open onClose={onClose} title="Record Payment" size="md">
       <div className="space-y-4">
 
-        <Field label="Supplier *">
-          <select className={sel} value={form.supplier_id}
-            onChange={(e) => { set('supplier_id', e.target.value); set('po_id', ''); }}>
-            <option value="">— Select supplier —</option>
-            {suppliers.map((s) => (
-              <option key={s.supplier_id} value={s.supplier_id}>{s.supplier_name}</option>
-            ))}
-          </select>
-        </Field>
+        {/* Type toggle */}
+        <div className="flex gap-1 rounded-xl bg-gray-100 p-1">
+          {[['supplier', 'Supplier Payment'], ['direct', 'Direct Expense']].map(([val, label]) => (
+            <button key={val} type="button"
+              onClick={() => { setPaymentType(val); set('supplier_id', ''); set('po_id', ''); set('expense_account_id', ''); set('payee_name', ''); }}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                paymentType === val ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}>
+              {label}
+            </button>
+          ))}
+        </div>
 
-        {selectedSupplier && parseFloat(selectedSupplier.current_balance) > 0 && (
-          <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-            <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
-            <span className="text-sm text-amber-700">
-              Outstanding balance: <strong>{formatCurrency(selectedSupplier.current_balance)}</strong>
-            </span>
-          </div>
+        {/* Supplier payment fields */}
+        {paymentType === 'supplier' && (
+          <>
+            <Field label="Supplier *">
+              <select className={sel} value={form.supplier_id}
+                onChange={(e) => { set('supplier_id', e.target.value); set('po_id', ''); }}>
+                <option value="">— Select supplier —</option>
+                {suppliers.map((s) => (
+                  <option key={s.supplier_id} value={s.supplier_id}>{s.supplier_name}</option>
+                ))}
+              </select>
+            </Field>
+
+            {selectedSupplier && parseFloat(selectedSupplier.current_balance) > 0 && (
+              <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
+                <span className="text-sm text-amber-700">
+                  Outstanding balance: <strong>{formatCurrency(selectedSupplier.current_balance)}</strong>
+                </span>
+              </div>
+            )}
+
+            {form.supplier_id && (
+              <Field label="Against PO" hint="Optional — link to a specific purchase order">
+                <select className={sel} value={form.po_id} onChange={(e) => set('po_id', e.target.value)}>
+                  <option value="">— General payment —</option>
+                  {pos.filter((po) => po.status !== 'cancelled' && po.status !== 'draft').map((po) => (
+                    <option key={po.po_id} value={po.po_id}>
+                      {po.po_number} · {po.status} — {formatCurrency(po.total_amount)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+          </>
+        )}
+
+        {/* Direct expense fields */}
+        {paymentType === 'direct' && (
+          <>
+            <Field label="Expense Account *">
+              <select className={sel} value={form.expense_account_id}
+                onChange={(e) => set('expense_account_id', e.target.value)}>
+                <option value="">— Select account —</option>
+                {expenseAccounts.map((a) => (
+                  <option key={a.account_id} value={a.account_id}>
+                    {a.account_code} — {a.account_name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Payee / Description" hint="e.g. Staff Salaries, Kenya Power, Landlord">
+              <input type="text" className={inp} value={form.payee_name}
+                onChange={(e) => set('payee_name', e.target.value)}
+                placeholder="Who or what was paid" />
+            </Field>
+          </>
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -165,9 +230,9 @@ function PaymentModal({ onClose }) {
           </Field>
         </div>
 
-        <Field label="Bank Account" hint="Optional — deducts from account balance when selected">
+        <Field label="Bank Account" hint="Optional — source of funds">
           <select className={sel} value={form.bank_account_id} onChange={(e) => set('bank_account_id', e.target.value)}>
-            <option value="">— None —</option>
+            <option value="">— Cash / None —</option>
             {bankAccounts.map((ba) => (
               <option key={ba.bank_account_id} value={ba.bank_account_id}>
                 {ba.account_name} ({ba.bank_name}) — {formatCurrency(ba.current_balance)}
@@ -175,19 +240,6 @@ function PaymentModal({ onClose }) {
             ))}
           </select>
         </Field>
-
-        {form.supplier_id && (
-          <Field label="Against PO" hint="Optional — link this payment to a specific purchase order">
-            <select className={sel} value={form.po_id} onChange={(e) => set('po_id', e.target.value)}>
-              <option value="">— General payment —</option>
-              {pos.map((po) => (
-                <option key={po.po_id} value={po.po_id}>
-                  {po.po_number} — {formatCurrency(po.total_amount)}
-                </option>
-              ))}
-            </select>
-          </Field>
-        )}
 
         <Field label="Reference / Cheque No.">
           <input type="text" className={inp} value={form.reference_number}
@@ -230,18 +282,26 @@ function PaymentDetail({ payment, onClose }) {
     onError: (e) => toast.error(e.response?.data?.message ?? 'Void failed'),
   });
 
+  const isDirect = payment.payment_type === 'direct';
+
   const rows = [
-    ['Supplier',       payment.supplier_name],
+    ['Payment No.',    payment.payment_number || '—'],
+    ['Type',          isDirect ? 'Direct Expense' : 'Supplier Payment'],
+    isDirect
+      ? ['Payee',     payment.payee_name || '—']
+      : ['Supplier',  payment.supplier_name],
+    isDirect
+      ? ['Expense Account', payment.expense_account_name || '—']
+      : ['PO Reference',   payment.po_number || '—'],
     ['Branch',         payment.branch_name],
     ['Date',           payment.payment_date?.slice(0, 10)],
     ['Amount',         formatCurrency(payment.amount)],
     ['Method',         <MethodBadge key="m" method={payment.payment_method} />],
     ['Reference',      payment.reference_number || '—'],
     ['Bank Account',   payment.bank_account_name ? `${payment.bank_account_name} (${payment.bank_name})` : '—'],
-    ['PO Reference',   payment.po_number || '—'],
     ['Recorded By',    payment.created_by || '—'],
     ['Notes',          payment.notes || '—'],
-  ];
+  ].filter(Boolean);
 
   return (
     <Modal open onClose={onClose} title="Payment Details" size="sm">
@@ -259,7 +319,7 @@ function PaymentDetail({ payment, onClose }) {
           {canVoid && (
             <Button variant="outline" size="sm" className="text-red-600 border-red-300 hover:bg-red-50"
               onClick={() => {
-                if (window.confirm('Void this payment? The AP balance will be reversed.'))
+                if (window.confirm('Void this payment? The ledger entry will be reversed.'))
                   voidM.mutate();
               }}
               isLoading={voidM.isPending}>
@@ -300,10 +360,11 @@ function APSummary({ suppliers }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function PaymentsPage() {
-  const [showModal,    setShowModal]    = useState(false);
+  const [showModal,       setShowModal]       = useState(false);
   const [selectedPayment, setSelectedPayment] = useState(null);
-  const [search,       setSearch]       = useState('');
-  const [supplierFilt, setSupplierFilt] = useState('');
+  const [search,          setSearch]          = useState('');
+  const [supplierFilt,    setSupplierFilt]    = useState('');
+  const [typeFilt,        setTypeFilt]        = useState('');
 
   const { data: suppliersRaw2 } = useQuery({
     queryKey: ['suppliers'],
@@ -317,12 +378,19 @@ export default function PaymentsPage() {
   });
   const payments = Array.isArray(paymentsRaw) ? paymentsRaw : (paymentsRaw?.payments ?? []);
 
-  const filtered = search
-    ? payments.filter((p) =>
-        p.supplier_name?.toLowerCase().includes(search.toLowerCase()) ||
-        p.reference_number?.toLowerCase().includes(search.toLowerCase())
-      )
-    : payments;
+  const filtered = payments.filter((p) => {
+    if (typeFilt && p.payment_type !== typeFilt) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return (
+        p.supplier_name?.toLowerCase().includes(q) ||
+        p.payee_name?.toLowerCase().includes(q) ||
+        p.reference_number?.toLowerCase().includes(q) ||
+        p.payment_number?.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
 
   const totalPaid = filtered.reduce((s, p) => s + parseFloat(p.amount), 0);
 
@@ -336,7 +404,7 @@ export default function PaymentsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-            placeholder="Search supplier or reference…"
+            placeholder="Search number, supplier, payee…"
             value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <select className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none"
@@ -345,6 +413,12 @@ export default function PaymentsPage() {
           {suppliers.map((s) => (
             <option key={s.supplier_id} value={s.supplier_id}>{s.supplier_name}</option>
           ))}
+        </select>
+        <select className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none"
+          value={typeFilt} onChange={(e) => setTypeFilt(e.target.value)}>
+          <option value="">All types</option>
+          <option value="supplier">Supplier</option>
+          <option value="direct">Direct Expense</option>
         </select>
         <Button size="sm" onClick={() => setShowModal(true)}>
           <Plus className="h-4 w-4 mr-1" />Record Payment
@@ -355,56 +429,62 @@ export default function PaymentsPage() {
       {isLoading ? <PageSpinner /> : (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
           <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="py-3 pl-4 text-left text-xs font-medium text-gray-500">Date</th>
-                <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Supplier</th>
-                <th className="hidden sm:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Method</th>
-                <th className="hidden md:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Reference</th>
-                <th className="hidden md:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Bank Account</th>
-                <th className="hidden lg:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">PO</th>
-                <th className="py-3 px-4 text-right text-xs font-medium text-gray-500">Amount</th>
-                <th className="py-3 pr-4 text-center text-xs font-medium text-gray-500">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filtered.length === 0 ? (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <td colSpan={8} className="py-10 text-center text-gray-400">No payments recorded</td>
+                  <th className="py-3 pl-4 text-left text-xs font-medium text-gray-500">No.</th>
+                  <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Date</th>
+                  <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Payee / Supplier</th>
+                  <th className="hidden sm:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Method</th>
+                  <th className="hidden md:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Reference</th>
+                  <th className="hidden lg:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Type</th>
+                  <th className="py-3 px-4 text-right text-xs font-medium text-gray-500">Amount</th>
+                  <th className="py-3 pr-4 text-center text-xs font-medium text-gray-500">Action</th>
                 </tr>
-              ) : filtered.map((p) => (
-                <tr key={p.payment_id} className="hover:bg-gray-50 active:bg-gray-100 cursor-pointer"
-                  onClick={() => setSelectedPayment(p)}>
-                  <td className="py-3 pl-4 text-gray-600">{p.payment_date?.slice(0, 10)}</td>
-                  <td className="py-3 px-4 font-medium text-gray-900">{p.supplier_name}</td>
-                  <td className="hidden sm:table-cell py-3 px-4"><MethodBadge method={p.payment_method} /></td>
-                  <td className="hidden md:table-cell py-3 px-4 text-gray-500">{p.reference_number || '—'}</td>
-                  <td className="hidden md:table-cell py-3 px-4 text-gray-500">{p.bank_account_name || '—'}</td>
-                  <td className="hidden lg:table-cell py-3 px-4 font-mono text-gray-500 text-xs">{p.po_number || '—'}</td>
-                  <td className="py-3 px-4 text-right font-semibold text-gray-900">{formatCurrency(p.amount)}</td>
-                  <td className="py-3 pr-4 text-center" onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => setSelectedPayment(p)}
-                      className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                      View
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            {filtered.length > 0 && (
-              <tfoot className="border-t border-gray-200 bg-gray-50">
-                <tr>
-                  <td colSpan={7} className="py-2 pl-4 text-xs font-medium text-gray-500">
-                    {filtered.length} payment{filtered.length !== 1 ? 's' : ''}
-                  </td>
-                  <td className="py-2 pr-4 text-right text-sm font-bold text-gray-900">
-                    {formatCurrency(totalPaid)}
-                  </td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-10 text-center text-gray-400">No payments recorded</td>
+                  </tr>
+                ) : filtered.map((p) => (
+                  <tr key={p.payment_id} className="hover:bg-gray-50 active:bg-gray-100 cursor-pointer"
+                    onClick={() => setSelectedPayment(p)}>
+                    <td className="py-3 pl-4 font-mono text-xs text-gray-500">{p.payment_number || '—'}</td>
+                    <td className="py-3 px-4 text-xs text-gray-600">{p.payment_date?.slice(0, 10)}</td>
+                    <td className="py-3 px-4 font-medium text-gray-900 text-xs">
+                      {p.payment_type === 'direct' ? (p.payee_name || '—') : p.supplier_name}
+                    </td>
+                    <td className="hidden sm:table-cell py-3 px-4"><MethodBadge method={p.payment_method} /></td>
+                    <td className="hidden md:table-cell py-3 px-4 text-xs text-gray-500">{p.reference_number || '—'}</td>
+                    <td className="hidden lg:table-cell py-3 px-4">
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${p.payment_type === 'direct' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                        {p.payment_type === 'direct' ? 'Expense' : 'Supplier'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right text-xs font-semibold text-gray-900">{formatCurrency(p.amount)}</td>
+                    <td className="py-3 pr-4 text-center" onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => setSelectedPayment(p)}
+                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              {filtered.length > 0 && (
+                <tfoot className="border-t border-gray-200 bg-gray-50">
+                  <tr>
+                    <td colSpan={7} className="py-2 pl-4 text-xs font-medium text-gray-500">
+                      {filtered.length} payment{filtered.length !== 1 ? 's' : ''}
+                    </td>
+                    <td className="py-2 pr-4 text-right text-sm font-bold text-gray-900">
+                      {formatCurrency(totalPaid)}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
           </div>
         </div>
       )}
