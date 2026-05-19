@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Calendar, Download, ArrowUpRight } from 'lucide-react';
+import { ArrowLeft, Calendar, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
@@ -274,9 +274,8 @@ export default function AccountLedgerPage() {
                   <td className="px-2 py-3">
                     {e.entryId && (
                       <button onClick={() => setViewing(e.entryId)}
-                        title="View double entry"
-                        className="flex items-center justify-center rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
-                        <ArrowUpRight className="h-3.5 w-3.5" />
+                        className="rounded-lg border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                        View
                       </button>
                     )}
                   </td>
