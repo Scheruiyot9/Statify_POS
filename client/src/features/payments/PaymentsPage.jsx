@@ -312,10 +312,24 @@ function PaymentModal({ onClose }) {
 
 // ── Payment Detail Modal ──────────────────────────────────────────────────────
 
+const RO = ({ label, value, mono }) => (
+  <div className="rounded-lg bg-gray-50 px-3 py-2.5">
+    <p className="text-xs text-gray-400 mb-0.5">{label}</p>
+    <p className={`text-sm font-medium text-gray-900 ${mono ? 'font-mono' : ''}`}>{value || '—'}</p>
+  </div>
+);
+
 function PaymentDetail({ payment, onClose }) {
   const qc = useQueryClient();
   const user = JSON.parse(localStorage.getItem('auth-storage') || '{}')?.state?.user;
   const canVoid = user?.role === 'company_admin' || user?.role === 'super_admin';
+
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['accounts'],
+    queryFn:  () => api.get('/accounts').then((r) => r.data.data ?? []),
+    staleTime: 60_000,
+  });
+  const accountMap = Object.fromEntries(accounts.map((a) => [a.account_id, a]));
 
   const voidM = useMutation({
     mutationFn: () => api.post(`/supplier-payments/${payment.payment_id}/void`),
@@ -329,73 +343,106 @@ function PaymentDetail({ payment, onClose }) {
     onError: (e) => toast.error(e.response?.data?.message ?? 'Void failed'),
   });
 
-  const isDirect    = payment.payment_type === 'direct';
-  const expLines    = Array.isArray(payment.expense_lines) ? payment.expense_lines : [];
-
-  const rows = [
-    ['Payment No.',  payment.payment_number || '—'],
-    ['Type',         isDirect ? 'Direct Expense' : 'Supplier Payment'],
-    !isDirect && ['Supplier',     payment.supplier_name],
-    !isDirect && ['PO Reference', payment.po_number || '—'],
-    ['Branch',       payment.branch_name],
-    ['Date',         payment.payment_date?.slice(0, 10)],
-    ['Amount',       formatCurrency(payment.amount)],
-    ['Method',       <MethodBadge key="m" method={payment.payment_method} />],
-    ['Reference',    payment.reference_number || '—'],
-    ['Bank Account', payment.bank_account_name ? `${payment.bank_account_name} (${payment.bank_name})` : '—'],
-    ['Recorded By',  payment.created_by || '—'],
-    payment.notes && ['Notes', payment.notes],
-  ].filter(Boolean);
+  const isDirect = payment.payment_type === 'direct';
+  const expLines = Array.isArray(payment.expense_lines) ? payment.expense_lines : [];
 
   return (
-    <Modal open onClose={onClose} title="Payment Details" size="sm">
-      <div className="space-y-4">
-        <dl className="divide-y divide-gray-100">
-          {rows.map(([label, value]) => (
-            <div key={label} className="flex items-center justify-between py-2">
-              <dt className="text-sm text-gray-500">{label}</dt>
-              <dd className="text-sm font-medium text-gray-900 text-right">{value}</dd>
-            </div>
-          ))}
-        </dl>
-
-        {isDirect && expLines.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Expense Lines</p>
-            <table className="w-full text-xs border rounded-lg overflow-hidden">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="text-left px-3 py-2 font-medium text-gray-600">Account</th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-600">Payee</th>
-                  <th className="text-right px-3 py-2 font-medium text-gray-600">Amount</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {expLines.map((l, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-3 py-2 text-gray-700">{l.accountId}</td>
-                    <td className="px-3 py-2 text-gray-500">{l.payeeName || '—'}</td>
-                    <td className="px-3 py-2 text-right font-mono">{formatCurrency(l.amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <div className="flex justify-between gap-3 pt-2">
-          {canVoid && (
-            <Button variant="outline" size="sm" className="text-red-600 border-red-300 hover:bg-red-50"
+    <Modal open onClose={onClose} title="Payment Details" size="md"
+      footer={
+        <div className="flex justify-between gap-3 w-full">
+          {canVoid && !payment.is_void && (
+            <Button variant="secondary" size="sm" className="!text-red-600 !border-red-200 hover:!bg-red-50"
               onClick={() => {
                 if (window.confirm('Void this payment? The ledger entry will be reversed.'))
                   voidM.mutate();
               }}
-              isLoading={voidM.isPending}>
+              loading={voidM.isPending}>
               <XCircle className="h-4 w-4 mr-1" />Void
             </Button>
           )}
-          <Button variant="outline" onClick={onClose} className="ml-auto">Close</Button>
+          <Button variant="secondary" onClick={onClose} className="ml-auto">Close</Button>
         </div>
+      }
+    >
+      <div className="space-y-4">
+        {/* Header strip */}
+        <div className="flex items-center gap-3">
+          <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${isDirect ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+            {isDirect ? 'Direct Expense' : 'Supplier Payment'}
+          </span>
+          <span className="font-mono text-xs text-gray-500">{payment.payment_number || '—'}</span>
+          {payment.is_void && (
+            <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">VOID</span>
+          )}
+        </div>
+
+        {/* Supplier / payee info */}
+        {!isDirect && (
+          <div className="grid grid-cols-2 gap-3">
+            <RO label="Supplier" value={payment.supplier_name} />
+            <RO label="PO Reference" value={payment.po_number} />
+          </div>
+        )}
+
+        {/* Core fields */}
+        <div className="grid grid-cols-2 gap-3">
+          <RO label="Date" value={payment.payment_date?.slice(0, 10)} />
+          <RO label="Branch" value={payment.branch_name} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-lg bg-gray-50 px-3 py-2.5">
+            <p className="text-xs text-gray-400 mb-0.5">Method</p>
+            <MethodBadge method={payment.payment_method} />
+          </div>
+          <RO label="Bank Account" value={payment.bank_account_name || 'Cash / None'} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <RO label="Reference" value={payment.reference_number} />
+          <div className="rounded-lg bg-gray-50 px-3 py-2.5">
+            <p className="text-xs text-gray-400 mb-0.5">Amount</p>
+            <p className="text-sm font-bold text-gray-900 font-mono">{formatCurrency(payment.amount)}</p>
+          </div>
+        </div>
+        {payment.notes && <RO label="Notes" value={payment.notes} />}
+        <RO label="Recorded By" value={payment.created_by} />
+
+        {/* Expense lines (direct only) */}
+        {isDirect && expLines.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Expense Lines</p>
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Expense Account</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Payee / Description</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {expLines.map((l, i) => {
+                    const acc = accountMap[l.accountId];
+                    return (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-gray-700">
+                          {acc ? `${acc.account_code} — ${acc.account_name}` : l.accountId}
+                        </td>
+                        <td className="px-3 py-2 text-gray-500">{l.payeeName || '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono font-semibold">{formatCurrency(l.amount)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot className="border-t bg-gray-50">
+                  <tr>
+                    <td colSpan={2} className="px-3 py-2 text-xs font-semibold text-gray-600">Total</td>
+                    <td className="px-3 py-2 text-right text-xs font-bold font-mono">{formatCurrency(payment.amount)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   );

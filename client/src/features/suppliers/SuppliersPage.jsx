@@ -227,7 +227,6 @@ export default function SuppliersPage() {
   const [search, setSearch]         = useState('');
   const [submitted, setSubmitted]   = useState('');
   const [page, setPage]             = useState(1);
-  const [selected, setSelected]     = useState(null);
   const [editTarget, setEditTarget] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -314,9 +313,9 @@ export default function SuppliersPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <button onClick={() => setSelected(s)}
-                      className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                      View
+                    <button onClick={() => setEditTarget(s)}
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                      Edit
                     </button>
                   </td>
                   <td className="px-4 py-3 text-center">
@@ -349,14 +348,6 @@ export default function SuppliersPage() {
         )}
       </div>
 
-      {selected && !editTarget && (
-        <SupplierDetail
-          supplier={selected}
-          onEdit={() => { setEditTarget(selected); setSelected(null); }}
-          onDelete={parseFloat(selected.current_balance) === 0 ? () => { setDeleteTarget(selected); setSelected(null); } : undefined}
-          onClose={() => setSelected(null)}
-        />
-      )}
       {createOpen && (
         <SupplierModal accounts={accounts} onClose={() => setCreateOpen(false)} />
       )}

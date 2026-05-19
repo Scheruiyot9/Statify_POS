@@ -469,7 +469,6 @@ export default function BankAccountsPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [editTarget,       setEditTarget]       = useState(null);
-  const [viewTarget,       setViewTarget]       = useState(null);
   const [createOpen,       setCreateOpen]       = useState(false);
   const [reconcileTarget,  setReconcileTarget]  = useState(null);
 
@@ -521,9 +520,9 @@ export default function BankAccountsPage() {
                   {acc.is_default && (
                     <Star className="h-4 w-4 text-amber-400 fill-amber-400" title="Default account" />
                   )}
-                  <button onClick={() => setViewTarget(acc)}
-                    className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                    View
+                  <button onClick={() => setEditTarget(acc)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                    Edit
                   </button>
                 </div>
               </div>
@@ -567,15 +566,6 @@ export default function BankAccountsPage() {
 
       {createOpen && (
         <BankAccountModal accounts={coaAccounts} onClose={() => setCreateOpen(false)} />
-      )}
-      {viewTarget && !editTarget && !reconcileTarget && (
-        <BankAccountDetailModal
-          account={viewTarget}
-          onClose={() => setViewTarget(null)}
-          onEdit={setEditTarget}
-          onReconcile={() => { setReconcileTarget(viewTarget); setViewTarget(null); }}
-          onNavigateLedger={() => navigate(`/app/bank-accounts/${viewTarget.bank_account_id}/ledger`)}
-        />
       )}
       {editTarget && (
         <BankAccountModal account={editTarget} accounts={coaAccounts} onClose={() => setEditTarget(null)} />

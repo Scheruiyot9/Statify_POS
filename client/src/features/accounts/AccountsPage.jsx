@@ -354,7 +354,8 @@ function AccountDetailModal({ account, onClose, onEdit }) {
 //                     credit accounts (liability/equity/revenue) → balance shows in Cr column
 const DEBIT_NORMAL = new Set(['asset', 'expense']);
 
-function AccountRow({ account, depth, allAccounts, balanceMap, onEdit, onView }) {
+function AccountRow({ account, depth, allAccounts, balanceMap, onEdit }) {
+  const navigate = useNavigate();
   const [expanded, setExpanded] = useState(true);
   const children = allAccounts.filter((a) => a.parent_account_id === account.account_id);
 
@@ -402,16 +403,22 @@ function AccountRow({ account, depth, allAccounts, balanceMap, onEdit, onView })
         </td>
 
         <td className="px-4 py-2.5 text-center">
-          <button onClick={() => onView(account)}
-            className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-            View
-          </button>
+          <div className="flex items-center justify-center gap-1.5">
+            <button onClick={() => onEdit(account)}
+              className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+              Edit
+            </button>
+            <button onClick={() => navigate(`/app/accounts/${account.account_id}/ledger`)}
+              className="rounded-lg border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+              View Entries
+            </button>
+          </div>
         </td>
       </tr>
       {expanded && children.map((child) => (
         <AccountRow key={child.account_id} account={child} depth={depth + 1}
           allAccounts={allAccounts} balanceMap={balanceMap}
-          onEdit={onEdit} onView={onView} />
+          onEdit={onEdit} />
       ))}
     </>
   );
@@ -501,7 +508,6 @@ function OpeningBalancesModal({ accounts, onClose }) {
 export default function AccountsPage() {
   const qc = useQueryClient();
   const [editTarget,      setEditTarget]      = useState(null);
-  const [viewTarget,      setViewTarget]      = useState(null);
   const [createOpen,      setCreateOpen]      = useState(false);
   const [typeFilter,      setTypeFilter]      = useState('');
   const [activeTab,       setActiveTab]       = useState('accounts');
@@ -637,7 +643,7 @@ export default function AccountsPage() {
                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Subtype</th>
                           <th className="px-4 py-2 text-right text-xs font-medium text-blue-600">Debit (Dr)</th>
                           <th className="px-4 py-2 text-right text-xs font-medium text-green-600">Credit (Cr)</th>
-                          <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Action</th>
+                          <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
@@ -645,8 +651,7 @@ export default function AccountsPage() {
                           <AccountRow key={acc.account_id} account={acc} depth={0}
                             allAccounts={typeAccounts}
                             balanceMap={balanceMap}
-                            onEdit={setEditTarget}
-                            onView={setViewTarget} />
+                            onEdit={setEditTarget} />
                         ))}
                       </tbody>
                     </table>
@@ -671,9 +676,6 @@ export default function AccountsPage() {
       )}
       {createOpen && (
         <AccountModal accounts={accounts} onClose={() => setCreateOpen(false)} />
-      )}
-      {viewTarget && !editTarget && (
-        <AccountDetailModal account={viewTarget} onClose={() => setViewTarget(null)} onEdit={setEditTarget} />
       )}
       {editTarget && (
         <AccountModal account={editTarget} accounts={accounts} onClose={() => setEditTarget(null)}
