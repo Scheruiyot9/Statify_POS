@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Truck, Plus, Search, Trash2, Phone, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -221,7 +222,8 @@ function SupplierDetail({ supplier, onEdit, onDelete, onClose }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function SuppliersPage() {
-  const qc = useQueryClient();
+  const qc       = useQueryClient();
+  const navigate = useNavigate();
   const [search, setSearch]         = useState('');
   const [submitted, setSubmitted]   = useState('');
   const [page, setPage]             = useState(1);
@@ -289,7 +291,7 @@ export default function SuppliersPage() {
                 <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Phone / Email</th>
                 <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Payment Terms</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Balance</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500">Action</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500" colSpan={2}>Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -317,10 +319,16 @@ export default function SuppliersPage() {
                       View
                     </button>
                   </td>
+                  <td className="px-4 py-3 text-center">
+                    <button onClick={() => navigate(`/app/suppliers/${s.supplier_id}/ledger`)}
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                      Entries
+                    </button>
+                  </td>
                 </tr>
               ))}
               {suppliers.length === 0 && (
-                <tr><td colSpan={6} className="py-14 text-center text-gray-400">
+                <tr><td colSpan={7} className="py-14 text-center text-gray-400">
                   <Truck className="mx-auto mb-2 h-8 w-8 opacity-25" />No suppliers found
                 </td></tr>
               )}

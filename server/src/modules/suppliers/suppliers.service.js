@@ -105,4 +105,58 @@ async function deleteSupplier(companyId, supplierId) {
   return { deleted: true };
 }
 
-module.exports = { listSuppliers, getSupplier, createSupplier, updateSupplier, deleteSupplier };
+async function getSupplierLedger(companyId, supplierId, { startDate, endDate, page = 1, limit = 30 } = {}) {
+  const pg = parseInt(page,  10);
+  const lm = parseInt(limit, 10);
+
+  // verify supplier belongs to company
+  const { rows: [sup] } = await query(
+    `SELECT supplier_id, supplier_name, current_balance FROM suppliers WHERE supplier_id = $1 AND company_id = $2`,
+    [supplierId, companyId]
+  );
+  if (!sup) throw AppError.notFound('Supplier');
+
+  const vals  = [companyId, supplierId];
+  const conds = ['je.company_id = $1', 'je.status = \'posted\'',
+                 'lel.entity_type = \'supplier\'', 'lel.entity_id = $2'];
+
+  if (startDate) { vals.push(startDate); conds.push(`je.entry_date >= $${vals.length}`); }
+  if (endDate)   { vals.push(endDate);   conds.push(`je.entry_date <= $${vals.length}`); }
+
+  vals.push(lm, (pg - 1) * lm);
+
+  const { rows } = await query(`
+    WITH base AS (
+      SELECT je.journal_entry_id, je.entry_number, je.entry_date, je.description,
+             je.source_type, je.source_id, je.created_at,
+             SUM(lel.debit)::numeric  AS debit,
+             SUM(lel.credit)::numeric AS credit
+      FROM ledger_entry_lines lel
+      JOIN journal_entries je ON je.journal_entry_id = lel.journal_entry_id
+      WHERE ${conds.join(' AND ')}
+      GROUP BY je.journal_entry_id, je.entry_number, je.entry_date,
+               je.description, je.source_type, je.source_id, je.created_at
+    )
+    SELECT *, COUNT(*) OVER() AS total_count
+    FROM base
+    ORDER BY entry_date DESC, created_at DESC
+    LIMIT $${vals.length - 1} OFFSET $${vals.length}
+  `, vals);
+
+  const total = rows.length ? parseInt(rows[0].total_count) : 0;
+  return {
+    entries: rows.map(({ total_count, ...r }) => ({
+      entryId:     r.journal_entry_id,
+      entryNumber: r.entry_number,
+      entryDate:   r.entry_date,
+      description: r.description,
+      sourceType:  r.source_type,
+      sourceId:    r.source_id,
+      debit:       parseFloat(r.debit),
+      credit:      parseFloat(r.credit),
+    })),
+    total, page: pg, limit: lm, pages: Math.ceil(total / lm),
+  };
+}
+
+module.exports = { listSuppliers, getSupplier, createSupplier, updateSupplier, deleteSupplier, getSupplierLedger };

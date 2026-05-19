@@ -24,7 +24,8 @@ import AccountsPage     from '@/features/accounts/AccountsPage';
 import AccountLedgerPage from '@/features/accounts/AccountLedgerPage';
 import BankAccountsPage from '@/features/bank-accounts/BankAccountsPage';
 import BankLedgerPage   from '@/features/bank-accounts/BankLedgerPage';
-import SuppliersPage    from '@/features/suppliers/SuppliersPage';
+import SuppliersPage       from '@/features/suppliers/SuppliersPage';
+import SupplierLedgerPage  from '@/features/suppliers/SupplierLedgerPage';
 import PurchasesPage   from '@/features/purchases/PurchasesPage';
 import PaymentsPage    from '@/features/payments/PaymentsPage';
 import JournalPage    from '@/features/journal/JournalPage';
@@ -119,7 +120,8 @@ export default function AppRouter() {
         <Route path="accounts/:accountId/ledger" element={<FinanceRoute><AccountLedgerPage /></FinanceRoute>} />
         <Route path="bank-accounts" element={<FinanceRoute><BankAccountsPage /></FinanceRoute>} />
         <Route path="bank-accounts/:bankAccountId/ledger" element={<FinanceRoute><BankLedgerPage /></FinanceRoute>} />
-        <Route path="suppliers"    element={<FinanceRoute><SuppliersPage /></FinanceRoute>} />
+        <Route path="suppliers"                          element={<FinanceRoute><SuppliersPage /></FinanceRoute>} />
+        <Route path="suppliers/:supplierId/ledger"    element={<FinanceRoute><SupplierLedgerPage /></FinanceRoute>} />
         <Route path="purchases"    element={<FinanceRoute><PurchasesPage /></FinanceRoute>} />
         <Route path="payments"     element={<FinanceRoute><PaymentsPage /></FinanceRoute>} />
         <Route path="journal"      element={<FinanceRoute><JournalPage /></FinanceRoute>} />

@@ -10,8 +10,9 @@ router.use(authenticate, attachTenant, verifyTenant, scopeTenant, requireTenantC
 
 router.get ('/',    requireRole('accountant'), ctrl.list);
 router.post('/',    requireRole('accountant'), ctrl.create);
-router.get ('/:id', requireRole('accountant'), ctrl.getOne);
-router.patch('/:id',requireRole('accountant'), ctrl.update);
-router.delete('/:id',requireRole('company_admin'), ctrl.remove);
+router.get ('/:id',        requireRole('accountant'),    ctrl.getOne);
+router.get ('/:id/ledger', requireRole('accountant'),    ctrl.ledger);
+router.patch('/:id',       requireRole('accountant'),    ctrl.update);
+router.delete('/:id',      requireRole('company_admin'), ctrl.remove);
 
 module.exports = router;
