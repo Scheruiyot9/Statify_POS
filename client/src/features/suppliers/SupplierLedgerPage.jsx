@@ -19,15 +19,6 @@ const SOURCE_COLORS = {
   BILL:    'bg-amber-100 text-amber-700',
 };
 
-const PO_STATUS_COLORS = {
-  draft:     'bg-gray-100 text-gray-600',
-  submitted: 'bg-amber-100 text-amber-700',
-  approved:  'bg-blue-100 text-blue-700',
-  received:  'bg-green-100 text-green-700',
-  partial:   'bg-teal-100 text-teal-700',
-  cancelled: 'bg-red-100 text-red-600',
-};
-
 // ── Entry Lines Modal ─────────────────────────────────────────────────────────
 
 function EntryLinesModal({ entryId, onClose }) {
@@ -114,11 +105,22 @@ function EntryLinesModal({ entryId, onClose }) {
   );
 }
 
-// ── Journal Entries Tab ───────────────────────────────────────────────────────
+// ── Main Page ─────────────────────────────────────────────────────────────────
 
-function JournalTab({ supplierId, startDate, endDate, onStartDate, onEndDate }) {
-  const [page, setPage]         = useState(1);
+export default function SupplierLedgerPage() {
+  const { supplierId } = useParams();
+  const navigate       = useNavigate();
+
+  const [startDate,      setStart]   = useState(toISO(new Date(Date.now() - 89 * 86400000)));
+  const [endDate,        setEnd]     = useState(todayISO);
+  const [page,           setPage]    = useState(1);
   const [viewingEntryId, setViewing] = useState(null);
+
+  const { data: supplier } = useQuery({
+    queryKey: ['supplier', supplierId],
+    queryFn:  () => api.get(`/suppliers/${supplierId}`).then((r) => r.data.data),
+    enabled:  !!supplierId,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['supplier-ledger', supplierId, startDate, endDate, page],
@@ -132,7 +134,43 @@ function JournalTab({ supplierId, startDate, endDate, onStartDate, onEndDate }) 
   const { entries = [], total = 0, pages = 1 } = data ?? {};
 
   return (
-    <>
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate('/app/suppliers')}
+            className="flex items-center justify-center rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors">
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div>
+            <h1 className="text-lg font-semibold text-gray-900">{supplier?.supplier_name ?? 'Supplier'}</h1>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {supplier?.contact_person && `${supplier.contact_person} · `}
+              {supplier?.payment_terms != null && `Net ${supplier.payment_terms} days`}
+            </p>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-xs text-gray-400">Outstanding Balance</p>
+          <p className={`text-lg font-bold mt-0.5 ${parseFloat(supplier?.current_balance ?? 0) > 0 ? 'text-red-600' : 'text-gray-800'}`}>
+            {supplier ? formatCurrency(supplier.current_balance) : '—'}
+          </p>
+        </div>
+      </div>
+
+      {/* Date filter */}
+      <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 w-fit">
+        <Calendar className="h-3.5 w-3.5 text-gray-400" />
+        <input type="date" value={startDate} max={endDate}
+          onChange={(e) => { setStart(e.target.value); setPage(1); }}
+          className="text-xs border-none outline-none bg-transparent" />
+        <span className="text-gray-400 text-xs">—</span>
+        <input type="date" value={endDate} min={startDate} max={todayISO}
+          onChange={(e) => { setEnd(e.target.value); setPage(1); }}
+          className="text-xs border-none outline-none bg-transparent" />
+      </div>
+
+      {/* Entries table */}
       {isLoading ? <PageSpinner /> : entries.length === 0 ? (
         <div className="rounded-xl border border-gray-100 bg-white py-16 text-center text-gray-400 text-sm">
           No journal entries for this supplier in the selected period
@@ -194,234 +232,6 @@ function JournalTab({ supplierId, startDate, endDate, onStartDate, onEndDate }) 
       )}
 
       {viewingEntryId && <EntryLinesModal entryId={viewingEntryId} onClose={() => setViewing(null)} />}
-    </>
-  );
-}
-
-// ── Purchase Orders Tab ───────────────────────────────────────────────────────
-
-function PurchaseOrdersTab({ supplierId }) {
-  const [page, setPage] = useState(1);
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['supplier-pos', supplierId, page],
-    queryFn:  () => api.get('/purchases', { params: { supplierId, page, limit: 25 } }).then((r) => r.data.data),
-    placeholderData: (prev) => prev,
-    enabled: !!supplierId,
-  });
-
-  const { orders = [], total = 0, pages = 1 } = data ?? {};
-
-  return (
-    <>
-      {isLoading ? <PageSpinner /> : orders.length === 0 ? (
-        <div className="rounded-xl border border-gray-100 bg-white py-16 text-center text-gray-400 text-sm">
-          No purchase orders for this supplier
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">PO Number</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Date</th>
-                <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Expected</th>
-                <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Branch</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Status</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {orders.map((po) => (
-                <tr key={po.po_id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 font-mono text-xs text-gray-700">{po.po_number}</td>
-                  <td className="px-4 py-3 text-xs text-gray-500">{formatDate(po.order_date)}</td>
-                  <td className="hidden sm:table-cell px-4 py-3 text-xs text-gray-500">{po.expected_date ? formatDate(po.expected_date) : '—'}</td>
-                  <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-500">{po.branch_name}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${PO_STATUS_COLORS[po.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                      {po.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-xs font-semibold text-gray-800">
-                    {formatCurrency(po.total_amount)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {pages > 1 && (
-        <div className="flex items-center justify-between text-xs text-gray-500">
-          <span>Page {page} of {pages} · {total} orders</span>
-          <div className="flex gap-1">
-            <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)}
-              className="rounded border px-3 py-1.5 disabled:opacity-40 hover:bg-gray-50">Prev</button>
-            <button disabled={page >= pages} onClick={() => setPage((p) => p + 1)}
-              className="rounded border px-3 py-1.5 disabled:opacity-40 hover:bg-gray-50">Next</button>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-// ── Payments Tab ──────────────────────────────────────────────────────────────
-
-function PaymentsTab({ supplierId, startDate, endDate }) {
-  const [page, setPage] = useState(1);
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['supplier-payments', supplierId, startDate, endDate, page],
-    queryFn:  () => api.get('/payments', {
-      params: { supplierId, fromDate: startDate, toDate: endDate, page, limit: 25 },
-    }).then((r) => r.data.data),
-    placeholderData: (prev) => prev,
-    enabled: !!supplierId,
-  });
-
-  const { payments = [], total = 0, pages = 1 } = data ?? {};
-  const totalPaid = payments.reduce((s, p) => s + parseFloat(p.amount), 0);
-
-  return (
-    <>
-      {isLoading ? <PageSpinner /> : payments.length === 0 ? (
-        <div className="rounded-xl border border-gray-100 bg-white py-16 text-center text-gray-400 text-sm">
-          No payments for this supplier in the selected period
-        </div>
-      ) : (
-        <>
-          {total > 0 && (
-            <div className="rounded-xl bg-green-50 border border-green-200 px-4 py-3 flex items-center justify-between">
-              <p className="text-xs text-green-700 font-medium">{total} payment{total !== 1 ? 's' : ''} in period</p>
-              <p className="text-sm font-bold text-green-800">{formatCurrency(totalPaid)}</p>
-            </div>
-          )}
-          <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Date</th>
-                  <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Method</th>
-                  <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Reference</th>
-                  <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">PO</th>
-                  <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Bank Account</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">Amount</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {payments.map((p) => (
-                  <tr key={p.payment_id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{formatDate(p.payment_date)}</td>
-                    <td className="hidden sm:table-cell px-4 py-3 text-xs text-gray-600 capitalize">{p.payment_method?.replace('_', ' ') ?? '—'}</td>
-                    <td className="hidden sm:table-cell px-4 py-3 font-mono text-xs text-gray-500">{p.reference_number ?? '—'}</td>
-                    <td className="hidden md:table-cell px-4 py-3 font-mono text-xs text-gray-500">{p.po_number ?? '—'}</td>
-                    <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-500">{p.bank_account_name ?? '—'}</td>
-                    <td className="px-4 py-3 text-right font-mono text-xs font-semibold text-green-700">
-                      {formatCurrency(p.amount)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-
-      {pages > 1 && (
-        <div className="flex items-center justify-between text-xs text-gray-500">
-          <span>Page {page} of {pages} · {total} payments</span>
-          <div className="flex gap-1">
-            <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)}
-              className="rounded border px-3 py-1.5 disabled:opacity-40 hover:bg-gray-50">Prev</button>
-            <button disabled={page >= pages} onClick={() => setPage((p) => p + 1)}
-              className="rounded border px-3 py-1.5 disabled:opacity-40 hover:bg-gray-50">Next</button>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-// ── Main Page ─────────────────────────────────────────────────────────────────
-
-export default function SupplierLedgerPage() {
-  const { supplierId } = useParams();
-  const navigate       = useNavigate();
-
-  const [tab,       setTab]  = useState('journal');
-  const [startDate, setStart] = useState(toISO(new Date(Date.now() - 89 * 86400000)));
-  const [endDate,   setEnd]   = useState(todayISO);
-
-  const { data: supplier } = useQuery({
-    queryKey: ['supplier', supplierId],
-    queryFn:  () => api.get(`/suppliers/${supplierId}`).then((r) => r.data.data),
-    enabled:  !!supplierId,
-  });
-
-  const TABS = [
-    { id: 'journal',  label: 'Journal Entries' },
-    { id: 'pos',      label: 'Purchase Orders' },
-    { id: 'payments', label: 'Payments' },
-  ];
-
-  return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/app/suppliers')}
-            className="flex items-center justify-center rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors">
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-          <div>
-            <h1 className="text-lg font-semibold text-gray-900">{supplier?.supplier_name ?? 'Supplier'}</h1>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {supplier?.contact_person && `${supplier.contact_person} · `}
-              {supplier?.payment_terms != null && `Net ${supplier.payment_terms} days`}
-            </p>
-          </div>
-        </div>
-        <div className="text-right">
-          <p className="text-xs text-gray-400">Outstanding Balance</p>
-          <p className={`text-lg font-bold mt-0.5 ${parseFloat(supplier?.current_balance ?? 0) > 0 ? 'text-red-600' : 'text-gray-800'}`}>
-            {supplier ? formatCurrency(supplier.current_balance) : '—'}
-          </p>
-        </div>
-      </div>
-
-      {/* Date filter (not shown on PO tab) */}
-      {tab !== 'pos' && (
-        <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 w-fit">
-          <Calendar className="h-3.5 w-3.5 text-gray-400" />
-          <input type="date" value={startDate} max={endDate}
-            onChange={(e) => setStart(e.target.value)}
-            className="text-xs border-none outline-none bg-transparent" />
-          <span className="text-gray-400 text-xs">—</span>
-          <input type="date" value={endDate} min={startDate} max={todayISO}
-            onChange={(e) => setEnd(e.target.value)}
-            className="text-xs border-none outline-none bg-transparent" />
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div className="flex gap-1 rounded-xl bg-gray-100 p-1 w-fit">
-        {TABS.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              tab === t.id ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab content */}
-      {tab === 'journal'  && <JournalTab supplierId={supplierId} startDate={startDate} endDate={endDate} />}
-      {tab === 'pos'      && <PurchaseOrdersTab supplierId={supplierId} />}
-      {tab === 'payments' && <PaymentsTab supplierId={supplierId} startDate={startDate} endDate={endDate} />}
     </div>
   );
 }
