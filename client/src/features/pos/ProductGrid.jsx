@@ -305,12 +305,12 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
         ) : (
           <div
             className="flex gap-1.5 overflow-x-auto border-b border-gray-200 bg-white px-3 py-2"
-            style={{ scrollbarWidth: 'none' }}
+            style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
           >
             <button
               onClick={() => setCategoryId('')}
-              className={`flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-all ${
-                !categoryId ? 'bg-primary-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-all active:scale-95 ${
+                !categoryId ? 'bg-primary-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 active:bg-gray-300'
               }`}
             >
               All
@@ -319,10 +319,10 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
               <button
                 key={c.category_id}
                 onClick={() => setCategoryId(categoryId === String(c.category_id) ? '' : String(c.category_id))}
-                className={`flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-all active:scale-95 ${
                   categoryId === String(c.category_id)
-                    ? 'bg-primary-500 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? 'bg-primary-500 text-white active:bg-primary-600'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 active:bg-gray-300'
                 }`}
               >
                 {c.category_name}
@@ -494,7 +494,7 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
                   <div className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold transition-all ${
                     inCartQty > 0
                       ? 'bg-primary-500 text-white shadow-sm'
-                      : 'border-2 border-gray-200 text-gray-300 opacity-0 group-hover:opacity-100'
+                      : 'border-2 border-gray-200 text-gray-300 lg:opacity-0 lg:group-hover:opacity-100'
                   }`}>
                     {inCartQty > 0 ? inCartQty : <Plus className="h-3.5 w-3.5" />}
                   </div>

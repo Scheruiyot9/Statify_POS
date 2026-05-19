@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Smartphone, Search, CheckCircle2, XCircle, Clock, AlertCircle,
-  Download, Settings, Eye, RefreshCw, Link,
+  Download, Settings, RefreshCw, Link,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -127,9 +127,9 @@ function ConfigModal({ open, onClose, prefill = null }) {
               className="underline">Safaricom Developer Portal</a>.
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Branch selector */}
-          <div className="col-span-2">
+          <div className="sm:col-span-full">
             <label className={labelCls}>Branch</label>
             <select className={inputCls} value={form.branchId} onChange={set('branchId')}
               disabled={!!prefill}>
@@ -139,11 +139,11 @@ function ConfigModal({ open, onClose, prefill = null }) {
               ))}
             </select>
           </div>
-          <div className="col-span-2">
+          <div className="col-span-full">
             <label className={labelCls}>Consumer Key *</label>
             <input className={inputCls} type="text" value={form.consumerKey} onChange={set('consumerKey')} placeholder="From Daraja portal" />
           </div>
-          <div className="col-span-2">
+          <div className="col-span-full">
             <label className={labelCls}>Consumer Secret *</label>
             <input className={inputCls} type="password" value={form.consumerSecret} onChange={set('consumerSecret')} placeholder="From Daraja portal" />
           </div>
@@ -158,7 +158,7 @@ function ConfigModal({ open, onClose, prefill = null }) {
               <option value="till">Buy Goods (Till)</option>
             </select>
           </div>
-          <div className="col-span-2">
+          <div className="col-span-full">
             <label className={labelCls}>Passkey *</label>
             <input className={inputCls} type="password" value={form.passkey} onChange={set('passkey')} placeholder="Lipa Na M-Pesa online passkey" />
           </div>
@@ -305,26 +305,27 @@ export default function MpesaPage() {
               </div>
             </div>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Branch</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Shortcode</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Type</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Environment</th>
+                  <th className="hidden sm:table-cell px-4 py-2 text-left text-xs font-medium text-gray-500">Type</th>
+                  <th className="hidden sm:table-cell px-4 py-2 text-left text-xs font-medium text-gray-500">Environment</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Status</th>
                   <th className="px-4 py-2" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {configs.map((cfg) => (
-                  <tr key={cfg.config_id} className="hover:bg-gray-50">
+                  <tr key={cfg.config_id} className="hover:bg-gray-50 active:bg-gray-100">
                     <td className="px-4 py-2.5 font-medium text-gray-800">
                       {cfg.branch_name ?? <span className="text-gray-400 italic">Company-wide</span>}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-gray-700">{cfg.shortcode}</td>
-                    <td className="px-4 py-2.5 text-xs text-gray-500 capitalize">{cfg.shortcode_type}</td>
-                    <td className="px-4 py-2.5">
+                    <td className="hidden sm:table-cell px-4 py-2.5 text-xs text-gray-500 capitalize">{cfg.shortcode_type}</td>
+                    <td className="hidden sm:table-cell px-4 py-2.5">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                         cfg.environment === 'production'
                           ? 'bg-green-100 text-green-700'
@@ -361,6 +362,7 @@ export default function MpesaPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       )}
@@ -424,51 +426,52 @@ export default function MpesaPage() {
       {/* ── Table ── */}
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         {isLoading ? <PageSpinner /> : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Mode</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Phone</th>
+                <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Phone</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600">Amount</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Receipt #</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Date &amp; Time</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Branch</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Linked Sale</th>
+                <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Receipt #</th>
+                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Date &amp; Time</th>
+                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Branch</th>
+                <th className="hidden lg:table-cell px-4 py-3 text-left font-medium text-gray-600">Linked Sale</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
-                <th className="px-4 py-3" />
+                <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {transactions.map((t) => (
-                <tr key={t.mpesa_txn_id} className="hover:bg-gray-50 transition-colors">
+                <tr key={t.mpesa_txn_id} className="hover:bg-gray-50 active:bg-gray-100 transition-colors">
                   <td className="px-4 py-3">
                     <ModeBadge mode={t.payment_mode} />
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-700">
+                  <td className="hidden sm:table-cell px-4 py-3 font-mono text-xs text-gray-700">
                     {t.phone_number || '—'}
                   </td>
                   <td className="px-4 py-3 text-right font-semibold text-gray-900">
                     {formatCurrency(t.amount)}
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-green-700 font-semibold">
+                  <td className="hidden sm:table-cell px-4 py-3 font-mono text-xs text-green-700 font-semibold">
                     {t.mpesa_receipt_number || <span className="text-gray-400 font-normal">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">
+                  <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-500">
                     {formatDateTime(t.initiated_at)}
                   </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">
+                  <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-500">
                     {t.branch_name || '—'}
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-primary-600">
+                  <td className="hidden lg:table-cell px-4 py-3 font-mono text-xs text-primary-600">
                     {t.sale_number || <span className="text-gray-400 font-normal">—</span>}
                   </td>
                   <td className="px-4 py-3 text-center">
                     <StatusBadge status={t.status} />
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 text-center">
                     <button onClick={() => setSelected(t)}
-                      className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
-                      <Eye className="h-4 w-4" />
+                      className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                      View
                     </button>
                   </td>
                 </tr>
@@ -483,6 +486,7 @@ export default function MpesaPage() {
               )}
             </tbody>
           </table>
+          </div>
         )}
 
         {pages > 1 && (

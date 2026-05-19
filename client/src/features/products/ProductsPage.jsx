@@ -58,7 +58,7 @@ function ProductForm({ initial, categories, taxRates, onSave, onClose }) {
             <label className={labelCls}>Product Name *</label>
             <input required className={inputCls} value={form.product_name} onChange={(e) => set('product_name', e.target.value)} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>SKU *</label>
               <input required className={inputCls} value={form.sku} onChange={(e) => set('sku', e.target.value)} disabled={!!initial} />
@@ -71,7 +71,7 @@ function ProductForm({ initial, categories, taxRates, onSave, onClose }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className={labelCls}>Category</label>
           <select className={inputCls} value={form.category_id} onChange={(e) => set('category_id', e.target.value)}>
@@ -112,7 +112,7 @@ function ProductForm({ initial, categories, taxRates, onSave, onClose }) {
             <input type="number" min="0" className={inputCls} value={form.initial_stock} onChange={(e) => set('initial_stock', e.target.value)} />
           </div>
         )}
-        <div className="col-span-2">
+        <div className="col-span-full">
           <label className={labelCls}>Description</label>
           <textarea rows={2} className={inputCls} value={form.description} onChange={(e) => set('description', e.target.value)} />
         </div>
@@ -122,6 +122,50 @@ function ProductForm({ initial, categories, taxRates, onSave, onClose }) {
         <Button variant="primary" type="submit">{initial ? 'Save Changes' : 'Create Product'}</Button>
       </div>
     </form>
+  );
+}
+
+function ProductDetail({ product }) {
+  if (!product) return null;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-4">
+        {product.image_url ? (
+          <img src={product.image_url} alt={product.product_name}
+            className="h-20 w-20 flex-shrink-0 rounded-xl object-cover border border-gray-100" />
+        ) : (
+          <div className="h-20 w-20 flex-shrink-0 rounded-xl bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-2xl">
+            {product.product_name[0]}
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-gray-900 text-lg leading-tight">{product.product_name}</p>
+          <p className="font-mono text-sm text-gray-400 mt-0.5">{product.sku}</p>
+          {product.barcode && <p className="text-xs text-gray-400 mt-0.5">Barcode: {product.barcode}</p>}
+          <span className={`mt-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${product.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+            {product.is_active ? 'Active' : 'Inactive'}
+          </span>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {[
+          { label: 'Selling Price', value: formatCurrency(product.base_price) },
+          { label: 'Cost Price',    value: product.cost_price ? formatCurrency(product.cost_price) : '—' },
+          { label: 'Category',      value: product.category_name || '—' },
+          { label: 'Tax',           value: product.tax_template_name || 'Default' },
+          { label: 'Unit',          value: product.unit_of_measure },
+          { label: 'Reorder Level', value: product.reorder_level },
+        ].map(({ label, value }) => (
+          <div key={label} className="rounded-lg bg-gray-50 px-3 py-2.5">
+            <p className="text-xs text-gray-500">{label}</p>
+            <p className="font-semibold text-gray-900 mt-0.5">{value}</p>
+          </div>
+        ))}
+      </div>
+      {product.description && (
+        <p className="text-sm text-gray-600 border-t border-gray-100 pt-3">{product.description}</p>
+      )}
+    </div>
   );
 }
 
@@ -303,7 +347,8 @@ export default function ProductsPage() {
   const [search, setSearch]       = useState('');
   const [catFilter, setCatFilter] = useState('');
   const [page, setPage]           = useState(1);
-  const [modal, setModal]         = useState(null);
+  const [modal, setModal]           = useState(null);
+  const [viewProduct, setViewProduct] = useState(null);
   const [showImport, setShowImport] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -386,22 +431,23 @@ export default function ProductsPage() {
 
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         {isLoading ? <PageSpinner /> : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Product</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">SKU</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Category</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Tax</th>
+                <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">SKU</th>
+                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Category</th>
+                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Tax</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600">Price</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">Cost</th>
+                <th className="hidden sm:table-cell px-4 py-3 text-right font-medium text-gray-600">Cost</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
-                {canManageProducts && <th className="px-4 py-3" />}
+                {canManageProducts && <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {products.map((p) => (
-                <tr key={p.product_id} className="hover:bg-gray-50 transition-colors">
+                <tr key={p.product_id} className="hover:bg-gray-50 active:bg-gray-100 transition-colors">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       {p.image_url ? (
@@ -418,31 +464,26 @@ export default function ProductsPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-600">{p.sku}</td>
-                  <td className="px-4 py-3 text-gray-500">{p.category_name ?? '—'}</td>
-                  <td className="px-4 py-3">
+                  <td className="hidden sm:table-cell px-4 py-3 font-mono text-xs text-gray-600">{p.sku}</td>
+                  <td className="hidden md:table-cell px-4 py-3 text-gray-500">{p.category_name ?? '—'}</td>
+                  <td className="hidden md:table-cell px-4 py-3">
                     {p.tax_template_name
                       ? <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{p.tax_template_name}</span>
                       : <span className="text-xs text-gray-300">default</span>}
                   </td>
                   <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency(p.base_price)}</td>
-                  <td className="px-4 py-3 text-right text-gray-500">{p.cost_price ? formatCurrency(p.cost_price) : '—'}</td>
+                  <td className="hidden sm:table-cell px-4 py-3 text-right text-gray-500">{p.cost_price ? formatCurrency(p.cost_price) : '—'}</td>
                   <td className="px-4 py-3 text-center">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${p.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                       {p.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
                   {canManageProducts && (
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => setModal(p)} className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
-                          <Edit2 className="h-4 w-4" />
-                        </button>
-                        <button onClick={() => toggleMut.mutate({ id: p.product_id, is_active: !p.is_active })}
-                          className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 transition-colors">
-                          {p.is_active ? <ToggleRight className="h-4 w-4 text-green-500" /> : <ToggleLeft className="h-4 w-4" />}
-                        </button>
-                      </div>
+                    <td className="px-4 py-3 text-center">
+                      <button onClick={() => setViewProduct(p)}
+                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                        View
+                      </button>
                     </td>
                   )}
                 </tr>
@@ -454,6 +495,7 @@ export default function ProductsPage() {
               )}
             </tbody>
           </table>
+          </div>
         )}
         {pages > 1 && (
           <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
@@ -465,6 +507,24 @@ export default function ProductsPage() {
           </div>
         )}
       </div>
+
+      <Modal open={canManageProducts && !!viewProduct} onClose={() => setViewProduct(null)}
+        title={viewProduct?.product_name ?? 'Product Details'} size="md"
+        footer={
+          <div className="flex gap-3">
+            <Button variant="secondary" fullWidth
+              onClick={() => { toggleMut.mutate({ id: viewProduct.product_id, is_active: !viewProduct.is_active }); setViewProduct(null); }}>
+              {viewProduct?.is_active ? 'Deactivate' : 'Activate'}
+            </Button>
+            <Button fullWidth icon={<Edit2 className="h-4 w-4" />}
+              onClick={() => { setModal(viewProduct); setViewProduct(null); }}>
+              Edit
+            </Button>
+          </div>
+        }
+      >
+        <ProductDetail product={viewProduct} />
+      </Modal>
 
       <Modal open={canManageProducts && (modal === 'create' || (!!modal && typeof modal === 'object'))} onClose={() => setModal(null)}
         title={modal === 'create' ? 'New Product' : `Edit: ${modal?.product_name}`} size="lg">

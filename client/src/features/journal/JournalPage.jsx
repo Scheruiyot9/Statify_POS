@@ -411,7 +411,7 @@ function JournalDetailModal({ journalId, onClose, onEdit }) {
             <div><span className="text-gray-500 text-xs">Status</span>
               <p><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[j.status]}`}>{j.status}</span></p>
             </div>
-            {j.description && <div className="col-span-2"><span className="text-gray-500 text-xs">Description</span><p>{j.description}</p></div>}
+            {j.description && <div className="col-span-full"><span className="text-gray-500 text-xs">Description</span><p>{j.description}</p></div>}
             {j.reference   && <div><span className="text-gray-500 text-xs">Reference</span><p>{j.reference}</p></div>}
             {j.created_by  && <div><span className="text-gray-500 text-xs">Created by</span><p>{j.created_by}</p></div>}
             {j.posted_by   && <div><span className="text-gray-500 text-xs">Posted by</span><p>{j.posted_by}</p></div>}
@@ -748,28 +748,35 @@ export default function JournalPage() {
             <thead className="sticky top-0 bg-gray-50 border-b z-10">
               <tr>
                 <th className="text-left px-4 py-3 font-medium text-gray-600 w-36">Number</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 w-28">Date</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Description</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 w-28">Reference</th>
+                <th className="hidden sm:table-cell text-left px-4 py-3 font-medium text-gray-600 w-28">Date</th>
+                <th className="hidden md:table-cell text-left px-4 py-3 font-medium text-gray-600">Description</th>
+                <th className="hidden lg:table-cell text-left px-4 py-3 font-medium text-gray-600 w-28">Reference</th>
                 <th className="text-right px-4 py-3 font-medium text-gray-600 w-32">Debit</th>
-                <th className="text-right px-4 py-3 font-medium text-gray-600 w-32">Credit</th>
+                <th className="hidden sm:table-cell text-right px-4 py-3 font-medium text-gray-600 w-32">Credit</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600 w-24">Status</th>
+                <th className="text-center px-4 py-3 font-medium text-gray-600 w-20">Action</th>
               </tr>
             </thead>
             <tbody>
               {journals.map((j) => (
-                <tr key={j.journalId} className="border-b hover:bg-gray-50 cursor-pointer"
+                <tr key={j.journalId} className="border-b hover:bg-gray-50 active:bg-gray-100 cursor-pointer"
                   onClick={() => setSelectedId(j.journalId)}>
                   <td className="px-4 py-3 font-mono text-xs text-gray-700">{j.journalNumber}</td>
-                  <td className="px-4 py-3 text-gray-600">{String(j.entryDate).slice(0, 10)}</td>
-                  <td className="px-4 py-3 text-gray-800 truncate max-w-xs">{j.description ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{j.reference ?? '—'}</td>
+                  <td className="hidden sm:table-cell px-4 py-3 text-gray-600">{String(j.entryDate).slice(0, 10)}</td>
+                  <td className="hidden md:table-cell px-4 py-3 text-gray-800 truncate max-w-xs">{j.description ?? '—'}</td>
+                  <td className="hidden lg:table-cell px-4 py-3 text-gray-500 text-xs">{j.reference ?? '—'}</td>
                   <td className="px-4 py-3 text-right font-mono">{fmt(j.totalDebit)}</td>
-                  <td className="px-4 py-3 text-right font-mono">{fmt(j.totalCredit)}</td>
+                  <td className="hidden sm:table-cell px-4 py-3 text-right font-mono">{fmt(j.totalCredit)}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[j.status]}`}>
                       {j.status}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => setSelectedId(j.journalId)}
+                      className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                      View
+                    </button>
                   </td>
                 </tr>
               ))}

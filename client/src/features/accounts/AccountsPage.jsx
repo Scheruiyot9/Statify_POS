@@ -100,7 +100,7 @@ function AccountModal({ account, accounts, onClose, onDelete }) {
   return (
     <Modal open onClose={onClose} title={isEdit ? 'Edit Account' : 'Add Account'} footer={footer}>
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Account Code" required>
             <input value={form.account_code} onChange={(e) => set('account_code', e.target.value)}
               placeholder="e.g. 1100" className={inp} disabled={account?.is_system} />
@@ -116,7 +116,7 @@ function AccountModal({ account, accounts, onClose, onDelete }) {
           <input value={form.account_name} onChange={(e) => set('account_name', e.target.value)}
             placeholder="e.g. Accounts Receivable" className={inp} />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Subtype">
             <input value={form.account_subtype} onChange={(e) => set('account_subtype', e.target.value)}
               placeholder="e.g. current_asset" className={inp} />
@@ -257,29 +257,22 @@ function TrialBalanceTab() {
           <span className="font-semibold text-sm text-gray-700">Trial Balance — as of {formatDate(asOf)}</span>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full table-fixed text-sm">
-            <colgroup>
-              <col className="w-20" />
-              <col />
-              <col className="w-24" />
-              <col className="w-32" />
-              <col className="w-32" />
-            </colgroup>
+          <table className="w-full text-sm">
             <thead className="bg-gray-50/50 border-b border-gray-200">
               <tr>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Code</th>
+                <th className="hidden sm:table-cell px-4 py-2.5 text-left text-xs font-medium text-gray-500">Code</th>
                 <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Account Name</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Type</th>
+                <th className="hidden md:table-cell px-4 py-2.5 text-left text-xs font-medium text-gray-500">Type</th>
                 <th className="px-4 py-2.5 text-right text-xs font-medium text-blue-600">Debit (Dr)</th>
                 <th className="px-4 py-2.5 text-right text-xs font-medium text-green-600">Credit (Cr)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {rows.map((row) => (
-                <tr key={row.accountCode} className={!row.hasData ? 'opacity-40' : 'hover:bg-gray-50'}>
-                  <td className="px-4 py-2.5 font-mono text-xs text-gray-500">{row.accountCode}</td>
+                <tr key={row.accountCode} className={!row.hasData ? 'opacity-40' : 'hover:bg-gray-50 active:bg-gray-100'}>
+                  <td className="hidden sm:table-cell px-4 py-2.5 font-mono text-xs text-gray-500">{row.accountCode}</td>
                   <td className="px-4 py-2.5 font-medium text-gray-900 truncate">{row.accountName}</td>
-                  <td className="px-4 py-2.5">
+                  <td className="hidden md:table-cell px-4 py-2.5">
                     <span className={`text-xs font-medium capitalize ${TB_TYPE_COLORS[row.accountType] ?? 'text-gray-600'}`}>
                       {row.accountType}
                     </span>
@@ -308,14 +301,60 @@ function TrialBalanceTab() {
 }
 
 
+// ── Account Detail Modal ──────────────────────────────────────────────────────
+
+function AccountDetailModal({ account, onClose, onEdit }) {
+  const navigate = useNavigate();
+  return (
+    <Modal open onClose={onClose} title={`${account.account_code} — ${account.account_name}`}
+      footer={
+        <div className="flex gap-3 w-full">
+          <Button variant="secondary" fullWidth onClick={onClose}>Close</Button>
+          <Button variant="secondary" fullWidth icon={<Layers className="h-4 w-4" />}
+            onClick={() => navigate(`/app/accounts/${account.account_id}/ledger`)}>
+            View Ledger
+          </Button>
+          <Button fullWidth icon={<Edit2 className="h-4 w-4" />} onClick={() => { onClose(); onEdit(account); }}>
+            Edit
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3 text-sm">
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            ['Code',    account.account_code],
+            ['Type',    <span key="t" className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${TYPE_COLORS[account.account_type]}`}>{TYPE_LABELS[account.account_type]}</span>],
+            ['Subtype', account.account_subtype || '—'],
+            ['Status',  account.is_active ? <span key="s" className="text-green-700 font-medium">Active</span> : <span key="s" className="text-red-600 font-medium">Inactive</span>],
+          ].map(([label, val]) => (
+            <div key={label} className="rounded-lg bg-gray-50 p-3">
+              <p className="text-xs text-gray-400 mb-0.5">{label}</p>
+              <p className="font-medium text-gray-900">{val}</p>
+            </div>
+          ))}
+        </div>
+        {account.description && (
+          <div className="rounded-lg bg-gray-50 p-3">
+            <p className="text-xs text-gray-400 mb-0.5">Description</p>
+            <p className="text-gray-700">{account.description}</p>
+          </div>
+        )}
+        {account.is_system && (
+          <p className="text-xs text-gray-400 italic">System account — code cannot be changed.</p>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 // ── Account Row ────────────────────────────────────────────────────────────────
 
 // Normal balance side: debit accounts (asset/expense) → balance shows in Dr column
 //                     credit accounts (liability/equity/revenue) → balance shows in Cr column
 const DEBIT_NORMAL = new Set(['asset', 'expense']);
 
-function AccountRow({ account, depth, allAccounts, balanceMap, onEdit }) {
-  const navigate = useNavigate();
+function AccountRow({ account, depth, allAccounts, balanceMap, onEdit, onView }) {
   const [expanded, setExpanded] = useState(true);
   const children = allAccounts.filter((a) => a.parent_account_id === account.account_id);
 
@@ -362,23 +401,17 @@ function AccountRow({ account, depth, allAccounts, balanceMap, onEdit }) {
             : <span className="text-gray-300">—</span>}
         </td>
 
-        <td className="px-4 py-2.5">
-          <div className="flex items-center gap-2 justify-end">
-            <button onClick={() => navigate(`/app/accounts/${account.account_id}/ledger`)} title="View ledger"
-              className="rounded p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition-colors">
-              <Layers className="h-3.5 w-3.5" />
-            </button>
-            <button onClick={() => onEdit(account)}
-              className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
-              <Edit2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
+        <td className="px-4 py-2.5 text-center">
+          <button onClick={() => onView(account)}
+            className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+            View
+          </button>
         </td>
       </tr>
       {expanded && children.map((child) => (
         <AccountRow key={child.account_id} account={child} depth={depth + 1}
           allAccounts={allAccounts} balanceMap={balanceMap}
-          onEdit={onEdit} />
+          onEdit={onEdit} onView={onView} />
       ))}
     </>
   );
@@ -468,6 +501,7 @@ function OpeningBalancesModal({ accounts, onClose }) {
 export default function AccountsPage() {
   const qc = useQueryClient();
   const [editTarget,      setEditTarget]      = useState(null);
+  const [viewTarget,      setViewTarget]      = useState(null);
   const [createOpen,      setCreateOpen]      = useState(false);
   const [typeFilter,      setTypeFilter]      = useState('');
   const [activeTab,       setActiveTab]       = useState('accounts');
@@ -603,7 +637,7 @@ export default function AccountsPage() {
                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Subtype</th>
                           <th className="px-4 py-2 text-right text-xs font-medium text-blue-600">Debit (Dr)</th>
                           <th className="px-4 py-2 text-right text-xs font-medium text-green-600">Credit (Cr)</th>
-                          <th className="px-4 py-2" />
+                          <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
@@ -611,7 +645,8 @@ export default function AccountsPage() {
                           <AccountRow key={acc.account_id} account={acc} depth={0}
                             allAccounts={typeAccounts}
                             balanceMap={balanceMap}
-                            onEdit={setEditTarget} />
+                            onEdit={setEditTarget}
+                            onView={setViewTarget} />
                         ))}
                       </tbody>
                     </table>
@@ -636,6 +671,9 @@ export default function AccountsPage() {
       )}
       {createOpen && (
         <AccountModal accounts={accounts} onClose={() => setCreateOpen(false)} />
+      )}
+      {viewTarget && !editTarget && (
+        <AccountDetailModal account={viewTarget} onClose={() => setViewTarget(null)} onEdit={setEditTarget} />
       )}
       {editTarget && (
         <AccountModal account={editTarget} accounts={accounts} onClose={() => setEditTarget(null)}

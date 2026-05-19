@@ -25,8 +25,8 @@ function CustomerForm({ initial, groups, onSave, onClose }) {
 
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSave(form); }} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="col-span-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="sm:col-span-full">
           <label className="block text-xs font-medium text-gray-700 mb-1">Full Name *</label>
           <input required className={inputCls} value={form.customer_name} onChange={(e) => set('customer_name', e.target.value)} />
         </div>
@@ -55,7 +55,7 @@ function CustomerForm({ initial, groups, onSave, onClose }) {
             {groups?.map((g) => <option key={g.group_id} value={g.group_id}>{g.group_name}</option>)}
           </select>
         </div>
-        <div className="col-span-2">
+        <div className="col-span-full">
           <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
           <textarea rows={2} className={inputCls} value={form.notes} onChange={(e) => set('notes', e.target.value)} />
         </div>
@@ -94,7 +94,7 @@ function CustomerDetail({ customer }) {
         {customer.kra_pin && (
           <div className="text-gray-600 text-xs font-mono"><span className="text-gray-400 font-sans">KRA: </span>{customer.kra_pin}</div>
         )}
-        {customer.notes && <div className="col-span-2 text-gray-500 text-xs">{customer.notes}</div>}
+        {customer.notes && <div className="col-span-full text-gray-500 text-xs">{customer.notes}</div>}
       </div>
       {customer.recent_transactions?.length > 0 && (
         <div>
@@ -181,21 +181,22 @@ export default function CustomersPage() {
 
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         {isLoading ? <PageSpinner /> : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Customer</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Contact</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Group</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">Purchases</th>
+                <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Contact</th>
+                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Group</th>
+                <th className="hidden md:table-cell px-4 py-3 text-right font-medium text-gray-600">Purchases</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600">Total Spent</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">Points</th>
-                {canManageCustomers && <th className="px-4 py-3" />}
+                <th className="hidden sm:table-cell px-4 py-3 text-right font-medium text-gray-600">Points</th>
+                {canManageCustomers && <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {customers.map((c) => (
-                <tr key={c.customer_id} className="hover:bg-gray-50 cursor-pointer transition-colors"
+                <tr key={c.customer_id} className="hover:bg-gray-50 active:bg-gray-100 cursor-pointer transition-colors"
                   onClick={() => setDetail(c.customer_id)}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -208,27 +209,27 @@ export default function CustomersPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
+                  <td className="hidden sm:table-cell px-4 py-3 text-gray-500 text-xs">
                     <div>{c.phone ?? '—'}</div>
                     {c.email && <div className="text-gray-400">{c.email}</div>}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="hidden md:table-cell px-4 py-3">
                     {c.group_name
                       ? <span className="rounded-full bg-secondary-100 px-2 py-0.5 text-xs font-medium text-secondary-700">{c.group_name}</span>
                       : <span className="text-gray-400 text-xs">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-right text-gray-700">{c.purchase_count}</td>
+                  <td className="hidden md:table-cell px-4 py-3 text-right text-gray-700">{c.purchase_count}</td>
                   <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency(c.total_spent)}</td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="hidden sm:table-cell px-4 py-3 text-right">
                     <span className="flex items-center justify-end gap-1 text-secondary-600 font-medium text-xs">
                       <Star className="h-3 w-3" />{c.loyalty_points_balance.toLocaleString()}
                     </span>
                   </td>
                   {canManageCustomers && (
-                    <td className="px-4 py-3">
-                      <button onClick={(e) => { e.stopPropagation(); setModal(c); }}
-                        className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
-                        <Edit2 className="h-4 w-4" />
+                    <td className="px-4 py-3 text-center">
+                      <button onClick={(e) => { e.stopPropagation(); setDetail(c.customer_id); }}
+                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                        View
                       </button>
                     </td>
                   )}
@@ -239,6 +240,7 @@ export default function CustomersPage() {
               )}
             </tbody>
           </table>
+          </div>
         )}
         {pages > 1 && (
           <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
@@ -259,7 +261,17 @@ export default function CustomersPage() {
       </Modal>
 
       <Modal open={!!detail && !modal} onClose={() => setDetail(null)}
-        title={customerDetail?.customer_name ?? 'Customer Details'} size="md">
+        title={customerDetail?.customer_name ?? 'Customer Details'} size="md"
+        footer={canManageCustomers && customerDetail && (
+          <div className="flex gap-3">
+            <Button variant="secondary" fullWidth onClick={() => setDetail(null)}>Close</Button>
+            <Button fullWidth icon={<Edit2 className="h-4 w-4" />}
+              onClick={() => { setModal(customerDetail); setDetail(null); }}>
+              Edit
+            </Button>
+          </div>
+        )}
+      >
         <CustomerDetail customer={customerDetail} />
       </Modal>
     </div>

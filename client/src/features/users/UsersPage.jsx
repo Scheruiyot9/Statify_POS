@@ -7,6 +7,7 @@ import Button      from '@/components/ui/Button';
 import Modal       from '@/components/ui/Modal';
 import { PageSpinner } from '@/components/ui/Spinner';
 import { usePermission } from '@/hooks/usePermission';
+import { useAuthStore }  from '@/app/store';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const ROLE_COLORS = {
@@ -147,7 +148,7 @@ function UserForm({ user, onClose }) {
     >
       <div className="space-y-3">
         {/* Name row */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-600">First Name *</label>
             <input value={form.first_name} onChange={(e) => set('first_name', e.target.value)} className={inputCls} />
@@ -414,6 +415,77 @@ function RolesTab() {
   );
 }
 
+// ── User Detail Modal ─────────────────────────────────────────────────────────
+function UserDetailModal({ user: u, onClose, onEdit, onReset, onToggleActive }) {
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`${u.first_name} ${u.last_name}`}
+      footer={
+        <div className="flex gap-3 w-full">
+          <Button fullWidth variant="secondary" onClick={onClose}>Close</Button>
+          <Button fullWidth icon={<Edit2 className="h-4 w-4" />} onClick={onEdit}>Edit</Button>
+        </div>
+      }
+    >
+      <dl className="space-y-3 text-sm">
+        <div className="flex justify-between">
+          <dt className="text-gray-500">Email</dt>
+          <dd className="font-medium text-gray-900">{u.email}</dd>
+        </div>
+        <div className="flex justify-between">
+          <dt className="text-gray-500">Role</dt>
+          <dd><RoleBadge role={u.role_name} /></dd>
+        </div>
+        <div className="flex justify-between">
+          <dt className="text-gray-500">Branch</dt>
+          <dd className="font-medium text-gray-900">{u.branch_name || '—'}</dd>
+        </div>
+        <div className="flex justify-between">
+          <dt className="text-gray-500">Status</dt>
+          <dd>
+            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+              u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+            }`}>
+              {u.is_active ? 'Active' : 'Inactive'}
+            </span>
+          </dd>
+        </div>
+        <div className="flex justify-between">
+          <dt className="text-gray-500">Last Login</dt>
+          <dd className="text-gray-700">
+            {u.last_login
+              ? new Date(u.last_login).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })
+              : 'Never'}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="mt-4 flex gap-2 border-t border-gray-100 pt-4">
+        <button
+          onClick={onReset}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+        >
+          <KeyRound className="h-3.5 w-3.5" />
+          Reset Password
+        </button>
+        <button
+          onClick={onToggleActive}
+          className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+            u.is_active
+              ? 'border-red-200 text-red-600 hover:bg-red-50'
+              : 'border-green-200 text-green-600 hover:bg-green-50'
+          }`}
+        >
+          {u.is_active ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />}
+          {u.is_active ? 'Deactivate' : 'Activate'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 function UsersListTab({ canManageUsers }) {
   const qc = useQueryClient();
@@ -464,25 +536,25 @@ function UsersListTab({ canManageUsers }) {
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Email</th>
+                  <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Email</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Role</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Branch</th>
+                  <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Branch</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Last Login</th>
-                  {canManageUsers && <th className="px-4 py-3"></th>}
+                  <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Last Login</th>
+                  {canManageUsers && <th className="px-4 py-3 text-center text-xs font-medium text-gray-500">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {users.length === 0 ? (
                   <tr><td colSpan={canManageUsers ? 7 : 6} className="py-12 text-center text-sm text-gray-400">No users found</td></tr>
                 ) : users.map((u) => (
-                  <tr key={u.user_id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={u.user_id} className="hover:bg-gray-50 active:bg-gray-100 transition-colors">
                     <td className="px-4 py-3 font-medium text-gray-900">
                       {u.first_name} {u.last_name}
                     </td>
-                    <td className="px-4 py-3 text-gray-500">{u.email}</td>
+                    <td className="hidden sm:table-cell px-4 py-3 text-gray-500">{u.email}</td>
                     <td className="px-4 py-3"><RoleBadge role={u.role_name} /></td>
-                    <td className="px-4 py-3 text-gray-500">{u.branch_name || '—'}</td>
+                    <td className="hidden md:table-cell px-4 py-3 text-gray-500">{u.branch_name || '—'}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                         u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
@@ -490,26 +562,26 @@ function UsersListTab({ canManageUsers }) {
                         {u.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-400 text-xs">
+                    <td className="hidden md:table-cell px-4 py-3 text-gray-400 text-xs">
                       {u.last_login ? new Date(u.last_login).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Never'}
                     </td>
                     {canManageUsers && (
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1 justify-end">
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-1.5">
                           <button title="Edit" onClick={() => setFormUser(u)}
-                            className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
+                            className="rounded-md bg-gray-100 p-1.5 text-gray-600 hover:bg-gray-200 transition-colors">
                             <Edit2 className="h-3.5 w-3.5" />
                           </button>
                           <button title="Reset password" onClick={() => setResetUser(u)}
-                            className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-blue-600 transition-colors">
+                            className="rounded-md bg-blue-50 p-1.5 text-blue-600 hover:bg-blue-100 transition-colors">
                             <KeyRound className="h-3.5 w-3.5" />
                           </button>
                           <button
                             title={u.is_active ? 'Deactivate' : 'Activate'}
                             onClick={() => toggleActive({ userId: u.user_id, is_active: !u.is_active })}
-                            className={`rounded p-1.5 transition-colors ${u.is_active
-                              ? 'text-gray-400 hover:bg-gray-100 hover:text-red-600'
-                              : 'text-gray-400 hover:bg-gray-100 hover:text-green-600'}`}>
+                            className={`rounded-md p-1.5 transition-colors ${u.is_active
+                              ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                              : 'bg-green-50 text-green-600 hover:bg-green-100'}`}>
                             {u.is_active ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />}
                           </button>
                         </div>
@@ -537,39 +609,38 @@ function UsersListTab({ canManageUsers }) {
 export default function UsersPage() {
   const { hasCapability } = usePermission();
   const canManageUsers = hasCapability('users.manage');
+  const user = useAuthStore((s) => s.user);
+  const isCompanyAdmin = user?.role === 'company_admin';
   const [activeTab, setActiveTab] = useState('users');
 
   const TABS = [
     { id: 'users', label: 'Users', Icon: UserCheck },
-    { id: 'roles', label: 'Roles & Permissions', Icon: ShieldCheck },
+    ...(!isCompanyAdmin ? [{ id: 'roles', label: 'Roles & Permissions', Icon: ShieldCheck }] : []),
   ];
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div>
-        <p className="text-sm text-gray-500 mt-0.5">Manage team members and view role permissions</p>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200">
-        {TABS.map(({ id, label, Icon }) => (
-          <button key={id} onClick={() => setActiveTab(id)}
-            className={[
-              'flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors',
-              activeTab === id
-                ? 'border-primary-600 text-primary-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
-            ].join(' ')}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Tabs — only shown when there are multiple */}
+      {TABS.length > 1 && (
+        <div className="flex border-b border-gray-200">
+          {TABS.map(({ id, label, Icon }) => (
+            <button key={id} onClick={() => setActiveTab(id)}
+              className={[
+                'flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors',
+                activeTab === id
+                  ? 'border-primary-600 text-primary-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
+              ].join(' ')}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {activeTab === 'users' && <UsersListTab canManageUsers={canManageUsers} />}
-      {activeTab === 'roles' && <RolesTab />}
+      {activeTab === 'roles' && !isCompanyAdmin && <RolesTab />}
     </div>
   );
 }

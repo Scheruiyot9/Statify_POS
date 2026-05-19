@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Clock, Eye, XCircle, Receipt, CheckCircle,
+  Clock, XCircle, Receipt, CheckCircle,
   AlertTriangle, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -28,14 +28,20 @@ const STATUS_ICONS = {
 // ── Shift Detail Modal ────────────────────────────────────────────────────────
 
 function ShiftDetail({ sessionId, onForceClose }) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['session-detail', sessionId],
     queryFn:  () => api.get(`/pos/sessions/${sessionId}/detail`).then((r) => r.data.data),
     enabled:  !!sessionId,
   });
 
   if (isLoading) return <PageSpinner />;
-  if (!data) return null;
+  if (isError || !data) return (
+    <div className="flex flex-col items-center justify-center py-16 text-center gap-2">
+      <AlertTriangle className="h-8 w-8 text-amber-400" />
+      <p className="text-sm font-medium text-gray-600">Could not load shift details</p>
+      <p className="text-xs text-gray-400">The shift data may not be available</p>
+    </div>
+  );
 
   const variance = data.cash_variance ?? 0;
   const payModeOpen  = data.pay_mode_amounts?.filter((a) => a.count_type === 'opening') ?? [];
@@ -339,15 +345,15 @@ export default function ShiftsPage() {
                 <thead className="bg-gray-50 border-b border-gray-100">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium text-gray-600">Date / Time</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-600">Terminal</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-600">Cashier</th>
+                    <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Terminal</th>
+                    <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Cashier</th>
                     {!selected && <>
                       <th className="px-4 py-3 text-right font-medium text-gray-600">Sales</th>
-                      <th className="px-4 py-3 text-center font-medium text-gray-600">Txns</th>
-                      <th className="px-4 py-3 text-right font-medium text-gray-600">Variance</th>
+                      <th className="hidden sm:table-cell px-4 py-3 text-center font-medium text-gray-600">Txns</th>
+                      <th className="hidden md:table-cell px-4 py-3 text-right font-medium text-gray-600">Variance</th>
                     </>}
                     <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
-                    <th className="px-4 py-3 w-10" />
+                    <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -368,15 +374,15 @@ export default function ShiftsPage() {
                           <p className="text-gray-900 font-medium text-xs">{formatDate(s.session_start)}</p>
                           <p className="text-[11px] text-gray-400">{formatDateTime(s.session_start)}</p>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="hidden sm:table-cell px-4 py-3">
                           <p className="text-gray-800 font-medium text-xs">{s.terminal_name}</p>
                           <p className="text-[11px] text-gray-400">{s.branch_name}</p>
                         </td>
-                        <td className="px-4 py-3 text-gray-700 text-xs">{s.cashier_name}</td>
+                        <td className="hidden md:table-cell px-4 py-3 text-gray-700 text-xs">{s.cashier_name}</td>
                         {!selected && <>
                           <td className="px-4 py-3 text-right font-semibold text-gray-900 text-xs">{formatCurrency(s.total_sales)}</td>
-                          <td className="px-4 py-3 text-center text-gray-600 text-xs">{s.txn_count}</td>
-                          <td className="px-4 py-3 text-right text-xs">
+                          <td className="hidden sm:table-cell px-4 py-3 text-center text-gray-600 text-xs">{s.txn_count}</td>
+                          <td className="hidden md:table-cell px-4 py-3 text-right text-xs">
                             {s.status === 'open' ? (
                               <span className="text-gray-400">—</span>
                             ) : (
@@ -395,8 +401,15 @@ export default function ShiftsPage() {
                             {STATUS_ICONS[s.status]}{s.status}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
-                          <Eye className={`h-4 w-4 transition-colors ${isSelected ? 'text-primary-600' : 'text-gray-300 group-hover:text-gray-500'}`} />
+                        <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <button onClick={() => setSelected(isSelected ? null : s.session_id)}
+                            className={`rounded-lg border px-3 py-1 text-xs font-semibold transition-colors ${
+                              isSelected
+                                ? 'border-primary-300 bg-primary-100 text-primary-800'
+                                : 'border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100'
+                            }`}>
+                            {isSelected ? 'Close' : 'View'}
+                          </button>
                         </td>
                       </tr>
                     );

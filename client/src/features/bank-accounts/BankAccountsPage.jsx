@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Landmark, Plus, Edit2, Star, TrendingUp, TrendingDown, BookOpen, Calendar, ArrowDownLeft, ArrowUpRight, CheckSquare } from 'lucide-react';
+import { Landmark, Plus, Edit2, Star, BookOpen, Calendar, ArrowDownLeft, ArrowUpRight, CheckSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
@@ -69,8 +70,8 @@ function BankAccountModal({ account, accounts: coaAccounts, onClose }) {
       }
     >
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="sm:col-span-full">
             <Field label="Account Name *">
               <input value={form.account_name} onChange={(e) => set('account_name', e.target.value)}
                 placeholder="e.g. KCB Business Account" className={inp} />
@@ -97,14 +98,14 @@ function BankAccountModal({ account, accounts: coaAccounts, onClose }) {
             </select>
           </Field>
           {!isEdit && (
-            <div className="col-span-2">
+            <div className="col-span-full">
               <Field label="Opening Balance" hint="Current balance at the time of setup">
                 <input type="number" value={form.opening_balance}
                   onChange={(e) => set('opening_balance', e.target.value)} className={inp} />
               </Field>
             </div>
           )}
-          <div className="col-span-2">
+          <div className="col-span-full">
             <Field label="Link to Chart of Accounts" hint="Optional — links this bank account to a CoA asset account">
               <select value={form.account_id} onChange={(e) => set('account_id', e.target.value)} className={sel}>
                 <option value="">Not linked</option>
@@ -124,6 +125,64 @@ function BankAccountModal({ account, accounts: coaAccounts, onClose }) {
           <textarea rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)}
             className={inp + ' resize-none'} />
         </Field>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Bank Account Detail Modal ─────────────────────────────────────────────────
+
+function BankAccountDetailModal({ account, onClose, onEdit, onReconcile, onNavigateLedger }) {
+  return (
+    <Modal open onClose={onClose} title={account.account_name}
+      footer={
+        <div className="flex flex-col gap-2 w-full">
+          <div className="flex gap-2">
+            <Button variant="secondary" fullWidth icon={<BookOpen className="h-4 w-4" />}
+              onClick={onNavigateLedger}>
+              Transactions
+            </Button>
+            <Button variant="secondary" fullWidth icon={<CheckSquare className="h-4 w-4" />}
+              onClick={onReconcile}>
+              Reconcile
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="secondary" fullWidth onClick={onClose}>Close</Button>
+            <Button fullWidth icon={<Edit2 className="h-4 w-4" />} onClick={() => { onClose(); onEdit(account); }}>
+              Edit
+            </Button>
+          </div>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <div className="rounded-lg bg-primary-50 border border-primary-200 px-4 py-3 text-center">
+          <p className="text-xs text-gray-500">Current Balance</p>
+          <p className={`text-2xl font-bold mt-0.5 ${parseFloat(account.current_balance) >= 0 ? 'text-primary-700' : 'text-red-600'}`}>
+            {account.currency} {formatCurrency(account.current_balance).replace('KES', '').trim()}
+          </p>
+        </div>
+        <dl className="divide-y divide-gray-100 text-sm">
+          {[
+            ['Bank',          account.bank_name],
+            ['Account No.',   account.account_number || '—'],
+            ['Branch',        account.bank_branch    || '—'],
+            ['Currency',      account.currency],
+            ['CoA Account',   account.coa_account_name || 'Not linked'],
+            ['Default',       account.is_default ? 'Yes' : 'No'],
+          ].map(([label, val]) => (
+            <div key={label} className="flex items-center justify-between py-2">
+              <dt className="text-gray-500">{label}</dt>
+              <dd className="font-medium text-gray-900 text-right">{val}</dd>
+            </div>
+          ))}
+        </dl>
+        {account.notes && (
+          <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+            <span className="text-gray-400">Notes: </span>{account.notes}
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -215,22 +274,13 @@ function BankLedgerModal({ account, onClose }) {
           <p className="py-8 text-center text-gray-400 text-sm">No transactions for this period</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-gray-100">
-            <table className="w-full table-fixed text-sm">
-              <colgroup>
-                <col className="w-24" />   {/* Date */}
-                <col className="w-24" />   {/* Type */}
-                <col className="w-32" />   {/* Reference */}
-                <col />                    {/* Description — takes remaining space */}
-                <col className="w-28" />   {/* In */}
-                <col className="w-28" />   {/* Out */}
-                <col className="w-28" />   {/* Balance */}
-              </colgroup>
+            <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Date</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Type</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Reference</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Description</th>
+                  <th className="hidden sm:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-500">Type</th>
+                  <th className="hidden sm:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-500">Reference</th>
+                  <th className="hidden md:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-500">Description</th>
                   <th className="px-3 py-2.5 text-right text-xs font-medium text-green-600">In (Cr)</th>
                   <th className="px-3 py-2.5 text-right text-xs font-medium text-red-500">Out (Dr)</th>
                   <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500">Balance</th>
@@ -238,15 +288,15 @@ function BankLedgerModal({ account, onClose }) {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {entries.map((e, idx) => (
-                  <tr key={`${e.lineId ?? e.entryId ?? idx}`} className="hover:bg-gray-50">
+                  <tr key={`${e.lineId ?? e.entryId ?? idx}`} className="hover:bg-gray-50 active:bg-gray-100">
                     <td className="px-3 py-2.5 text-gray-500 text-xs whitespace-nowrap">{formatDate(e.entryDate)}</td>
-                    <td className="px-3 py-2.5">
+                    <td className="hidden sm:table-cell px-3 py-2.5">
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${BANK_TYPE_COLORS[e.sourceType] ?? 'bg-gray-100 text-gray-600'}`}>
                         {e.sourceType ?? '—'}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-gray-600 truncate">{e.sourceRef ?? e.entryNumber}</td>
-                    <td className="px-3 py-2.5 text-xs text-gray-700">
+                    <td className="hidden sm:table-cell px-3 py-2.5 font-mono text-xs text-gray-600 truncate">{e.sourceRef ?? e.entryNumber}</td>
+                    <td className="hidden md:table-cell px-3 py-2.5 text-xs text-gray-700">
                       <p className="truncate" title={e.description}>{e.description}</p>
                     </td>
                     {/* For bank/cash accounts: debit = money in, credit = money out */}
@@ -376,9 +426,9 @@ function ReconciliationModal({ account, onClose }) {
                       onChange={toggleAll} className="rounded" />
                   </th>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Date</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Ref</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Type</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Description</th>
+                  <th className="hidden sm:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-500">Ref</th>
+                  <th className="hidden sm:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-500">Type</th>
+                  <th className="hidden md:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-500">Description</th>
                   <th className="px-3 py-2.5 text-right text-xs font-medium text-green-600">In</th>
                   <th className="px-3 py-2.5 text-right text-xs font-medium text-red-500">Out</th>
                 </tr>
@@ -386,16 +436,16 @@ function ReconciliationModal({ account, onClose }) {
               <tbody className="divide-y divide-gray-100">
                 {lines.map((l) => (
                   <tr key={l.lineId} onClick={() => toggle(l.lineId)}
-                    className={`cursor-pointer transition-colors ${selected.has(l.lineId) ? 'bg-primary-50' : 'hover:bg-gray-50'}`}>
+                    className={`cursor-pointer transition-colors ${selected.has(l.lineId) ? 'bg-primary-50' : 'hover:bg-gray-50 active:bg-gray-100'}`}>
                     <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
                       <input type="checkbox" checked={selected.has(l.lineId)} onChange={() => toggle(l.lineId)} className="rounded" />
                     </td>
                     <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{formatDate(l.entryDate)}</td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-gray-600">{l.entryNumber}</td>
-                    <td className="px-3 py-2.5">
+                    <td className="hidden sm:table-cell px-3 py-2.5 font-mono text-xs text-gray-600">{l.entryNumber}</td>
+                    <td className="hidden sm:table-cell px-3 py-2.5">
                       <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{l.sourceType}</span>
                     </td>
-                    <td className="px-3 py-2.5 text-xs text-gray-700 max-w-xs truncate">{l.description}</td>
+                    <td className="hidden md:table-cell px-3 py-2.5 text-xs text-gray-700 max-w-xs truncate">{l.description}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-xs">
                       {l.debit > 0 ? <span className="text-green-700 font-semibold">{formatCurrency(l.debit)}</span> : <span className="text-gray-300">—</span>}
                     </td>
@@ -417,9 +467,10 @@ function ReconciliationModal({ account, onClose }) {
 
 export default function BankAccountsPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [editTarget,       setEditTarget]       = useState(null);
+  const [viewTarget,       setViewTarget]       = useState(null);
   const [createOpen,       setCreateOpen]       = useState(false);
-  const [ledgerTarget,     setLedgerTarget]     = useState(null);
   const [reconcileTarget,  setReconcileTarget]  = useState(null);
 
   const { data: accounts = [], isLoading } = useQuery({
@@ -470,9 +521,9 @@ export default function BankAccountsPage() {
                   {acc.is_default && (
                     <Star className="h-4 w-4 text-amber-400 fill-amber-400" title="Default account" />
                   )}
-                  <button onClick={() => setEditTarget(acc)}
-                    className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
-                    <Edit2 className="h-3.5 w-3.5" />
+                  <button onClick={() => setViewTarget(acc)}
+                    className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                    View
                   </button>
                 </div>
               </div>
@@ -491,7 +542,7 @@ export default function BankAccountsPage() {
               </div>
 
               <div className="flex gap-2">
-                <button onClick={() => setLedgerTarget(acc)}
+                <button onClick={() => navigate(`/app/bank-accounts/${acc.bank_account_id}/ledger`)}
                   className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 py-2 text-xs font-medium text-gray-600 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 transition-colors">
                   <BookOpen className="h-3.5 w-3.5" />
                   Transactions
@@ -517,11 +568,17 @@ export default function BankAccountsPage() {
       {createOpen && (
         <BankAccountModal accounts={coaAccounts} onClose={() => setCreateOpen(false)} />
       )}
+      {viewTarget && !editTarget && !reconcileTarget && (
+        <BankAccountDetailModal
+          account={viewTarget}
+          onClose={() => setViewTarget(null)}
+          onEdit={setEditTarget}
+          onReconcile={() => { setReconcileTarget(viewTarget); setViewTarget(null); }}
+          onNavigateLedger={() => navigate(`/app/bank-accounts/${viewTarget.bank_account_id}/ledger`)}
+        />
+      )}
       {editTarget && (
         <BankAccountModal account={editTarget} accounts={coaAccounts} onClose={() => setEditTarget(null)} />
-      )}
-      {ledgerTarget && (
-        <BankLedgerModal account={ledgerTarget} onClose={() => setLedgerTarget(null)} />
       )}
       {reconcileTarget && (
         <ReconciliationModal account={reconcileTarget} onClose={() => setReconcileTarget(null)} />

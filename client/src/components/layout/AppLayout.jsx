@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { LogOut, KeyRound, User, ChevronDown, Eye, EyeOff, X, Building2 } from 'lucide-react';
+import { LogOut, KeyRound, User, ChevronDown, Eye, EyeOff, X, Building2, Menu } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Sidebar from './Sidebar';
+import BottomNav from './BottomNav';
 import { useAuthStore } from '@/app/store';
 import api from '@/services/api';
 import Button from '@/components/ui/Button';
@@ -209,6 +210,7 @@ export default function AppLayout() {
 
   const [dropdownOpen,  setDropdownOpen]  = useState(false);
   const [changePwdOpen, setChangePwdOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const dropdownRef = useRef(null);
 
   const isSuperAdmin = user?.role === 'super_admin';
@@ -247,24 +249,48 @@ export default function AppLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
-      <Sidebar />
+      {/* Mobile backdrop */}
+      {mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar — fixed overlay on mobile, in-flow on desktop */}
+      <div className={[
+        'fixed inset-y-0 left-0 z-50 lg:relative lg:z-auto lg:translate-x-0 lg:transition-none',
+        'transition-transform duration-300',
+        mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full',
+      ].join(' ')}>
+        <Sidebar onMobileClose={() => setMobileSidebarOpen(false)} />
+      </div>
 
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top bar */}
         <header
-          className="relative flex items-center justify-between px-6 py-3"
+          className="relative flex items-center justify-between px-4 py-3 lg:px-6"
           style={{ background: 'linear-gradient(90deg, #011920 0%, #01303d 50%, #024A59 100%)' }}
         >
           {/* Amber accent line at bottom */}
           <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-secondary-500/60 to-transparent" />
 
-          {/* Left: current page title + date */}
-          <div>
-            <h1 className="text-base font-bold tracking-wide text-white leading-tight">{pageTitle}</h1>
-            <p className="text-xs text-white/65 leading-tight">
-              {new Date().toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            </p>
-          </div>
+          {/* Left: hamburger (mobile) + current page title + date */}
+          <div className="flex items-center gap-3">
+          {/* Mobile hamburger */}
+          <button
+            onClick={() => setMobileSidebarOpen(true)}
+            className="flex lg:hidden items-center justify-center rounded-lg p-1.5 text-white/70 hover:bg-white/15 hover:text-white transition-colors"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+            <div>
+              <h1 className="text-base font-bold tracking-wide text-white leading-tight">{pageTitle}</h1>
+              <p className="text-xs text-white/65 leading-tight">
+                {new Date().toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              </p>
+            </div>
+          </div>{/* end left side */}
 
           {/* Right: company branding + profile dropdown */}
           <div className="flex items-center gap-3">
@@ -311,7 +337,7 @@ export default function AppLayout() {
 
             {/* Dropdown menu */}
             {dropdownOpen && (
-              <div className="absolute right-0 top-full mt-1.5 w-52 rounded-xl border border-gray-100 bg-white shadow-lg z-40 overflow-hidden">
+              <div className="absolute right-0 top-full mt-1.5 w-52 max-w-[calc(100vw-1rem)] rounded-xl border border-gray-100 bg-white shadow-lg z-40 overflow-hidden">
                 {/* User info */}
                 <div className="border-b border-gray-100 px-4 py-3">
                   <p className="text-sm font-semibold text-gray-900 truncate">
@@ -375,11 +401,19 @@ export default function AppLayout() {
           </div>
         )}
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-6">
+        {/* Page content — POS gets no padding/scroll so it fills the viewport */}
+        <main className={[
+          'flex-1',
+          location.pathname.startsWith('/app/pos')
+            ? 'overflow-hidden'
+            : 'overflow-y-auto p-4 pb-20 lg:p-6 lg:pb-6',
+        ].join(' ')}>
           <Outlet />
         </main>
       </div>
+
+      {/* Bottom navigation — mobile only */}
+      <BottomNav onOpenMenu={() => setMobileSidebarOpen(true)} />
 
       {/* Change password modal */}
       {changePwdOpen && <ChangePasswordModal onClose={() => setChangePwdOpen(false)} />}

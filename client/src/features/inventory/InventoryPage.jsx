@@ -119,38 +119,39 @@ export default function InventoryPage() {
 
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         {isLoading ? <PageSpinner /> : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Product</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Branch</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Category</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 hidden md:table-cell">Branch</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 hidden md:table-cell">Category</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600">Available</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">Reorder At</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">Selling Price</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600 hidden lg:table-cell">Reorder At</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600 hidden sm:table-cell">Selling Price</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Last Updated</th>
-                {canAdjustStock && <th className="px-4 py-3" />}
+                <th className="px-4 py-3 text-left font-medium text-gray-600 hidden lg:table-cell">Last Updated</th>
+                {canAdjustStock && <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {inventory.map((item, i) => (
                 <tr key={`${item.product_id}-${item.branch_id}`}
-                  className={`hover:bg-gray-50 transition-colors ${item.is_low_stock ? 'bg-red-50/30' : ''}`}>
+                  className={`hover:bg-gray-50 active:bg-gray-100 transition-colors ${item.is_low_stock ? 'bg-red-50/30' : ''}`}>
                   <td className="px-4 py-3">
                     <p className="font-medium text-gray-900">{item.product_name}</p>
                     <p className="text-xs text-gray-400 font-mono">{item.sku}</p>
                   </td>
-                  <td className="px-4 py-3 text-gray-600 text-xs">{item.branch_name}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{item.category_name ?? '—'}</td>
+                  <td className="px-4 py-3 text-gray-600 text-xs hidden md:table-cell">{item.branch_name}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs hidden md:table-cell">{item.category_name ?? '—'}</td>
                   <td className="px-4 py-3 text-right">
                     <span className={`font-bold text-base ${item.is_low_stock ? 'text-red-600' : 'text-gray-900'}`}>
                       {item.quantity_available}
                     </span>
                     <span className="text-xs text-gray-400 ml-1">{item.unit_of_measure}</span>
                   </td>
-                  <td className="px-4 py-3 text-right text-gray-500">{item.reorder_level}</td>
-                  <td className="px-4 py-3 text-right text-gray-700">{formatCurrency(item.selling_price)}</td>
+                  <td className="px-4 py-3 text-right text-gray-500 hidden lg:table-cell">{item.reorder_level}</td>
+                  <td className="px-4 py-3 text-right text-gray-700 hidden sm:table-cell">{formatCurrency(item.selling_price)}</td>
                   <td className="px-4 py-3 text-center">
                     {item.is_low_stock
                       ? <span className="flex items-center justify-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
@@ -158,7 +159,7 @@ export default function InventoryPage() {
                         </span>
                       : <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">OK</span>}
                   </td>
-                  <td className="px-4 py-3 text-xs text-gray-400">
+                  <td className="px-4 py-3 text-xs text-gray-400 hidden lg:table-cell">
                     {item.last_updated ? formatDate(item.last_updated) : '—'}
                   </td>
                   {canAdjustStock && (
@@ -176,6 +177,7 @@ export default function InventoryPage() {
               )}
             </tbody>
           </table>
+          </div>
         )}
         {pages > 1 && (
           <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">

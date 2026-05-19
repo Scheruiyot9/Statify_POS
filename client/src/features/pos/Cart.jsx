@@ -439,7 +439,7 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
   const totalQty = items.reduce((n, i) => n + i.quantity, 0);
 
   return (
-    <div className="flex h-full flex-col bg-white">
+    <div className="flex h-full w-full flex-col bg-white">
 
       {/* ── Customer section ── */}
       <div className="border-b border-gray-100 px-4 py-2.5">
@@ -631,7 +631,7 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
           <button
             onClick={() => items.length && setHoldDialogOpen(true)}
             disabled={!items.length}
-            className="flex flex-col items-center gap-1 rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-40 transition-all"
+            className="flex flex-col items-center gap-1 rounded-xl border border-amber-200 bg-amber-50 py-3 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 active:scale-[0.97] disabled:opacity-40 transition-all"
           >
             <Clock className="h-4 w-4 text-amber-500" />
             Hold
@@ -641,7 +641,7 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
             onClick={handleCancelSale}
             disabled={!items.length && !cancelConfirm}
             className={[
-              'flex flex-col items-center gap-1 rounded-xl border py-2.5 text-[11px] font-semibold transition-all disabled:opacity-40',
+              'flex flex-col items-center gap-1 rounded-xl border py-3 text-[11px] font-semibold transition-all active:scale-[0.97] disabled:opacity-40',
               cancelConfirm
                 ? 'animate-pulse border-red-400 bg-red-100 text-red-700'
                 : 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100',
@@ -653,7 +653,7 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
 
           <button
             onClick={onSalesReturn}
-            className="flex flex-col items-center gap-1 rounded-xl border border-teal-200 bg-teal-50 py-2.5 text-[11px] font-semibold text-teal-700 hover:bg-teal-100 transition-all"
+            className="flex flex-col items-center gap-1 rounded-xl border border-teal-200 bg-teal-50 py-3 text-[11px] font-semibold text-teal-700 hover:bg-teal-100 active:scale-[0.97] transition-all"
           >
             <RotateCcw className="h-4 w-4 text-teal-500" />
             Return

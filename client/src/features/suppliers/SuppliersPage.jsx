@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Truck, Plus, Search, Edit2, Trash2, Phone, Mail } from 'lucide-react';
+import { Truck, Plus, Search, Trash2, Phone, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
@@ -72,8 +72,8 @@ function SupplierModal({ supplier, accounts, onClose }) {
       <div className="space-y-4">
         <div>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Supplier Info</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="col-span-full">
               <Field label="Supplier Name *">
                 <input value={form.supplier_name} onChange={(e) => set('supplier_name', e.target.value)}
                   placeholder="e.g. Nairobi Wholesale Ltd" className={inp} />
@@ -95,7 +95,7 @@ function SupplierModal({ supplier, accounts, onClose }) {
               <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)}
                 placeholder="supplier@example.com" className={inp} />
             </Field>
-            <div className="col-span-2">
+            <div className="col-span-full">
               <Field label="Address">
                 <textarea rows={2} value={form.address} onChange={(e) => set('address', e.target.value)}
                   placeholder="Physical or mailing address" className={inp + ' resize-none'} />
@@ -106,7 +106,7 @@ function SupplierModal({ supplier, accounts, onClose }) {
 
         <div className="border-t border-gray-100 pt-3">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Payment Terms</p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field label="Payment Terms (days)" hint="Days before payment is due">
               <input type="number" min={0} value={form.payment_terms}
                 onChange={(e) => set('payment_terms', e.target.value)} className={inp} />
@@ -123,7 +123,7 @@ function SupplierModal({ supplier, accounts, onClose }) {
                 <option value="UGX">UGX</option>
               </select>
             </Field>
-            <div className="col-span-3">
+            <div className="col-span-full">
               <Field label="Accounts Payable Account" hint="CoA liability account for this supplier's payables">
                 <select value={form.account_id} onChange={(e) => set('account_id', e.target.value)} className={sel}>
                   <option value="">Not linked</option>
@@ -147,12 +147,17 @@ function SupplierModal({ supplier, accounts, onClose }) {
 
 // ── Supplier Detail Modal ─────────────────────────────────────────────────────
 
-function SupplierDetail({ supplier, onEdit, onClose }) {
+function SupplierDetail({ supplier, onEdit, onDelete, onClose }) {
   return (
     <Modal open onClose={onClose} title="Supplier Details" size="lg"
       footer={
         <div className="flex gap-3">
           <Button variant="secondary" fullWidth onClick={onClose}>Close</Button>
+          {onDelete && (
+            <Button variant="secondary" icon={<Trash2 className="h-4 w-4 text-red-500" />} onClick={onDelete}>
+              Deactivate
+            </Button>
+          )}
           <Button fullWidth onClick={onEdit}>Edit</Button>
         </div>
       }
@@ -275,50 +280,42 @@ export default function SuppliersPage() {
       {/* Table */}
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         {isLoading ? <PageSpinner /> : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {['Supplier','Contact','Phone / Email','Payment Terms','Balance',''].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>
-                ))}
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Supplier</th>
+                <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Contact</th>
+                <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Phone / Email</th>
+                <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Payment Terms</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Balance</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {suppliers.map((s) => (
-                <tr key={s.supplier_id} className={`hover:bg-gray-50 transition-colors ${!s.is_active ? 'opacity-50' : ''}`}>
+                <tr key={s.supplier_id} className={`hover:bg-gray-50 active:bg-gray-100 transition-colors ${!s.is_active ? 'opacity-50' : ''}`}>
                   <td className="px-4 py-3">
                     <p className="font-medium text-gray-900">{s.supplier_name}</p>
                     {s.tax_pin && <p className="text-xs text-gray-400">PIN: {s.tax_pin}</p>}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{s.contact_person || '—'}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
+                  <td className="hidden md:table-cell px-4 py-3 text-gray-600">{s.contact_person || '—'}</td>
+                  <td className="hidden sm:table-cell px-4 py-3 text-gray-500 text-xs">
                     {s.phone && <p>{s.phone}</p>}
                     {s.email && <p className="text-gray-400">{s.email}</p>}
                     {!s.phone && !s.email && '—'}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{s.payment_terms} days</td>
+                  <td className="hidden md:table-cell px-4 py-3 text-gray-600">{s.payment_terms} days</td>
                   <td className="px-4 py-3">
                     <span className={`font-semibold ${parseFloat(s.current_balance) > 0 ? 'text-red-600' : 'text-gray-900'}`}>
                       {formatCurrency(s.current_balance)}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1 justify-end">
-                      <button onClick={() => setSelected(s)}
-                        className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors text-xs font-medium px-2">
-                        View
-                      </button>
-                      <button onClick={() => setEditTarget(s)}
-                        className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </button>
-                      {parseFloat(s.current_balance) === 0 && (
-                        <button onClick={() => setDeleteTarget(s)}
-                          className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
+                  <td className="px-4 py-3 text-center">
+                    <button onClick={() => setSelected(s)}
+                      className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                      View
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -329,6 +326,7 @@ export default function SuppliersPage() {
               )}
             </tbody>
           </table>
+          </div>
         )}
         {pages > 1 && (
           <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
@@ -344,7 +342,12 @@ export default function SuppliersPage() {
       </div>
 
       {selected && !editTarget && (
-        <SupplierDetail supplier={selected} onEdit={() => { setEditTarget(selected); setSelected(null); }} onClose={() => setSelected(null)} />
+        <SupplierDetail
+          supplier={selected}
+          onEdit={() => { setEditTarget(selected); setSelected(null); }}
+          onDelete={parseFloat(selected.current_balance) === 0 ? () => { setDeleteTarget(selected); setSelected(null); } : undefined}
+          onClose={() => setSelected(null)}
+        />
       )}
       {createOpen && (
         <SupplierModal accounts={accounts} onClose={() => setCreateOpen(false)} />

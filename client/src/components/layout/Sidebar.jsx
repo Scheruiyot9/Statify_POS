@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, Warehouse, Users, Receipt,
   BarChart2, Settings, ShieldCheck, Monitor, UserCog, Clock,
-  RotateCcw, Menu, ChevronDown, ChevronUp,
+  RotateCcw, Menu, ChevronDown, ChevronUp, X,
   Smartphone, Building2, GitBranch, Layers, ShoppingCart,
   CreditCard, BookOpen, Landmark, Truck, Lock, Star, ScrollText, FileText, CalendarRange,
   Droplets, ArrowDownLeft, AlertTriangle, Scale,
@@ -215,12 +215,13 @@ function TenantNav({ collapsed, hasCapability }) {
         <NavItem to="/app/dashboard" label="Dashboard" Icon={LayoutDashboard} collapsed={collapsed} />
       )}
 
-      {(hasCapability('sales.view') || hasCapability('returns.view') || hasCapability('shifts.view') || (hasCapability('mpesa.view') && hasApiAccess)) && (
-        <NavGroup id="pos" label="POS" collapsed={collapsed} defaultOpen>
-          {hasCapability('sales.view') && <NavItem to="/app/sales" label="Sales" Icon={Receipt} collapsed={collapsed} />}
+      {(hasCapability('sales.view') || hasCapability('returns.view') || hasCapability('shifts.view') || (hasCapability('mpesa.view') && hasApiAccess) || hasCapability('customers.view')) && (
+        <NavGroup id="sales" label="Sales" collapsed={collapsed} defaultOpen>
+          {hasCapability('sales.view') && <NavItem to="/app/sales" label="POS Sales" Icon={Receipt} collapsed={collapsed} />}
           {hasCapability('returns.view') && <NavItem to="/app/returns" label="Returns" Icon={RotateCcw} collapsed={collapsed} />}
           {hasCapability('shifts.view') && <NavItem to="/app/shifts" label="Shifts" Icon={Clock} collapsed={collapsed} />}
           {hasCapability('mpesa.view') && hasApiAccess && <NavItem to="/app/mpesa" label="M-Pesa" Icon={Smartphone} collapsed={collapsed} />}
+          {hasCapability('customers.view') && <NavItem to="/app/customers" label="Customers" Icon={Users} collapsed={collapsed} />}
         </NavGroup>
       )}
 
@@ -231,8 +232,11 @@ function TenantNav({ collapsed, hasCapability }) {
         </NavGroup>
       )}
 
-      {hasCapability('customers.view') && (
-        <NavItem to="/app/customers" label="Customers" Icon={Users} collapsed={collapsed} />
+      {hasCapability('reports.view') && (
+        <NavGroup id="reports" label="Reports" collapsed={collapsed} defaultOpen={false}>
+          <NavItem to="/app/reports?tab=sales" label="Sales"       Icon={BarChart2}  collapsed={collapsed} />
+          <NavItem to="/app/reports?tab=stock" label="Stock Value" Icon={Package}    collapsed={collapsed} />
+        </NavGroup>
       )}
 
       <FinanceGroup collapsed={collapsed} hasCapability={hasCapability} />
@@ -244,13 +248,6 @@ function TenantNav({ collapsed, hasCapability }) {
           <NavItem to="/app/reports?tab=ar-aging"      label="AR Aging"      Icon={ArrowDownLeft} collapsed={collapsed} />
           <NavItem to="/app/reports?tab=ap-aging"      label="AP Aging"      Icon={AlertTriangle} collapsed={collapsed} />
           <NavItem to="/app/reports?tab=balance-sheet" label="Balance Sheet" Icon={Scale}         collapsed={collapsed} />
-        </NavGroup>
-      )}
-
-      {hasCapability('reports.view') && (
-        <NavGroup id="reports" label="Reports" collapsed={collapsed} defaultOpen={false}>
-          <NavItem to="/app/reports?tab=sales" label="Sales"       Icon={BarChart2}  collapsed={collapsed} />
-          <NavItem to="/app/reports?tab=stock" label="Stock Value" Icon={Package}    collapsed={collapsed} />
         </NavGroup>
       )}
 
@@ -267,10 +264,16 @@ function TenantNav({ collapsed, hasCapability }) {
 
 // ── Root Sidebar ──────────────────────────────────────────────────────────────
 
-export default function Sidebar() {
+export default function Sidebar({ onMobileClose }) {
   const { hasCapability } = usePermission();
   const user = useAuthStore((s) => s.user);
   const isSuperAdmin = user?.role === 'super_admin';
+  const location = useLocation();
+
+  // Close mobile drawer when navigating
+  useEffect(() => {
+    onMobileClose?.();
+  }, [location.pathname, location.search]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [width, setWidth] = useState(() => {
     const stored = localStorage.getItem('sidebar-width');
@@ -337,11 +340,18 @@ export default function Sidebar() {
         'flex items-center border-b border-secondary-400/20 flex-shrink-0',
         collapsed ? 'flex-col gap-2 px-0 py-3 justify-center' : 'justify-between px-4 py-3',
       ].join(' ')}>
-        {/* Hamburger toggle — always visible at top */}
+        {/* Mobile: close drawer button */}
+        <button
+          onClick={onMobileClose}
+          className="flex lg:hidden flex-shrink-0 items-center justify-center rounded-lg p-1.5 text-white/70 hover:bg-white/15 hover:text-white transition-colors"
+        >
+          <X className="h-5 w-5" />
+        </button>
+        {/* Desktop: collapse to icon-only toggle */}
         <button
           onClick={toggle}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="flex flex-shrink-0 items-center justify-center rounded-lg p-1.5 text-white/70 hover:bg-white/15 hover:text-white transition-colors"
+          className="hidden lg:flex flex-shrink-0 items-center justify-center rounded-lg p-1.5 text-white/70 hover:bg-white/15 hover:text-white transition-colors"
         >
           <Menu className="h-5 w-5" />
         </button>

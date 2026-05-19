@@ -743,6 +743,7 @@ export default function PosTerminal() {
   const [receiptTxnId,     setReceiptTxnId]     = useState(null);
   const [menuOpen,         setMenuOpen]         = useState(false);
   const [scanResetKey,     setScanResetKey]      = useState(0);
+  const [mobilePosTab,     setMobilePosTab]     = useState('products'); // 'products' | 'cart'
   const menuRef = useRef(null);
 
   // Close menu on outside click
@@ -1024,12 +1025,46 @@ export default function PosTerminal() {
         </div>
       </div>
 
+      {/* ── Mobile tab bar (hidden on lg+) ── */}
+      <div className="flex flex-shrink-0 border-b border-gray-200 bg-white lg:hidden">
+        <button
+          onClick={() => setMobilePosTab('products')}
+          className={[
+            'flex-1 py-2.5 text-sm font-semibold border-b-2 transition-colors',
+            mobilePosTab === 'products'
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700',
+          ].join(' ')}
+        >
+          Products
+        </button>
+        <button
+          onClick={() => setMobilePosTab('cart')}
+          className={[
+            'flex-1 py-2.5 text-sm font-semibold border-b-2 transition-colors',
+            mobilePosTab === 'cart'
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700',
+          ].join(' ')}
+        >
+          Cart{items.length > 0 && <span className="ml-1.5 rounded-full bg-primary-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{items.length}</span>}
+        </button>
+      </div>
+
       {/* ── POS main area ── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        <div className="flex-1 min-w-0 overflow-hidden">
+        {/* Product grid — full width on mobile when active, flex-1 on desktop */}
+        <div className={[
+          'min-w-0 overflow-hidden',
+          mobilePosTab === 'cart' ? 'hidden lg:flex lg:flex-1' : 'flex-1',
+        ].join(' ')}>
           <ProductGrid branchId={branchId} scanResetTrigger={scanResetKey} />
         </div>
-        <div className="w-[55%] flex-shrink-0 overflow-hidden border-l border-gray-200">
+        {/* Cart — full width on mobile when active, fixed 55% on desktop */}
+        <div className={[
+          'overflow-hidden border-l border-gray-200',
+          mobilePosTab === 'products' ? 'hidden lg:flex lg:w-[55%] lg:flex-shrink-0' : 'flex-1 lg:flex-none lg:w-[55%] lg:flex-shrink-0',
+        ].join(' ')}>
           <Cart
             session={session}
             onCheckout={() => setCheckoutOpen(true)}

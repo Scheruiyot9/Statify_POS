@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Eye, RotateCcw, CheckCircle, XCircle, Plus, Banknote, Printer } from 'lucide-react';
+import { Search, RotateCcw, CheckCircle, XCircle, Plus, Banknote, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDateTime } from '@/utils/formatters';
@@ -293,37 +293,38 @@ export default function ReturnsPage() {
       {/* Table */}
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         {isLoading ? <PageSpinner /> : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">RTN #</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Date</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Original TXN</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Branch</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Processed By</th>
+                <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Date</th>
+                <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Original TXN</th>
+                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Branch</th>
+                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Processed By</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600">Refunded</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
-                <th className="px-4 py-3" />
+                <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {returns.map((r) => (
-                <tr key={r.return_id} className="hover:bg-gray-50 transition-colors">
+                <tr key={r.return_id} className="hover:bg-gray-50 active:bg-gray-100 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs text-primary-600 font-semibold">{r.return_number}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{formatDateTime(r.return_date)}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-600">{r.original_transaction_number}</td>
-                  <td className="px-4 py-3 text-gray-600 text-xs">{r.branch_name}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{r.processed_by}</td>
+                  <td className="hidden sm:table-cell px-4 py-3 text-gray-500 text-xs">{formatDateTime(r.return_date)}</td>
+                  <td className="hidden sm:table-cell px-4 py-3 font-mono text-xs text-gray-600">{r.original_transaction_number}</td>
+                  <td className="hidden md:table-cell px-4 py-3 text-gray-600 text-xs">{r.branch_name}</td>
+                  <td className="hidden md:table-cell px-4 py-3 text-gray-500 text-xs">{r.processed_by}</td>
                   <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency(r.total_refunded)}</td>
                   <td className="px-4 py-3 text-center">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[r.status] ?? 'bg-gray-100 text-gray-600'}`}>
                       {r.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 text-center">
                     <button onClick={() => setSelected(r.return_id)}
-                      className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
-                      <Eye className="h-4 w-4" />
+                      className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                      View
                     </button>
                   </td>
                 </tr>
@@ -335,6 +336,7 @@ export default function ReturnsPage() {
               )}
             </tbody>
           </table>
+          </div>
         )}
         {pages > 1 && (
           <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">

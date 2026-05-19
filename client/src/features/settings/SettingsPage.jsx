@@ -127,65 +127,67 @@ function PayModesTab() {
 
       {isLoading ? <PageSpinner /> : (
         <div className="rounded-xl border border-gray-100 bg-white overflow-hidden shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-100">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Method Name</th>
-                {hasFinance && <th className="px-4 py-3 text-left font-medium text-gray-600">Bank Account</th>}
-                <th className="px-4 py-3 text-center font-medium text-gray-600">Requires Ref #</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {methods.map((m) => (
-                <tr key={m.payment_method_id} className={`hover:bg-gray-50 transition-colors ${!m.is_active ? 'opacity-50' : ''}`}>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-100">
-                        <CreditCard className="h-4 w-4 text-primary-600" />
-                      </div>
-                      <span className="font-medium text-gray-900">{m.method_name}</span>
-                    </div>
-                  </td>
-                  {hasFinance && (
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {m.bank_account_name
-                        ? <span className="font-medium text-gray-700">{m.bank_account_name}<span className="ml-1 text-xs font-normal text-gray-400">— {m.bank_name}</span></span>
-                        : <span className="text-gray-300">—</span>}
-                    </td>
-                  )}
-                  <td className="px-4 py-3 text-center">
-                    {m.requires_reference
-                      ? <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium"><Check className="h-3 w-3" /> Yes</span>
-                      : <span className="text-gray-400 text-xs">No</span>}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <button onClick={() => toggleMut.mutate({ id: m.payment_method_id, isActive: !m.is_active })}
-                      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors">
-                      {m.is_active
-                        ? <><ToggleRight className="h-4 w-4 text-green-500" /><span className="text-green-700">Active</span></>
-                        : <><ToggleLeft  className="h-4 w-4 text-gray-400" /><span className="text-gray-500">Inactive</span></>}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button onClick={() => setEditMode(m)}
-                      className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {methods.length === 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  <td colSpan={hasFinance ? 5 : 4} className="py-12 text-center text-gray-400">
-                    <CreditCard className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                    No payment methods yet.
-                  </td>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">Method Name</th>
+                  {hasFinance && <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Bank Account</th>}
+                  <th className="hidden sm:table-cell px-4 py-3 text-center font-medium text-gray-600">Requires Ref #</th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
+                  <th className="px-4 py-3" />
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {methods.map((m) => (
+                  <tr key={m.payment_method_id} className={`hover:bg-gray-50 active:bg-gray-100 transition-colors ${!m.is_active ? 'opacity-50' : ''}`}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-100">
+                          <CreditCard className="h-4 w-4 text-primary-600" />
+                        </div>
+                        <span className="font-medium text-gray-900">{m.method_name}</span>
+                      </div>
+                    </td>
+                    {hasFinance && (
+                      <td className="hidden md:table-cell px-4 py-3 text-sm text-gray-500">
+                        {m.bank_account_name
+                          ? <span className="font-medium text-gray-700">{m.bank_account_name}<span className="ml-1 text-xs font-normal text-gray-400">— {m.bank_name}</span></span>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                    )}
+                    <td className="hidden sm:table-cell px-4 py-3 text-center">
+                      {m.requires_reference
+                        ? <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium"><Check className="h-3 w-3" /> Yes</span>
+                        : <span className="text-gray-400 text-xs">No</span>}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button onClick={() => toggleMut.mutate({ id: m.payment_method_id, isActive: !m.is_active })}
+                        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors">
+                        {m.is_active
+                          ? <><ToggleRight className="h-4 w-4 text-green-500" /><span className="text-green-700">Active</span></>
+                          : <><ToggleLeft  className="h-4 w-4 text-gray-400" /><span className="text-gray-500">Inactive</span></>}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button onClick={() => setEditMode(m)}
+                        className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {methods.length === 0 && (
+                  <tr>
+                    <td colSpan={hasFinance ? 5 : 4} className="py-12 text-center text-gray-400">
+                      <CreditCard className="mx-auto mb-2 h-8 w-8 opacity-30" />
+                      No payment methods yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -346,20 +348,21 @@ function TerminalsTab() {
                   <span className="ml-auto text-xs text-gray-400">{terms.length} terminal{terms.length !== 1 ? 's' : ''}</span>
                 </div>
 
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="border-b border-gray-50">
                     <tr>
                       <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Name</th>
-                      <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Code</th>
-                      <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Description</th>
-                      <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500">Sessions</th>
+                      <th className="hidden sm:table-cell px-4 py-2.5 text-left text-xs font-medium text-gray-500">Code</th>
+                      <th className="hidden md:table-cell px-4 py-2.5 text-left text-xs font-medium text-gray-500">Description</th>
+                      <th className="hidden md:table-cell px-4 py-2.5 text-center text-xs font-medium text-gray-500">Sessions</th>
                       <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500">Status</th>
                       <th className="px-4 py-2.5" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {terms.map((t) => (
-                      <tr key={t.terminal_id} className={`hover:bg-gray-50 transition-colors ${!t.is_active ? 'opacity-50' : ''}`}>
+                      <tr key={t.terminal_id} className={`hover:bg-gray-50 active:bg-gray-100 transition-colors ${!t.is_active ? 'opacity-50' : ''}`}>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-100">
@@ -368,9 +371,9 @@ function TerminalsTab() {
                             <span className="font-medium text-gray-900">{t.terminal_name}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 font-mono text-xs text-gray-500">{t.terminal_code}</td>
-                        <td className="px-4 py-3 text-gray-500">{t.description || <span className="text-gray-300">—</span>}</td>
-                        <td className="px-4 py-3 text-center text-gray-600">{t.session_count}</td>
+                        <td className="hidden sm:table-cell px-4 py-3 font-mono text-xs text-gray-500">{t.terminal_code}</td>
+                        <td className="hidden md:table-cell px-4 py-3 text-gray-500">{t.description || <span className="text-gray-300">—</span>}</td>
+                        <td className="hidden md:table-cell px-4 py-3 text-center text-gray-600">{t.session_count}</td>
                         <td className="px-4 py-3 text-center">
                           <button
                             onClick={() => toggleMut.mutate({ id: t.terminal_id, isActive: !t.is_active })}
@@ -393,6 +396,7 @@ function TerminalsTab() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             ))}
           </div>
@@ -763,7 +767,8 @@ function BranchForm({ initial, onSave, onClose, isPending }) {
 
 function BranchesTab() {
   const qc = useQueryClient();
-  const [addOpen,  setAddOpen]  = useState(false);
+  const [addOpen,    setAddOpen]    = useState(false);
+  const [viewBranch, setViewBranch] = useState(null);
   const [editBranch, setEditBranch] = useState(null);
 
   const { data: branches = [], isLoading } = useQuery({
@@ -797,63 +802,103 @@ function BranchesTab() {
 
       {isLoading ? <PageSpinner /> : (
         <div className="rounded-xl border border-gray-100 bg-white overflow-hidden shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-100">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Branch</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Code</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Address</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Phone</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">HQ</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {branches.map((b) => (
-                <tr key={b.branch_id} className={`hover:bg-gray-50 transition-colors ${!b.is_active ? 'opacity-50' : ''}`}>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-100">
-                        <GitBranch className="h-3.5 w-3.5 text-primary-600" />
-                      </div>
-                      <span className="font-medium text-gray-900">{b.branch_name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-500">{b.branch_code}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{b.address || <span className="text-gray-300">—</span>}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{b.phone   || <span className="text-gray-300">—</span>}</td>
-                  <td className="px-4 py-3 text-center">
-                    {b.is_headquarters
-                      ? <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium"><Check className="h-3 w-3" /> HQ</span>
-                      : <span className="text-gray-300">—</span>}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    {b.is_active
-                      ? <span className="text-green-600 text-xs font-medium">Active</span>
-                      : <span className="text-gray-400 text-xs">Inactive</span>}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button onClick={() => setEditBranch(b)}
-                      className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">Branch</th>
+                  <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Code</th>
+                  <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Address</th>
+                  <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Phone</th>
+                  <th className="hidden sm:table-cell px-4 py-3 text-center font-medium text-gray-600">HQ</th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>
                 </tr>
-              ))}
-              {branches.length === 0 && (
-                <tr><td colSpan={7} className="py-12 text-center text-gray-400">
-                  <GitBranch className="mx-auto mb-2 h-8 w-8 opacity-30" />No branches found.
-                </td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {branches.map((b) => (
+                  <tr key={b.branch_id} className={`hover:bg-gray-50 active:bg-gray-100 transition-colors ${!b.is_active ? 'opacity-50' : ''}`}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-100">
+                          <GitBranch className="h-3.5 w-3.5 text-primary-600" />
+                        </div>
+                        <span className="font-medium text-gray-900">{b.branch_name}</span>
+                      </div>
+                    </td>
+                    <td className="hidden sm:table-cell px-4 py-3 font-mono text-xs text-gray-500">{b.branch_code}</td>
+                    <td className="hidden md:table-cell px-4 py-3 text-gray-500 text-xs">{b.address || <span className="text-gray-300">—</span>}</td>
+                    <td className="hidden md:table-cell px-4 py-3 text-gray-500 text-xs">{b.phone   || <span className="text-gray-300">—</span>}</td>
+                    <td className="hidden sm:table-cell px-4 py-3 text-center">
+                      {b.is_headquarters
+                        ? <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium"><Check className="h-3 w-3" /> HQ</span>
+                        : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {b.is_active
+                        ? <span className="text-green-600 text-xs font-medium">Active</span>
+                        : <span className="text-gray-400 text-xs">Inactive</span>}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button onClick={() => setViewBranch(b)}
+                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {branches.length === 0 && (
+                  <tr><td colSpan={7} className="py-12 text-center text-gray-400">
+                    <GitBranch className="mx-auto mb-2 h-8 w-8 opacity-30" />No branches found.
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Branch" size="sm">
         <BranchForm onSave={(body) => createMut.mutate(body)} onClose={() => setAddOpen(false)} isPending={createMut.isPending} />
       </Modal>
+
+      <Modal open={!!viewBranch && !editBranch} onClose={() => setViewBranch(null)}
+        title={viewBranch?.branch_name ?? 'Branch Details'} size="sm"
+        footer={
+          <div className="flex gap-3">
+            <Button variant="secondary" fullWidth onClick={() => setViewBranch(null)}>Close</Button>
+            <Button fullWidth icon={<Pencil className="h-4 w-4" />}
+              onClick={() => { setEditBranch(viewBranch); setViewBranch(null); }}>
+              Edit
+            </Button>
+          </div>
+        }
+      >
+        {viewBranch && (
+          <div className="space-y-3 text-sm">
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: 'Branch Code', value: viewBranch.branch_code },
+                { label: 'Status',      value: viewBranch.is_active ? 'Active' : 'Inactive' },
+                { label: 'Phone',       value: viewBranch.phone || '—' },
+                { label: 'HQ',          value: viewBranch.is_headquarters ? 'Yes' : 'No' },
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-lg bg-gray-50 px-3 py-2.5">
+                  <p className="text-xs text-gray-500">{label}</p>
+                  <p className="font-semibold text-gray-900 mt-0.5">{value}</p>
+                </div>
+              ))}
+            </div>
+            {viewBranch.address && (
+              <div className="rounded-lg bg-gray-50 px-3 py-2.5">
+                <p className="text-xs text-gray-500">Address</p>
+                <p className="font-semibold text-gray-900 mt-0.5">{viewBranch.address}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
       <Modal open={!!editBranch} onClose={() => setEditBranch(null)} title={`Edit — ${editBranch?.branch_name}`} size="sm">
         <BranchForm initial={editBranch}
           onSave={(body) => updateMut.mutate({ id: editBranch?.branch_id, body })}
@@ -886,7 +931,7 @@ function TaxForm({ initial, onSave, onClose, isPending }) {
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. VAT 16%"
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-600">Tax Type</label>
           <select value={taxType} onChange={(e) => setTaxType(e.target.value)}
@@ -1023,57 +1068,59 @@ function TaxTab() {
 
       {isLoading ? <PageSpinner /> : (
         <div className="rounded-xl border border-gray-100 bg-white overflow-hidden shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-100">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Name</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Type</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">Rate</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">Inclusive</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">Default</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {rates.map((r) => (
-                <tr key={r.tax_template_id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-gray-900">{r.template_name}</td>
-                  <td className="px-4 py-3">
-                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{r.tax_type}</span>
-                  </td>
-                  <td className="px-4 py-3 text-center font-semibold text-gray-700">{r.tax_rate}%</td>
-                  <td className="px-4 py-3 text-center">
-                    {r.is_inclusive
-                      ? <span className="text-green-600 text-xs font-medium">Incl.</span>
-                      : <span className="text-gray-400 text-xs">Excl.</span>}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    {r.is_default
-                      ? <span className="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700"><Check className="h-3 w-3" /> Default</span>
-                      : <span className="text-gray-300">—</span>}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => setEditItem(r)}
-                        className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button onClick={() => { if (window.confirm(`Delete "${r.template_name}"?`)) deleteMut.mutate(r.tax_template_id); }}
-                        className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">Name</th>
+                  <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Type</th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-600">Rate</th>
+                  <th className="hidden md:table-cell px-4 py-3 text-center font-medium text-gray-600">Inclusive</th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-600">Default</th>
+                  <th className="px-4 py-3" />
                 </tr>
-              ))}
-              {rates.length === 0 && (
-                <tr><td colSpan={6} className="py-12 text-center text-gray-400">
-                  <Percent className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                  No tax rates yet. Add one or use quick-add presets above.
-                </td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {rates.map((r) => (
+                  <tr key={r.tax_template_id} className="hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                    <td className="px-4 py-3 font-medium text-gray-900">{r.template_name}</td>
+                    <td className="hidden sm:table-cell px-4 py-3">
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{r.tax_type}</span>
+                    </td>
+                    <td className="px-4 py-3 text-center font-semibold text-gray-700">{r.tax_rate}%</td>
+                    <td className="hidden md:table-cell px-4 py-3 text-center">
+                      {r.is_inclusive
+                        ? <span className="text-green-600 text-xs font-medium">Incl.</span>
+                        : <span className="text-gray-400 text-xs">Excl.</span>}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {r.is_default
+                        ? <span className="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700"><Check className="h-3 w-3" /> Default</span>
+                        : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => setEditItem(r)}
+                          className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => { if (window.confirm(`Delete "${r.template_name}"?`)) deleteMut.mutate(r.tax_template_id); }}
+                          className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {rates.length === 0 && (
+                  <tr><td colSpan={6} className="py-12 text-center text-gray-400">
+                    <Percent className="mx-auto mb-2 h-8 w-8 opacity-30" />
+                    No tax rates yet. Add one or use quick-add presets above.
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -1189,19 +1236,20 @@ function ReturnReasonsTab() {
 
       {isLoading ? <PageSpinner /> : (
         <div className="rounded-xl border border-gray-100 bg-white overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Reason</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Code</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">Restock Default</th>
+                <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Code</th>
+                <th className="hidden md:table-cell px-4 py-3 text-center font-medium text-gray-600">Restock Default</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {reasons.map((r) => (
-                <tr key={r.reason_id} className={`hover:bg-gray-50 transition-colors ${!r.is_active ? 'opacity-50' : ''}`}>
+                <tr key={r.reason_id} className={`hover:bg-gray-50 active:bg-gray-100 transition-colors ${!r.is_active ? 'opacity-50' : ''}`}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-100">
@@ -1215,10 +1263,10 @@ function ReturnReasonsTab() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                  <td className="hidden sm:table-cell px-4 py-3 font-mono text-xs text-gray-500">
                     {r.reason_code || <span className="text-gray-300">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="hidden md:table-cell px-4 py-3 text-center">
                     {r.restock_by_default
                       ? <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium"><Check className="h-3 w-3" /> Yes</span>
                       : <span className="text-gray-400 text-xs">No</span>}
@@ -1252,6 +1300,7 @@ function ReturnReasonsTab() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -1358,71 +1407,52 @@ function SubscriptionTab() {
   if (subLoading) return <PageSpinner />;
 
   const badge = STATUS_BADGE[sub?.subscription_status] ?? { cls: 'bg-gray-100 text-gray-600', label: sub?.subscription_status };
-  const userPct   = sub?.max_users    ? Math.round((sub.current_users   / sub.max_users)   * 100) : 0;
-  const branchPct = sub?.max_branches ? Math.round((sub.current_branches / sub.max_branches) * 100) : 0;
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6">
       <h2 className="text-base font-semibold text-gray-900">Subscription & Plan</h2>
 
       {/* Current plan card */}
-      <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm space-y-4">
-        <div className="flex items-center justify-between">
+      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        <div className="p-5 flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Current Plan</p>
-            <p className="text-2xl font-bold text-primary-700 mt-0.5">{sub?.plan_name ?? 'None'}</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Current Plan</p>
+            <p className="text-2xl font-bold text-primary-700 mt-1">{sub?.plan_name ?? 'None'}</p>
           </div>
-          <span className={`rounded-full px-3 py-1 text-sm font-semibold ${badge.cls}`}>{badge.label}</span>
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap mt-1 ${badge.cls}`}>{badge.label}</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          {sub?.subscription_start_date && (
-            <div><span className="text-gray-500">Started: </span>
-              <span className="font-medium">{new Date(sub.subscription_start_date).toLocaleDateString()}</span></div>
-          )}
-          {sub?.subscription_end_date && (
-            <div><span className="text-gray-500">Renews: </span>
-              <span className="font-medium">{new Date(sub.subscription_end_date).toLocaleDateString()}</span></div>
-          )}
-          {sub?.plan_price > 0 && (
-            <div><span className="text-gray-500">Monthly: </span>
-              <span className="font-medium">KES {sub.plan_price.toLocaleString()}</span></div>
-          )}
-        </div>
-
-        {/* Usage bars */}
-        <div className="space-y-3 border-t border-gray-50 pt-3">
-          <div>
-            <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>Users</span><span>{sub?.current_users} / {sub?.max_users ?? '∞'}</span>
-            </div>
-            {sub?.max_users && (
-              <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                <div className={`h-full rounded-full transition-all ${userPct >= 90 ? 'bg-red-500' : userPct >= 70 ? 'bg-amber-500' : 'bg-primary-500'}`}
-                  style={{ width: `${Math.min(userPct, 100)}%` }} />
-              </div>
-            )}
+        <div className="grid grid-cols-3 gap-px bg-gray-100 border-t border-gray-100">
+          <div className="bg-white px-5 py-3">
+            <p className="text-xs text-gray-400 mb-1">Started</p>
+            <p className="text-sm font-medium text-gray-900">
+              {sub?.subscription_start_date
+                ? new Date(sub.subscription_start_date).toLocaleDateString()
+                : '—'}
+            </p>
           </div>
-          <div>
-            <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>Branches</span><span>{sub?.current_branches} / {sub?.max_branches ?? '∞'}</span>
-            </div>
-            {sub?.max_branches && (
-              <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                <div className={`h-full rounded-full transition-all ${branchPct >= 90 ? 'bg-red-500' : branchPct >= 70 ? 'bg-amber-500' : 'bg-primary-500'}`}
-                  style={{ width: `${Math.min(branchPct, 100)}%` }} />
-              </div>
-            )}
+          <div className="bg-white px-5 py-3">
+            <p className="text-xs text-gray-400 mb-1">Renews / Expires</p>
+            <p className={`text-sm font-medium ${!sub?.subscription_end_date ? 'text-gray-400' : 'text-gray-900'}`}>
+              {sub?.subscription_end_date
+                ? new Date(sub.subscription_end_date).toLocaleDateString()
+                : '—'}
+            </p>
+          </div>
+          <div className="bg-white px-5 py-3">
+            <p className="text-xs text-gray-400 mb-1">Monthly Rate</p>
+            <p className="text-sm font-medium text-gray-900">
+              {sub?.plan_price > 0 ? `KES ${sub.plan_price.toLocaleString()}` : '—'}
+            </p>
           </div>
         </div>
 
-        {/* Feature flags */}
-        <div className="flex gap-4 border-t border-gray-50 pt-3 text-sm">
-          <span className={`flex items-center gap-1.5 ${sub?.has_finance ? 'text-green-700' : 'text-gray-400'}`}>
+        <div className="px-5 pb-5 flex gap-6 border-t border-gray-100 pt-4">
+          <span className={`flex items-center gap-2 text-sm ${sub?.has_finance ? 'text-green-700' : 'text-gray-400'}`}>
             <CheckCircle2 className={`h-4 w-4 ${sub?.has_finance ? 'text-green-500' : 'text-gray-300'}`} />
             Finance Module
           </span>
-          <span className={`flex items-center gap-1.5 ${sub?.has_api_access ? 'text-green-700' : 'text-gray-400'}`}>
+          <span className={`flex items-center gap-2 text-sm ${sub?.has_api_access ? 'text-green-700' : 'text-gray-400'}`}>
             <CheckCircle2 className={`h-4 w-4 ${sub?.has_api_access ? 'text-green-500' : 'text-gray-300'}`} />
             API Access
           </span>
@@ -1433,36 +1463,60 @@ function SubscriptionTab() {
       {plans.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-gray-700 mb-3">Available Plans</h3>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {plans.map((p) => {
               const isCurrent = p.plan_name === sub?.plan_name;
+              const price = parseFloat(p.price);
               return (
-                <div key={p.plan_id}
-                  className={`rounded-xl border p-4 space-y-2 ${isCurrent ? 'border-primary-300 bg-primary-50' : 'border-gray-100 bg-white'}`}>
-                  <div className="flex items-center justify-between">
+                <div
+                  key={p.plan_id}
+                  className={`rounded-xl border p-4 ${
+                    isCurrent ? 'border-primary-300 bg-primary-50' : 'border-gray-100 bg-white shadow-sm'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3 mb-2">
                     <p className="font-semibold text-gray-900">{p.plan_name}</p>
-                    {isCurrent && <span className="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700">Current</span>}
+                    {isCurrent && (
+                      <span className="rounded-full bg-primary-200 px-2.5 py-0.5 text-xs font-semibold text-primary-800 whitespace-nowrap">
+                        Current
+                      </span>
+                    )}
                   </div>
-                  <p className="text-xl font-bold text-primary-700">
-                    {parseFloat(p.price) > 0 ? `KES ${parseFloat(p.price).toLocaleString()}` : 'Free'}
-                    <span className="text-sm font-normal text-gray-500">/mo</span>
+                  <p className="text-xl font-bold text-gray-900">
+                    {price > 0 ? `KES ${price.toLocaleString()}` : 'Free'}
+                    {price > 0 && <span className="text-xs font-normal text-gray-400 ml-1">/ mo</span>}
                   </p>
-                  <div className="text-xs text-gray-500 space-y-0.5">
-                    <p>Up to {p.max_users} users · {p.max_branches} branches</p>
-                    <p className="flex gap-3">
-                      {p.has_finance    && <span className="text-green-600">Finance</span>}
-                      {p.has_api_access && <span className="text-green-600">API</span>}
-                    </p>
-                  </div>
+                  <ul className="mt-3 space-y-1.5">
+                    <li className="flex items-center gap-2 text-xs text-gray-600">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                      {p.max_users > 0 ? `Up to ${p.max_users} users` : 'Unlimited users'}
+                    </li>
+                    <li className="flex items-center gap-2 text-xs text-gray-600">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                      {p.max_branches > 0 ? `${p.max_branches} branch${p.max_branches !== 1 ? 'es' : ''}` : 'Unlimited branches'}
+                    </li>
+                    <li className={`flex items-center gap-2 text-xs ${p.has_finance ? 'text-gray-600' : 'text-gray-400'}`}>
+                      {p.has_finance
+                        ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                        : <XCircle className="h-3.5 w-3.5 text-gray-300 shrink-0" />}
+                      Finance module
+                    </li>
+                    <li className={`flex items-center gap-2 text-xs ${p.has_api_access ? 'text-gray-600' : 'text-gray-400'}`}>
+                      {p.has_api_access
+                        ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                        : <XCircle className="h-3.5 w-3.5 text-gray-300 shrink-0" />}
+                      API access
+                    </li>
+                  </ul>
                   <button
                     onClick={() => openRequest(p.plan_id)}
-                    className={`mt-1 w-full rounded-lg border py-1.5 text-xs font-medium transition-colors ${
+                    className={`mt-3 w-full rounded-lg py-2 text-sm font-semibold transition-colors ${
                       isCurrent
-                        ? 'border-primary-300 text-primary-600 hover:bg-primary-100'
-                        : 'border-primary-400 text-primary-600 hover:bg-primary-50'
+                        ? 'bg-white border border-primary-300 text-primary-700 hover:bg-primary-100'
+                        : 'bg-primary-600 text-white hover:bg-primary-700'
                     }`}
                   >
-                    {isCurrent ? 'Renew' : 'Subscribe'}
+                    {isCurrent ? 'Renew Plan' : 'Subscribe'}
                   </button>
                 </div>
               );
@@ -1472,17 +1526,24 @@ function SubscriptionTab() {
       )}
 
       {/* My subscription requests */}
-      {myRequests.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">My Subscription Requests</h3>
-          <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-700">My Subscription Requests</h3>
+          <Button size="sm" icon={<Send className="h-3.5 w-3.5" />} onClick={() => openRequest()}>
+            New Request
+          </Button>
+        </div>
+        <div className="rounded-xl border border-gray-100 bg-white overflow-hidden shadow-sm">
+          {myRequests.length === 0 ? (
+            <p className="py-10 text-center text-sm text-gray-400">No subscription requests yet.</p>
+          ) : (
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Plan</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Period</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Submitted</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Plan</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Period</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Submitted</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -1506,9 +1567,9 @@ function SubscriptionTab() {
                 })}
               </tbody>
             </table>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
       <p className="text-xs text-gray-400">
         Questions? Contact{' '}

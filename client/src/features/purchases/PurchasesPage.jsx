@@ -834,39 +834,47 @@ export default function PurchasesPage() {
       {tab === 'po' && (
         poLoading ? <PageSpinner /> : (
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="py-3 pl-4 text-left text-xs font-medium text-gray-500">PO Number</th>
                   <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Supplier</th>
-                  <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Date</th>
+                  <th className="hidden sm:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Date</th>
                   <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Status</th>
                   <th className="py-3 px-4 text-right text-xs font-medium text-gray-500">Amount</th>
-                  <th className="py-3 pr-4 text-right text-xs font-medium text-gray-500">Actions</th>
+                  <th className="py-3 pr-4 text-center text-xs font-medium text-gray-500">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredPOs.length === 0 ? (
                   <tr><td colSpan={6} className="py-10 text-center text-gray-400">No purchase orders found</td></tr>
                 ) : filteredPOs.map((po) => (
-                  <tr key={po.po_id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setDetailPO(po)}>
+                  <tr key={po.po_id} className="hover:bg-gray-50 active:bg-gray-100 cursor-pointer" onClick={() => setDetailPO(po)}>
                     <td className="py-3 pl-4 font-mono text-sm font-medium text-primary-700">{po.po_number}</td>
                     <td className="py-3 px-4 text-gray-800">{po.supplier_name}</td>
-                    <td className="py-3 px-4 text-gray-500">{po.order_date?.slice(0, 10)}</td>
+                    <td className="hidden sm:table-cell py-3 px-4 text-gray-500">{po.order_date?.slice(0, 10)}</td>
                     <td className="py-3 px-4"><StatusBadge status={po.status} /></td>
                     <td className="py-3 px-4 text-right font-medium">{formatCurrency(po.total_amount)}</td>
-                    <td className="py-3 pr-4 text-right" onClick={(e) => e.stopPropagation()}>
-                      {['approved', 'partially_received'].includes(po.status) && (
-                        <button className="text-xs text-blue-600 hover:underline"
-                          onClick={() => setGrnForPO(po)}>
-                          Receive
+                    <td className="py-3 pr-4 text-center" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-2">
+                        <button onClick={() => setDetailPO(po)}
+                          className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                          View
                         </button>
-                      )}
+                        {['approved', 'partially_received'].includes(po.status) && (
+                          <button className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+                            onClick={() => setGrnForPO(po)}>
+                            Receive
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )
       )}
@@ -875,32 +883,41 @@ export default function PurchasesPage() {
       {tab === 'grn' && (
         grnLoading ? <PageSpinner /> : (
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="py-3 pl-4 text-left text-xs font-medium text-gray-500">GRN Number</th>
-                  <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">PO Number</th>
+                  <th className="hidden sm:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">PO Number</th>
                   <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Supplier</th>
-                  <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Received</th>
+                  <th className="hidden sm:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Received</th>
                   <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Status</th>
-                  <th className="py-3 pr-4 text-right text-xs font-medium text-gray-500">Amount</th>
+                  <th className="py-3 px-4 text-right text-xs font-medium text-gray-500">Amount</th>
+                  <th className="py-3 pr-4 text-center text-xs font-medium text-gray-500">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredGRNs.length === 0 ? (
-                  <tr><td colSpan={6} className="py-10 text-center text-gray-400">No GRNs found</td></tr>
+                  <tr><td colSpan={7} className="py-10 text-center text-gray-400">No GRNs found</td></tr>
                 ) : filteredGRNs.map((grn) => (
-                  <tr key={grn.grn_id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setDetailGRN(grn)}>
+                  <tr key={grn.grn_id} className="hover:bg-gray-50 active:bg-gray-100 cursor-pointer" onClick={() => setDetailGRN(grn)}>
                     <td className="py-3 pl-4 font-mono text-sm font-medium text-primary-700">{grn.grn_number}</td>
-                    <td className="py-3 px-4 font-mono text-gray-600">{grn.po_number}</td>
+                    <td className="hidden sm:table-cell py-3 px-4 font-mono text-gray-600">{grn.po_number}</td>
                     <td className="py-3 px-4 text-gray-800">{grn.supplier_name}</td>
-                    <td className="py-3 px-4 text-gray-500">{grn.received_date?.slice(0, 10)}</td>
+                    <td className="hidden sm:table-cell py-3 px-4 text-gray-500">{grn.received_date?.slice(0, 10)}</td>
                     <td className="py-3 px-4"><StatusBadge status={grn.status} /></td>
-                    <td className="py-3 pr-4 text-right font-medium">{formatCurrency(grn.total_amount)}</td>
+                    <td className="py-3 px-4 text-right font-medium">{formatCurrency(grn.total_amount)}</td>
+                    <td className="py-3 pr-4 text-center" onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => setDetailGRN(grn)}
+                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                        View
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )
       )}

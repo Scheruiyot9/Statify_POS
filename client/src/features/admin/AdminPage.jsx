@@ -143,8 +143,8 @@ function CreateCompanyModal({ plans, onClose }) {
       <div className="space-y-5">
         <div>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Company Details</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2 flex items-start gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="col-span-full flex items-start gap-4">
               <ImageUpload value={form.logo_url} onChange={(v) => set('logo_url', v)} label="Company Logo" size="md" />
               <div className="flex-1"><Field label="Company Name" required><input value={form.company_name} onChange={(e) => set('company_name', e.target.value)} className={inp} /></Field></div>
             </div>
@@ -182,11 +182,11 @@ function CreateCompanyModal({ plans, onClose }) {
         <div className="border-t border-gray-100" />
         <div>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Admin User</p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="First Name"><input value={form.admin_first_name} onChange={(e) => set('admin_first_name', e.target.value)} className={inp} /></Field>
             <Field label="Last Name"><input value={form.admin_last_name} onChange={(e) => set('admin_last_name', e.target.value)} className={inp} /></Field>
-            <div className="col-span-2"><Field label="Admin Email" required><input type="email" value={form.admin_email} onChange={(e) => set('admin_email', e.target.value)} className={inp} /></Field></div>
-            <div className="col-span-2">
+            <div className="col-span-full"><Field label="Admin Email" required><input type="email" value={form.admin_email} onChange={(e) => set('admin_email', e.target.value)} className={inp} /></Field></div>
+            <div className="col-span-full">
               <Field label="Temporary Password" hint="Default: Admin@123 — user must change on first login">
                 <input type="password" value={form.admin_password} onChange={(e) => set('admin_password', e.target.value)} className={inp} />
               </Field>
@@ -289,7 +289,7 @@ function CompanyEditModal({ company, plans, onClose }) {
             <div className="flex-1"><Field label="Company Name" required><input value={form.company_name} onChange={(e) => set('company_name', e.target.value)} className={inp} /></Field></div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Domain / Website"><input value={form.domain} onChange={(e) => set('domain', e.target.value)} placeholder="company.example.com" className={inp} /></Field>
             <Field label="Subscription Plan">
               <select value={form.subscription_plan_id} onChange={(e) => set('subscription_plan_id', e.target.value)} className={sel}>
@@ -608,7 +608,7 @@ function RecordSubscriptionModal({ companyId: initialCompanyId, companies = [], 
           </select>
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Start Date" required>
             <input type="date" value={form.startDate} max={form.endDate}
               onChange={(e) => handleStartChange(e.target.value)} className={inp} />
@@ -690,8 +690,8 @@ function PlanModal({ plan, onClose }) {
       footer={<div className="flex gap-3"><Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button><Button fullWidth loading={isPending} onClick={handleSubmit}>{isEdit ? 'Save Changes' : 'Create Plan'}</Button></div>}
     >
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="col-span-full">
             <Field label="Plan Name" required>
               <input value={form.plan_name} onChange={(e) => set('plan_name', e.target.value)} className={inp} placeholder="e.g. Growth" />
             </Field>
@@ -1073,10 +1073,10 @@ function UserModal({ companyId: initialCompanyId, user, onClose, companies = [] 
     <Modal open onClose={onClose} title={isEdit ? `Edit User — ${user.first_name} ${user.last_name}` : 'Create User'}
       footer={<div className="flex gap-3"><Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button><Button fullWidth loading={isPending} onClick={handleSubmit}>{isEdit ? 'Save Changes' : 'Create User'}</Button></div>}
     >
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Super-admin toggle + company selector — only in create flow without pre-selected company */}
         {showCompanyPicker && (
-          <div className="col-span-2 space-y-2">
+          <div className="col-span-full space-y-2">
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <input type="checkbox" checked={asSuperAdmin} onChange={(e) => setAsSuperAdmin(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
               <span className="text-sm font-medium text-gray-700">Create as Super Admin (no company)</span>
@@ -1093,7 +1093,7 @@ function UserModal({ companyId: initialCompanyId, user, onClose, companies = [] 
         )}
         <Field label="First Name" required><input value={form.first_name} onChange={(e) => set('first_name', e.target.value)} className={inp} /></Field>
         <Field label="Last Name"><input value={form.last_name} onChange={(e) => set('last_name', e.target.value)} className={inp} /></Field>
-        {!isEdit && <div className="col-span-2"><Field label="Email" required><input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} className={inp} /></Field></div>}
+        {!isEdit && <div className="col-span-full"><Field label="Email" required><input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} className={inp} /></Field></div>}
         <Field label="Phone"><input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="+254…" className={inp} /></Field>
         {!asSuperAdmin && (<>
         <Field label="Role">
@@ -1236,12 +1236,12 @@ function BranchModal({ companyId, branch, onClose }) {
     <Modal open onClose={onClose} title={isEdit ? `Edit Branch — ${branch.branch_name}` : 'Create Branch'}
       footer={<div className="flex gap-3"><Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button><Button fullWidth loading={isPending} onClick={handleSubmit}>{isEdit ? 'Save Changes' : 'Create Branch'}</Button></div>}
     >
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Branch Name" required><input value={form.branch_name} onChange={(e) => set('branch_name', e.target.value)} className={inp} /></Field>
         <Field label="Branch Code" required={!isEdit} hint={isEdit ? 'Code cannot be changed' : 'e.g. NBO-01'}>
           <input value={form.branch_code} onChange={(e) => set('branch_code', e.target.value.toUpperCase())} disabled={isEdit} className={`${inp} ${isEdit ? 'bg-gray-50 text-gray-400' : ''}`} />
         </Field>
-        <div className="col-span-2"><Field label="Address"><textarea value={form.address} onChange={(e) => set('address', e.target.value)} rows={2} className={`${inp} resize-none`} placeholder="Street, City, Country" /></Field></div>
+        <div className="col-span-full"><Field label="Address"><textarea value={form.address} onChange={(e) => set('address', e.target.value)} rows={2} className={`${inp} resize-none`} placeholder="Street, City, Country" /></Field></div>
         <Field label="Phone"><input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="+254…" className={inp} /></Field>
         {isEdit && (
           <Field label="Status">
@@ -1365,13 +1365,13 @@ function TerminalModal({ companyId, terminal, onClose }) {
     <Modal open onClose={onClose} title={isEdit ? `Edit Terminal — ${terminal.terminal_name}` : 'Create Terminal'}
       footer={<div className="flex gap-3"><Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button><Button fullWidth loading={isPending} onClick={handleSubmit}>{isEdit ? 'Save Changes' : 'Create Terminal'}</Button></div>}
     >
-      <div className="grid grid-cols-2 gap-3">
-        {!isEdit && <div className="col-span-2"><Field label="Branch" required><select value={form.branchId} onChange={(e) => set('branchId', e.target.value)} className={sel}><option value="">Select branch…</option>{branches.map((b) => <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>)}</select></Field></div>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {!isEdit && <div className="col-span-full"><Field label="Branch" required><select value={form.branchId} onChange={(e) => set('branchId', e.target.value)} className={sel}><option value="">Select branch…</option>{branches.map((b) => <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>)}</select></Field></div>}
         <Field label="Terminal Name" required><input value={form.terminalName} onChange={(e) => set('terminalName', e.target.value)} placeholder="e.g. Main Till" className={inp} /></Field>
         <Field label="Terminal Code" required={!isEdit} hint={isEdit ? 'Code cannot be changed' : 'e.g. TILL-01'}>
           <input value={form.terminalCode} onChange={(e) => set('terminalCode', e.target.value.toUpperCase())} disabled={isEdit} className={`${inp} ${isEdit ? 'bg-gray-50 text-gray-400' : ''}`} />
         </Field>
-        <div className="col-span-2"><Field label="Description"><input value={form.description} onChange={(e) => set('description', e.target.value)} className={inp} /></Field></div>
+        <div className="col-span-full"><Field label="Description"><input value={form.description} onChange={(e) => set('description', e.target.value)} className={inp} /></Field></div>
         {isEdit && <Field label="Status"><select value={form.isActive ? 'true' : 'false'} onChange={(e) => set('isActive', e.target.value === 'true')} className={sel}><option value="true">Active</option><option value="false">Inactive</option></select></Field>}
       </div>
     </Modal>
@@ -1555,11 +1555,11 @@ function CustomerModal({ companyId, customer, onClose }) {
     <Modal open onClose={onClose} title={isEdit ? `Edit Customer — ${customer.customer_name}` : 'Create Customer'}
       footer={<div className="flex gap-3"><Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button><Button fullWidth loading={isPending} onClick={handleSubmit}>{isEdit ? 'Save Changes' : 'Create Customer'}</Button></div>}
     >
-      <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2"><Field label="Customer Name" required><input value={form.customer_name} onChange={(e) => set('customer_name', e.target.value)} className={inp} /></Field></div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="col-span-full"><Field label="Customer Name" required><input value={form.customer_name} onChange={(e) => set('customer_name', e.target.value)} className={inp} /></Field></div>
         <Field label="Phone"><input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="+254…" className={inp} /></Field>
         <Field label="Email"><input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} className={inp} /></Field>
-        <div className="col-span-2">
+        <div className="col-span-full">
           <Field label="Customer Group">
             <select value={form.customer_group_id} onChange={(e) => set('customer_group_id', e.target.value)} className={sel}>
               <option value="">No group</option>
@@ -1683,8 +1683,8 @@ function ProductModal({ companyId, product, onClose }) {
     <Modal open onClose={onClose} title={isEdit ? `Edit Product — ${product.product_name}` : 'Create Product'} size="lg"
       footer={<div className="flex gap-3"><Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button><Button fullWidth loading={isPending} onClick={handleSubmit}>{isEdit ? 'Save Changes' : 'Create Product'}</Button></div>}
     >
-      <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2"><Field label="Product Name" required><input value={form.product_name} onChange={(e) => set('product_name', e.target.value)} className={inp} /></Field></div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="col-span-full"><Field label="Product Name" required><input value={form.product_name} onChange={(e) => set('product_name', e.target.value)} className={inp} /></Field></div>
         <Field label="SKU" required={!isEdit} hint={isEdit ? 'SKU cannot be changed' : undefined}>
           <input value={form.sku} onChange={(e) => set('sku', e.target.value)} disabled={isEdit} className={`${inp} ${isEdit ? 'bg-gray-50 text-gray-400' : ''}`} />
         </Field>
@@ -2251,7 +2251,7 @@ function MpesaConfigModal({ companyId: initialCompanyId, companies = [], config,
             </select>
           </Field>
         )}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Branch (blank = company-wide)">
             <select value={form.branchId} onChange={(e) => set('branchId', e.target.value)} className={sel}>
               <option value="">Company-wide</option>
@@ -2281,13 +2281,13 @@ function MpesaConfigModal({ companyId: initialCompanyId, companies = [], config,
             <input type="password" value={form.consumerSecret} onChange={(e) => set('consumerSecret', e.target.value)}
               placeholder="Consumer Secret" className={inp} />
           </Field>
-          <div className="col-span-2">
+          <div className="col-span-full">
             <Field label="Passkey" required>
               <input type="password" value={form.passkey} onChange={(e) => set('passkey', e.target.value)}
                 placeholder={isEdit ? `New passkey (current: ${config.passkey_hint})` : 'Passkey'} className={inp} />
             </Field>
           </div>
-          <div className="col-span-2">
+          <div className="col-span-full">
             <Field label="Callback URL" hint="Must be publicly accessible HTTPS URL">
               <input type="url" value={form.callbackUrl} onChange={(e) => set('callbackUrl', e.target.value)}
                 placeholder="https://your-domain/api/mpesa/callback" className={inp} />
@@ -3066,7 +3066,7 @@ function ReportsPanel({ companies }) {
 
       {/* Summary cards */}
       {reportData && Object.keys(summary).length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:grid-cols-4">
           {Object.entries(summary).map(([k, v]) => (
             <div key={k} className="rounded-xl border border-gray-100 bg-white shadow-sm p-4">
               <p className="text-xs text-gray-500 capitalize">{k.replace(/([A-Z])/g, ' $1').trim()}</p>
@@ -3190,7 +3190,7 @@ function ApproveRequestModal({ request, plans, onClose }) {
           {request.message && <p><span className="text-gray-500">Note:</span> <span className="text-gray-700 italic">{request.message}</span></p>}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-600">Start Date</label>
             <input type="date" value={form.startDate} max={form.endDate}

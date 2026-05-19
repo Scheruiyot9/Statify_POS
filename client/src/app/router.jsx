@@ -23,6 +23,7 @@ import MpesaPage        from '@/features/mpesa/MpesaPage';
 import AccountsPage     from '@/features/accounts/AccountsPage';
 import AccountLedgerPage from '@/features/accounts/AccountLedgerPage';
 import BankAccountsPage from '@/features/bank-accounts/BankAccountsPage';
+import BankLedgerPage   from '@/features/bank-accounts/BankLedgerPage';
 import SuppliersPage    from '@/features/suppliers/SuppliersPage';
 import PurchasesPage   from '@/features/purchases/PurchasesPage';
 import PaymentsPage    from '@/features/payments/PaymentsPage';
@@ -117,6 +118,7 @@ export default function AppRouter() {
         <Route path="accounts"     element={<FinanceRoute><AccountsPage /></FinanceRoute>} />
         <Route path="accounts/:accountId/ledger" element={<FinanceRoute><AccountLedgerPage /></FinanceRoute>} />
         <Route path="bank-accounts" element={<FinanceRoute><BankAccountsPage /></FinanceRoute>} />
+        <Route path="bank-accounts/:bankAccountId/ledger" element={<FinanceRoute><BankLedgerPage /></FinanceRoute>} />
         <Route path="suppliers"    element={<FinanceRoute><SuppliersPage /></FinanceRoute>} />
         <Route path="purchases"    element={<FinanceRoute><PurchasesPage /></FinanceRoute>} />
         <Route path="payments"     element={<FinanceRoute><PaymentsPage /></FinanceRoute>} />

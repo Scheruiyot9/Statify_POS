@@ -135,7 +135,7 @@ function PaymentModal({ onClose }) {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Branch *">
             <select className={sel} value={form.branch_id} onChange={(e) => set('branch_id', e.target.value)}>
               <option value="">— Select branch —</option>
@@ -150,7 +150,7 @@ function PaymentModal({ onClose }) {
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Amount (KES) *">
             <input type="number" min="0.01" step="0.01" className={inp}
               value={form.amount} onChange={(e) => set('amount', e.target.value)}
@@ -354,40 +354,48 @@ export default function PaymentsPage() {
       {/* Table */}
       {isLoading ? <PageSpinner /> : (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="py-3 pl-4 text-left text-xs font-medium text-gray-500">Date</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Supplier</th>
-                <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Method</th>
-                <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Reference</th>
-                <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Bank Account</th>
-                <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">PO</th>
-                <th className="py-3 pr-4 text-right text-xs font-medium text-gray-500">Amount</th>
+                <th className="hidden sm:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Method</th>
+                <th className="hidden md:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Reference</th>
+                <th className="hidden md:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Bank Account</th>
+                <th className="hidden lg:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">PO</th>
+                <th className="py-3 px-4 text-right text-xs font-medium text-gray-500">Amount</th>
+                <th className="py-3 pr-4 text-center text-xs font-medium text-gray-500">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-gray-400">No payments recorded</td>
+                  <td colSpan={8} className="py-10 text-center text-gray-400">No payments recorded</td>
                 </tr>
               ) : filtered.map((p) => (
-                <tr key={p.payment_id} className="hover:bg-gray-50 cursor-pointer"
+                <tr key={p.payment_id} className="hover:bg-gray-50 active:bg-gray-100 cursor-pointer"
                   onClick={() => setSelectedPayment(p)}>
                   <td className="py-3 pl-4 text-gray-600">{p.payment_date?.slice(0, 10)}</td>
                   <td className="py-3 px-4 font-medium text-gray-900">{p.supplier_name}</td>
-                  <td className="py-3 px-4"><MethodBadge method={p.payment_method} /></td>
-                  <td className="py-3 px-4 text-gray-500">{p.reference_number || '—'}</td>
-                  <td className="py-3 px-4 text-gray-500">{p.bank_account_name || '—'}</td>
-                  <td className="py-3 px-4 font-mono text-gray-500 text-xs">{p.po_number || '—'}</td>
-                  <td className="py-3 pr-4 text-right font-semibold text-gray-900">{formatCurrency(p.amount)}</td>
+                  <td className="hidden sm:table-cell py-3 px-4"><MethodBadge method={p.payment_method} /></td>
+                  <td className="hidden md:table-cell py-3 px-4 text-gray-500">{p.reference_number || '—'}</td>
+                  <td className="hidden md:table-cell py-3 px-4 text-gray-500">{p.bank_account_name || '—'}</td>
+                  <td className="hidden lg:table-cell py-3 px-4 font-mono text-gray-500 text-xs">{p.po_number || '—'}</td>
+                  <td className="py-3 px-4 text-right font-semibold text-gray-900">{formatCurrency(p.amount)}</td>
+                  <td className="py-3 pr-4 text-center" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => setSelectedPayment(p)}
+                      className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                      View
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
             {filtered.length > 0 && (
               <tfoot className="border-t border-gray-200 bg-gray-50">
                 <tr>
-                  <td colSpan={6} className="py-2 pl-4 text-xs font-medium text-gray-500">
+                  <td colSpan={7} className="py-2 pl-4 text-xs font-medium text-gray-500">
                     {filtered.length} payment{filtered.length !== 1 ? 's' : ''}
                   </td>
                   <td className="py-2 pr-4 text-right text-sm font-bold text-gray-900">
@@ -397,6 +405,7 @@ export default function PaymentsPage() {
               </tfoot>
             )}
           </table>
+          </div>
         </div>
       )}
 

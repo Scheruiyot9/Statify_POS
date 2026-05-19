@@ -208,7 +208,7 @@ function StepSelectItems({ transaction, items, setItems, reasons }) {
                           <option value="no">No — write off</option>
                         </select>
                       </div>
-                      <div className="col-span-2 flex items-center justify-between rounded-lg bg-white border border-gray-100 px-3 py-2">
+                      <div className="col-span-full flex items-center justify-between rounded-lg bg-white border border-gray-100 px-3 py-2">
                         <span className="text-xs text-gray-500">Line refund</span>
                         <span className="font-semibold text-gray-900 text-sm">{formatCurrency(selected.lineRefundAmount)}</span>
                       </div>

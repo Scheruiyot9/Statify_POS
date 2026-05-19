@@ -467,7 +467,7 @@ async function getSessionDetail(companyId, sessionId) {
   `, [sessionId, companyId]);
   if (!sessionRows.length) throw AppError.notFound('Session');
 
-  const [txnRes, payRes, payModeRes] = await Promise.all([
+  const [txnRes, payRes] = await Promise.all([
     query(`
       SELECT st.transaction_id, st.transaction_number, st.transaction_date,
              st.total_amount::numeric, st.status,
@@ -491,15 +491,20 @@ async function getSessionDetail(companyId, sessionId) {
       WHERE st.pos_session_id = $1 AND st.status = 'completed'
       GROUP BY pm.payment_method_id, pm.method_name ORDER BY total DESC
     `, [sessionId]),
-    query(`
+  ]);
+
+  let payModeRows = [];
+  try {
+    const payModeRes = await query(`
       SELECT spa.count_type, spa.amount::numeric,
              pm.method_name
       FROM session_pay_mode_amounts spa
       JOIN payment_methods pm ON pm.payment_method_id = spa.payment_method_id
       WHERE spa.session_id = $1
       ORDER BY pm.method_name, spa.count_type
-    `, [sessionId]),
-  ]);
+    `, [sessionId]);
+    payModeRows = payModeRes.rows;
+  } catch { /* table may not exist in older deployments */ }
 
   const s = sessionRows[0];
   return {
@@ -530,7 +535,7 @@ async function getSessionDetail(companyId, sessionId) {
       count:             r.count,
       total:             parseFloat(r.total),
     })),
-    pay_mode_amounts: payModeRes.rows.map((r) => ({
+    pay_mode_amounts: payModeRows.map((r) => ({
       method_name: r.method_name,
       count_type:  r.count_type,
       amount:      parseFloat(r.amount),

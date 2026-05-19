@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Calendar, Download, ArrowUpRight } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { ArrowLeft, Calendar, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
@@ -12,15 +11,15 @@ import { formatCurrency, formatDate } from '@/utils/formatters';
 const todayISO = new Date().toISOString().slice(0, 10);
 const toISO    = (d) => d.toISOString().slice(0, 10);
 
-const ENTRY_TYPE_COLORS = {
-  MANUAL:        'bg-purple-100 text-purple-700',
+const BANK_TYPE_COLORS = {
   SALE:          'bg-green-100 text-green-700',
+  AR_SETTLEMENT: 'bg-teal-100 text-teal-700',
   GRN:           'bg-blue-100 text-blue-700',
   PAYMENT:       'bg-red-100 text-red-600',
   RETURN:        'bg-amber-100 text-amber-700',
-  OPENING:       'bg-gray-100 text-gray-600',
-  VOID:          'bg-red-50 text-red-400',
-  AR_SETTLEMENT: 'bg-teal-100 text-teal-700',
+  OPENING:       'bg-purple-100 text-purple-700',
+  MANUAL:        'bg-gray-100 text-gray-600',
+  VOID:          'bg-rose-100 text-rose-700',
 };
 
 // ── Entry Lines Modal (double-entry detail) ───────────────────────────────────
@@ -33,7 +32,7 @@ function EntryLinesModal({ entryId, onClose }) {
     retry: false,
   });
 
-  const fmt    = (n) => n > 0 ? formatCurrency(n) : '';
+  const fmt     = (n) => n > 0 ? formatCurrency(n) : '';
   const totalDr = (j?.lines ?? []).reduce((s, l) => s + (l.debit  ?? 0), 0);
   const totalCr = (j?.lines ?? []).reduce((s, l) => s + (l.credit ?? 0), 0);
 
@@ -109,11 +108,11 @@ function EntryLinesModal({ entryId, onClose }) {
   );
 }
 
-// ── Account Ledger Page ───────────────────────────────────────────────────────
+// ── Bank Ledger Page ──────────────────────────────────────────────────────────
 
-export default function AccountLedgerPage() {
-  const { accountId } = useParams();
-  const navigate      = useNavigate();
+export default function BankLedgerPage() {
+  const { bankAccountId } = useParams();
+  const navigate          = useNavigate();
 
   const [startDate, setStart]        = useState(toISO(new Date(Date.now() - 29 * 86400000)));
   const [endDate,   setEnd]          = useState(todayISO);
@@ -121,93 +120,61 @@ export default function AccountLedgerPage() {
   const [viewingEntryId, setViewing] = useState(null);
 
   const { data: account } = useQuery({
-    queryKey: ['account', accountId],
-    queryFn:  () => api.get(`/accounts/${accountId}`).then((r) => r.data.data),
-    enabled:  !!accountId,
-  });
-
-  const { data: balanceData } = useQuery({
-    queryKey: ['account-balance', accountId],
-    queryFn:  () => api.get(`/accounts/${accountId}/balance`).then((r) => r.data.data),
-    enabled:  !!accountId,
+    queryKey: ['bank-account', bankAccountId],
+    queryFn:  () => api.get(`/bank-accounts/${bankAccountId}`).then((r) => r.data.data),
+    enabled:  !!bankAccountId,
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['account-ledger', accountId, startDate, endDate, page],
-    queryFn:  () => api.get(`/accounts/${accountId}/ledger`, {
+    queryKey: ['bank-ledger', bankAccountId, startDate, endDate, page],
+    queryFn:  () => api.get(`/bank-accounts/${bankAccountId}/ledger`, {
       params: { startDate, endDate, page, limit: 30 },
     }).then((r) => r.data.data),
     placeholderData: (prev) => prev,
-    enabled: !!accountId,
+    enabled: !!bankAccountId,
   });
 
-  const { refetch: fetchAllForExport, isFetching: isExporting } = useQuery({
-    queryKey: ['account-ledger-export', accountId, startDate, endDate],
-    queryFn:  () => api.get(`/accounts/${accountId}/ledger`, {
-      params: { startDate, endDate, page: 1, limit: 5000 },
-    }).then((r) => r.data.data),
-    enabled: false,
-    gcTime: 0,
-  });
-
-  const handleExport = async () => {
-    const result = await fetchAllForExport();
-    const allEntries = result.data?.entries ?? [];
-    const header = ['Date', 'Type', 'Reference', 'Description', 'Debit (Dr)', 'Credit (Cr)', 'Balance'];
-    const rows = allEntries.map((e) => [
-      e.entryDate ? new Date(e.entryDate).toLocaleDateString('en-KE') : '',
-      e.sourceType ?? '',
-      e.sourceRef ?? e.entryNumber ?? '',
-      e.description ?? '',
-      e.debit  ?? 0,
-      e.credit ?? 0,
-      e.balance ?? '',
-    ]);
-    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-    ws['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 20 }, { wch: 42 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, account?.account_code ?? 'Ledger');
-    XLSX.writeFile(wb, `Ledger_${account?.account_code ?? accountId}_${startDate}_to_${endDate}.xlsx`);
-  };
-
-  const { entries = [], total = 0, pages = 1 } = data ?? {};
+  const { entries = [], total = 0, pages = 1, summary = {}, warning } = data ?? {};
 
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/app/accounts')}
+          <button onClick={() => navigate('/app/bank-accounts')}
             className="flex items-center justify-center rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors">
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-sm text-gray-400">{account?.account_code}</span>
-              <h1 className="text-lg font-semibold text-gray-900">{account?.account_name ?? 'Account Ledger'}</h1>
-            </div>
-            <p className="text-xs text-gray-400 capitalize mt-0.5">{account?.account_type} account</p>
+            <h1 className="text-lg font-semibold text-gray-900">{account?.account_name ?? 'Bank Ledger'}</h1>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {account?.bank_name}{account?.account_number ? ` · ${account.account_number}` : ''}
+            </p>
           </div>
         </div>
-        <button onClick={handleExport} disabled={isExporting}
-          className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 transition-colors">
-          <Download className="h-4 w-4" />{isExporting ? 'Exporting…' : 'Export to Excel'}
-        </button>
       </div>
 
       {/* Balance summary */}
-      {balanceData && (
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: 'Balance',       value: balanceData.balance      ?? 0, accent: true },
-            { label: 'Total Debits',  value: balanceData.totalDebits  ?? 0 },
-            { label: 'Total Credits', value: balanceData.totalCredits ?? 0 },
-          ].map(({ label, value, accent }) => (
-            <div key={label} className={`rounded-xl p-4 text-center ${accent ? 'bg-primary-50 border border-primary-200' : 'bg-gray-50'}`}>
-              <p className="text-xs text-gray-500">{label}</p>
-              <p className={`text-lg font-bold mt-0.5 ${accent ? 'text-primary-700' : 'text-gray-800'}`}>{formatCurrency(value)}</p>
-            </div>
-          ))}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-xl bg-primary-50 border border-primary-200 p-4 text-center">
+          <p className="text-xs text-gray-500">Current Balance</p>
+          <p className="text-lg font-bold text-primary-700 mt-0.5">
+            {account ? `${account.currency} ${formatCurrency(account.current_balance).replace('KES', '').trim()}` : '—'}
+          </p>
+        </div>
+        <div className="rounded-xl bg-green-50 border border-green-200 p-4 text-center">
+          <p className="text-xs text-gray-500 flex items-center justify-center gap-1"><ArrowDownLeft className="h-3 w-3 text-green-600" />Money In</p>
+          <p className="text-lg font-bold text-green-700 mt-0.5">{formatCurrency(summary.totalIn ?? 0)}</p>
+        </div>
+        <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-center">
+          <p className="text-xs text-gray-500 flex items-center justify-center gap-1"><ArrowUpRight className="h-3 w-3 text-red-500" />Money Out</p>
+          <p className="text-lg font-bold text-red-600 mt-0.5">{formatCurrency(summary.totalOut ?? 0)}</p>
+        </div>
+      </div>
+
+      {warning && (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-xs text-amber-800">
+          ⚠ {warning}
         </div>
       )}
 
@@ -226,7 +193,7 @@ export default function AccountLedgerPage() {
       {/* Ledger table */}
       {isLoading ? <PageSpinner /> : entries.length === 0 ? (
         <div className="rounded-xl border border-gray-100 bg-white py-16 text-center text-gray-400 text-sm">
-          No entries for this period
+          No transactions for this period
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
@@ -237,10 +204,10 @@ export default function AccountLedgerPage() {
                 <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Type</th>
                 <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Reference</th>
                 <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Description</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-blue-600">Dr</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-green-600">Cr</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-green-600">In (Cr)</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-red-500">Out (Dr)</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">Balance</th>
-                <th className="px-2 py-3" />
+                <th className="px-2 py-3 text-center text-xs font-medium text-gray-500">Entry</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -248,7 +215,7 @@ export default function AccountLedgerPage() {
                 <tr key={`${e.lineId ?? e.entryId ?? idx}`} className="hover:bg-gray-50 active:bg-gray-100 transition-colors">
                   <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDate(e.entryDate)}</td>
                   <td className="hidden sm:table-cell px-4 py-3">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${ENTRY_TYPE_COLORS[e.sourceType] ?? 'bg-gray-100 text-gray-600'}`}>
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${BANK_TYPE_COLORS[e.sourceType] ?? 'bg-gray-100 text-gray-600'}`}>
                       {e.sourceType ?? '—'}
                     </span>
                   </td>
@@ -257,26 +224,20 @@ export default function AccountLedgerPage() {
                     <p className="truncate" title={e.description}>{e.description}</p>
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-xs">
-                    {e.debit > 0
-                      ? <span className="font-semibold text-blue-700">{formatCurrency(e.debit)}</span>
-                      : <span className="text-gray-300">—</span>}
+                    {e.debit > 0 ? <span className="font-semibold text-green-700">{formatCurrency(e.debit)}</span> : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-xs">
-                    {e.credit > 0
-                      ? <span className="font-semibold text-green-700">{formatCurrency(e.credit)}</span>
-                      : <span className="text-gray-300">—</span>}
+                    {e.credit > 0 ? <span className="font-semibold text-red-600">{formatCurrency(e.credit)}</span> : <span className="text-gray-300">—</span>}
                   </td>
-                  <td className={`px-4 py-3 text-right font-mono text-xs font-semibold ${
-                    e.balance != null ? (e.balance >= 0 ? 'text-gray-800' : 'text-red-600') : 'text-gray-300'
-                  }`}>
+                  <td className={`px-4 py-3 text-right font-mono text-xs font-semibold ${(e.balance ?? 0) >= 0 ? 'text-gray-800' : 'text-red-600'}`}>
                     {e.balance != null ? formatCurrency(e.balance) : '—'}
                   </td>
-                  <td className="px-2 py-3">
+                  <td className="px-2 py-3 text-center">
                     {e.entryId && (
                       <button onClick={() => setViewing(e.entryId)}
                         title="View double entry"
-                        className="flex items-center justify-center rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
-                        <ArrowUpRight className="h-3.5 w-3.5" />
+                        className="rounded-lg border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                        Entry
                       </button>
                     )}
                   </td>
@@ -289,7 +250,7 @@ export default function AccountLedgerPage() {
 
       {pages > 1 && (
         <div className="flex items-center justify-between text-xs text-gray-500">
-          <span>Page {page} of {pages} · {total} records</span>
+          <span>Page {page} of {pages} · {total} transactions</span>
           <div className="flex gap-1">
             <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)}
               className="rounded border px-3 py-1.5 disabled:opacity-40 hover:bg-gray-50">Prev</button>
