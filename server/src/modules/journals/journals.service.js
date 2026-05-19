@@ -38,7 +38,7 @@ async function insertLines(client, journalId, lines) {
 }
 
 async function nextJournalNumber(client, companyId) {
-  const { rows: [{ jnl_counter }] } = await client.query(
+  const { rows: [{ journal_counter: jnl_counter }] } = await client.query(
     `UPDATE companies SET journal_counter = journal_counter + 1
      WHERE company_id = $1 RETURNING journal_counter`,
     [companyId]
