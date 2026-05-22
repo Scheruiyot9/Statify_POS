@@ -133,7 +133,7 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
     setTimeout(() => barcodeRef.current?.focus(), 80);
   }, [scanResetTrigger]);
 
-  const { data: liveProducts, isLoading } = useQuery({
+  const { data: liveProducts, isLoading, isError, fetchStatus } = useQuery({
     queryKey: ['pos-products', branchId, debouncedSearch, categoryId],
     queryFn: () =>
       api.get('/pos/products', { params: { branchId, search: debouncedSearch, categoryId, limit: 200 } })
@@ -147,8 +147,16 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
     }
   }, [liveProducts, debouncedSearch, categoryId, branchId]);
 
-  const products   = liveProducts ?? (!isOnline ? loadProductCache(branchId) : undefined);
-  const usingCache = !isOnline && !liveProducts && products != null;
+  // Fall back to localStorage cache when:
+  //  (a) explicitly offline — enabled:false, so liveProducts is undefined, or
+  //  (b) fetch errored — server unreachable but the 30-s ping hasn't flipped isOnline yet
+  const cachedProducts = (!isOnline || isError) ? loadProductCache(branchId) : null;
+  const products       = liveProducts ?? cachedProducts ?? undefined;
+  const usingCache     = !liveProducts && products != null;
+
+  // When enabled:false (offline, no in-flight request), React Query sets
+  // isLoading:true with fetchStatus:'idle' — don't show the spinner for that.
+  const isActuallyLoading = isLoading && fetchStatus !== 'idle';
 
   const { data: categories } = useQuery({
     queryKey: ['categories'],
@@ -351,7 +359,7 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
       )}
 
       {/* ── Product count ── */}
-      {!isLoading && products != null && products.length > 0 && (
+      {!isActuallyLoading && products != null && products.length > 0 && (
         <div className="border-b border-gray-100 bg-white px-3.5 py-1">
           <p className="text-[11px] text-gray-400">
             {products.length} product{products.length !== 1 ? 's' : ''}
@@ -361,7 +369,7 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
 
       {/* ── Products ── */}
       <div className="flex-1 overflow-y-auto p-2">
-        {isLoading ? (
+        {isActuallyLoading ? (
           viewMode === 'grid' ? (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {Array.from({ length: 10 }).map((_, i) => <GridSkeleton key={i} />)}

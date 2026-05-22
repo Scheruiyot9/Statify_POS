@@ -60,7 +60,10 @@ app.use('/api/', rateLimit({
 }));
 
 // ── Health check ──────────────────────────────────────────────────────────────
-app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+// Two paths: /health (direct) and /api/v1/health (through nginx proxy).
+// Both are public — no auth required. Used by the client for connectivity pings.
+app.get('/health',        (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+app.get('/api/v1/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 // ── API Routes ────────────────────────────────────────────────────────────────
 const API = '/api/v1';
