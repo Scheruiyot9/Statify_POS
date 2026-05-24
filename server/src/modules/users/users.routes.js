@@ -17,6 +17,7 @@ router.get('/',                    requireRole('branch_manager'), controller.lis
 router.post('/',                   requireRole('company_admin'),  controller.create);
 router.put('/:id',                 requireRole('company_admin'),  controller.update);
 router.post('/:id/reset-password', requireRole('company_admin'),  controller.resetPwd);
+router.post('/:id/clear-pin',      requireRole('company_admin'),  controller.clearPin);
 router.delete('/:id',              requireRole('company_admin'),  controller.remove);
 
 module.exports = router;

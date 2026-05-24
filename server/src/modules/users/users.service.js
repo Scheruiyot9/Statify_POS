@@ -288,4 +288,19 @@ async function deleteUser(companyId, userId, deletedBy) {
   if (!rows.length) throw AppError.notFound('User');
 }
 
-module.exports = { listUsers, listRoles, listRolesWithPermissions, createUser, updateUser, resetPassword, deleteUser };
+// Clear a user's lock PIN — called by company_admin when a user is locked out
+async function clearPin(companyId, userId) {
+  const { rows } = await query(
+    `UPDATE users
+        SET pin_hash = NULL, updated_at = now()
+      WHERE company_id = $1 AND user_id = $2 AND deleted_at IS NULL
+      RETURNING user_id`,
+    [companyId, userId]
+  );
+  if (!rows.length) throw AppError.notFound('User');
+}
+
+module.exports = {
+  listUsers, listRoles, listRolesWithPermissions,
+  createUser, updateUser, resetPassword, deleteUser, clearPin,
+};

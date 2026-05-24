@@ -35,4 +35,9 @@ const remove = async (req, res) => {
   res.json({ success: true, message: 'User deleted' });
 };
 
-module.exports = { list, roles, rolesWithPermissions, create, update, resetPwd, remove };
+const clearPin = async (req, res) => {
+  await svc.clearPin(req.tenantId, req.params.id);
+  res.json({ success: true, message: 'PIN cleared — user must set a new PIN before unlocking' });
+};
+
+module.exports = { list, roles, rolesWithPermissions, create, update, resetPwd, remove, clearPin };

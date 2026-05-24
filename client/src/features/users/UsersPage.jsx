@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit2, UserCheck, UserX, KeyRound, Search, ShieldCheck, Copy } from 'lucide-react';
+import { Plus, Edit2, UserCheck, UserX, KeyRound, Search, ShieldCheck, Copy, ShieldOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Button      from '@/components/ui/Button';
@@ -73,6 +73,46 @@ function TempPasswordModal({ name, email, password, onClose }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Clear PIN Modal ───────────────────────────────────────────────────────────
+function ClearPinModal({ user, onClose }) {
+  const qc = useQueryClient();
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => api.post(`/users/${user.user_id}/clear-pin`),
+    onSuccess: () => {
+      toast.success(`PIN cleared for ${user.first_name} ${user.last_name}`);
+      qc.invalidateQueries({ queryKey: ['users'] });
+      onClose();
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to clear PIN'),
+  });
+
+  return (
+    <Modal open onClose={onClose} title="Reset Terminal PIN" size="sm">
+      <div className="space-y-4">
+        <div className="flex items-start gap-3 rounded-lg bg-amber-50 border border-amber-100 px-4 py-3">
+          <ShieldOff className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-amber-800">
+              Clear PIN for {user.first_name} {user.last_name}?
+            </p>
+            <p className="text-xs text-amber-600 mt-0.5">
+              Their terminal PIN will be removed. The next time their screen locks
+              they will need to sign in with their password and set a new PIN.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-3 pt-1">
+          <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+          <Button fullWidth loading={isPending} onClick={() => mutate()}>
+            Clear PIN
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -416,7 +456,7 @@ function RolesTab() {
 }
 
 // ── User Detail Modal ─────────────────────────────────────────────────────────
-function UserDetailModal({ user: u, onClose, onEdit, onReset, onToggleActive }) {
+function UserDetailModal({ user: u, onClose, onEdit, onReset, onClearPin, onToggleActive }) {
   return (
     <Modal
       open
@@ -471,6 +511,13 @@ function UserDetailModal({ user: u, onClose, onEdit, onReset, onToggleActive }) 
           Reset Password
         </button>
         <button
+          onClick={onClearPin}
+          className="flex items-center gap-1.5 rounded-lg border border-purple-200 px-3 py-1.5 text-xs font-medium text-purple-600 hover:bg-purple-50 transition-colors"
+        >
+          <ShieldOff className="h-3.5 w-3.5" />
+          Reset PIN
+        </button>
+        <button
           onClick={onToggleActive}
           className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
             u.is_active
@@ -489,9 +536,10 @@ function UserDetailModal({ user: u, onClose, onEdit, onReset, onToggleActive }) 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 function UsersListTab({ canManageUsers }) {
   const qc = useQueryClient();
-  const [search,    setSearch]    = useState('');
-  const [formUser,  setFormUser]  = useState(null);  // null=closed, false=new, obj=edit
-  const [resetUser, setResetUser] = useState(null);
+  const [search,       setSearch]       = useState('');
+  const [formUser,     setFormUser]     = useState(null);  // null=closed, false=new, obj=edit
+  const [resetUser,    setResetUser]    = useState(null);
+  const [clearPinUser, setClearPinUser] = useState(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['users', search],
@@ -576,6 +624,10 @@ function UsersListTab({ canManageUsers }) {
                             className="rounded-md bg-blue-50 p-1.5 text-blue-600 hover:bg-blue-100 transition-colors">
                             <KeyRound className="h-3.5 w-3.5" />
                           </button>
+                          <button title="Reset terminal PIN" onClick={() => setClearPinUser(u)}
+                            className="rounded-md bg-purple-50 p-1.5 text-purple-600 hover:bg-purple-100 transition-colors">
+                            <ShieldOff className="h-3.5 w-3.5" />
+                          </button>
                           <button
                             title={u.is_active ? 'Deactivate' : 'Activate'}
                             onClick={() => toggleActive({ userId: u.user_id, is_active: !u.is_active })}
@@ -601,6 +653,9 @@ function UsersListTab({ canManageUsers }) {
       )}
       {canManageUsers && resetUser && (
         <ResetPasswordModal user={resetUser} onClose={() => setResetUser(null)} />
+      )}
+      {canManageUsers && clearPinUser && (
+        <ClearPinModal user={clearPinUser} onClose={() => setClearPinUser(null)} />
       )}
     </div>
   );
