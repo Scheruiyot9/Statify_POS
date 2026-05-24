@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CreditCard, Plus, Pencil, ToggleLeft, ToggleRight, Check,
@@ -1644,25 +1644,31 @@ function SecurityTab() {
   const pinHash    = useAuthStore((s) => s.pinHash);
   const setLockTimeoutMinutes = useAuthStore((s) => s.setLockTimeoutMinutes);
 
-  const isAdmin    = userRole === 'company_admin' || userRole === 'super_admin';
-  const hasPinSet  = !!pinHash;
+  // Only company_admin can configure the company-wide timeout.
+  // super_admin operates at platform level and has no company context.
+  const isCompanyAdmin = userRole === 'company_admin';
+  const hasPinSet      = !!pinHash;
 
-  const [pinOpen,    setPinOpen]    = useState(false);
-  const [timeout,    setTimeout_]   = useState('');
-  const [loaded,     setLoaded]     = useState(false);
+  const [pinOpen,   setPinOpen]  = useState(false);
+  const [timeoutVal, setTimeoutVal] = useState('');
 
-  // Fetch current setting
-  useQuery({
+  // Fetch current timeout value — React Query v5: no onSuccess, use useEffect instead
+  const { data: companyData } = useQuery({
     queryKey: ['company-mine', companyId],
     queryFn:  () => api.get('/companies/mine').then((r) => r.data.data),
-    enabled:  !!companyId && isAdmin,
-    onSuccess: (data) => {
-      if (!loaded) {
-        setTimeout_(data.lock_timeout_minutes ? String(data.lock_timeout_minutes) : '');
-        setLoaded(true);
-      }
-    },
+    enabled:  !!companyId && isCompanyAdmin,
   });
+
+  // Populate the select once data arrives (only on first load, not after user edits)
+  useEffect(() => {
+    if (companyData) {
+      setTimeoutVal(
+        companyData.lock_timeout_minutes
+          ? String(companyData.lock_timeout_minutes)
+          : ''
+      );
+    }
+  }, [companyData]);
 
   const saveMut = useMutation({
     mutationFn: (minutes) =>
@@ -1670,8 +1676,7 @@ function SecurityTab() {
         lock_timeout_minutes: minutes || null,
       }).then((r) => r.data.data),
     onSuccess: (data) => {
-      const mins = data.lock_timeout_minutes ?? null;
-      setLockTimeoutMinutes(mins);
+      setLockTimeoutMinutes(data.lock_timeout_minutes ?? null);
       qc.invalidateQueries({ queryKey: ['company-mine', companyId] });
       toast.success('Lock timeout saved');
     },
@@ -1679,7 +1684,8 @@ function SecurityTab() {
 
   return (
     <div className="max-w-lg space-y-8 py-4">
-      {/* PIN setup */}
+
+      {/* PIN setup — available to ALL authenticated users */}
       <div className="rounded-xl border border-gray-200 p-5 space-y-4">
         <div className="flex items-start gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50">
@@ -1690,7 +1696,7 @@ function SecurityTab() {
             <p className="text-xs text-gray-500 mt-0.5">
               {hasPinSet
                 ? 'A 4-digit PIN is set for your account. Use it to unlock the screen after inactivity.'
-                : 'Set a 4-digit PIN to unlock the screen after an inactivity timeout.'}
+                : 'Set a 4-digit PIN so you can unlock the terminal after it auto-locks.'}
             </p>
           </div>
         </div>
@@ -1703,8 +1709,8 @@ function SecurityTab() {
         </Button>
       </div>
 
-      {/* Timeout setting — admins only */}
-      {isAdmin ? (
+      {/* Timeout — company_admin only (has company context) */}
+      {isCompanyAdmin && (
         <div className="rounded-xl border border-gray-200 p-5 space-y-4">
           <div className="flex items-start gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50">
@@ -1713,14 +1719,14 @@ function SecurityTab() {
             <div>
               <p className="text-sm font-medium text-gray-900">Auto-lock Timeout</p>
               <p className="text-xs text-gray-500 mt-0.5">
-                Lock the terminal after a period of inactivity. Applies to all users in your company.
+                Lock all terminals after a period of inactivity. Applies to everyone in your company.
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <select
-              value={timeout}
-              onChange={(e) => setTimeout_(e.target.value)}
+              value={timeoutVal}
+              onChange={(e) => setTimeoutVal(e.target.value)}
               className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none"
             >
               {TIMEOUT_OPTIONS.map((o) => (
@@ -1729,21 +1735,17 @@ function SecurityTab() {
             </select>
             <Button
               loading={saveMut.isPending}
-              onClick={() => saveMut.mutate(timeout ? parseInt(timeout, 10) : null)}
+              onClick={() => saveMut.mutate(timeoutVal ? parseInt(timeoutVal, 10) : null)}
             >
               Save
             </Button>
           </div>
-          {timeout === '' && (
+          {timeoutVal === '' && (
             <p className="text-xs text-gray-400">
-              When disabled, the terminal stays unlocked until manually signed out.
+              When disabled, terminals stay unlocked until manually signed out.
             </p>
           )}
         </div>
-      ) : (
-        <p className="text-xs text-gray-400">
-          Only company admins can configure the auto-lock timeout.
-        </p>
       )}
 
       <PinSetupModal open={pinOpen} onClose={() => setPinOpen(false)} hasPinSet={hasPinSet} />
@@ -1775,11 +1777,11 @@ export default function SettingsPage() {
         <p className="text-sm text-gray-500 mt-0.5">Configure your POS system</p>
       </div>
 
-      <div className="flex border-b border-gray-200">
+      <div className="flex overflow-x-auto border-b border-gray-200 scrollbar-none">
         {TABS.map(({ id, label, Icon }) => (
           <button key={id} onClick={() => setActiveTab(id)}
             className={[
-              'flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors',
+              'flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors',
               activeTab === id
                 ? 'border-primary-600 text-primary-700'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
