@@ -15,6 +15,15 @@ import useNetworkStatus from '@/hooks/useNetworkStatus';
 
 const METHOD_ICONS = { Cash: Banknote, Card: CreditCard, Mobile: Smartphone };
 
+// ── Payment methods offline cache ─────────────────────────────────────────────
+const PM_CACHE_KEY = 'pos-payment-methods-cache';
+function loadMethodsCache() {
+  try { return JSON.parse(localStorage.getItem(PM_CACHE_KEY) ?? 'null') ?? []; } catch { return []; }
+}
+function saveMethodsCache(methods) {
+  try { localStorage.setItem(PM_CACHE_KEY, JSON.stringify(methods)); } catch {}
+}
+
 function quickAmounts(total) {
   return [50, 100, 200, 500, 1000, 2000, 5000].filter((v) => v >= total).slice(0, 4);
 }
@@ -549,11 +558,19 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
   const remaining      = Math.max(0, netTotal - totalCovered);
   const isFullyCovered = totalCovered >= netTotal && netTotal > 0;
 
-  const { data: methods = [] } = useQuery({
+  const { data: liveMethods, isError: methodsError } = useQuery({
     queryKey: ['payment-methods'],
     queryFn:  () => api.get('/pos/payment-methods').then((r) => r.data.data),
-    enabled:  open,
+    enabled:  open && isOnline,
   });
+
+  // Persist to localStorage whenever we get fresh data
+  useEffect(() => {
+    if (liveMethods?.length) saveMethodsCache(liveMethods);
+  }, [liveMethods]);
+
+  // Online: use live data. Offline or errored: fall back to localStorage cache.
+  const methods = liveMethods ?? ((!isOnline || methodsError) ? loadMethodsCache() : []);
 
   useEffect(() => {
     if (open) { setPaymentLines([]); setPointsToRedeem(0); }
