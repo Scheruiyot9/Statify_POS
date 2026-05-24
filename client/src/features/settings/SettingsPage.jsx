@@ -11,7 +11,6 @@ import { useAuthStore } from '@/app/store';
 import Modal  from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
-import PinSetupModal from '@/features/lock/PinSetupModal';
 
 // ── Payment Methods Tab ───────────────────────────────────────────────────────
 
@@ -1650,15 +1649,12 @@ function SecurityTab() {
   const qc         = useQueryClient();
   const companyId  = useAuthStore((s) => s.user?.companyId);
   const userRole   = useAuthStore((s) => s.user?.role);
-  const pinHash    = useAuthStore((s) => s.pinHash);
   const setLockTimeoutMinutes = useAuthStore((s) => s.setLockTimeoutMinutes);
 
   // Only company_admin can configure company-wide settings.
   // super_admin has no company context.
   const isCompanyAdmin = userRole === 'company_admin';
-  const hasPinSet      = !!pinHash;
 
-  const [pinOpen,      setPinOpen]      = useState(false);
   const [timeoutVal,   setTimeoutVal]   = useState('');
   const [sessionDays,  setSessionDays]  = useState('7');
 
@@ -1704,30 +1700,6 @@ function SecurityTab() {
 
   return (
     <div className="max-w-lg space-y-8 py-4">
-
-      {/* PIN setup — every user can set their own PIN */}
-      <div className="rounded-xl border border-gray-200 p-5 space-y-4">
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50">
-            <ShieldCheck className="h-5 w-5 text-primary-600" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-gray-900">Terminal Lock PIN</p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {hasPinSet
-                ? 'A 4-digit PIN is set for your account. Use it to unlock the screen after inactivity.'
-                : 'Set a 4-digit PIN so you can unlock the terminal after it auto-locks.'}
-            </p>
-          </div>
-        </div>
-        <Button
-          variant={hasPinSet ? 'secondary' : 'primary'}
-          icon={<ShieldCheck className="h-4 w-4" />}
-          onClick={() => setPinOpen(true)}
-        >
-          {hasPinSet ? 'Change PIN' : 'Set PIN'}
-        </Button>
-      </div>
 
       {/* Company-admin only settings */}
       {isCompanyAdmin && (
@@ -1807,7 +1779,6 @@ function SecurityTab() {
         </>
       )}
 
-      <PinSetupModal open={pinOpen} onClose={() => setPinOpen(false)} hasPinSet={hasPinSet} />
     </div>
   );
 }

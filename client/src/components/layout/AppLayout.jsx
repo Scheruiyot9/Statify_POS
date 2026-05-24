@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { LogOut, KeyRound, User, ChevronDown, Eye, EyeOff, X, Building2, Menu } from 'lucide-react';
+import { LogOut, KeyRound, User, ChevronDown, Eye, EyeOff, X, Building2, Menu, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Sidebar from './Sidebar';
 import BottomNav from './BottomNav';
@@ -9,6 +9,7 @@ import { useAuthStore } from '@/app/store';
 import api from '@/services/api';
 import Button from '@/components/ui/Button';
 import useInactivityLock from '@/hooks/useInactivityLock';
+import PinSetupModal from '@/features/lock/PinSetupModal';
 
 // ── Forced Password Reset (first-login) ───────────────────────────────────────
 function ForcedPasswordReset() {
@@ -213,6 +214,7 @@ export default function AppLayout() {
 
   const [dropdownOpen,  setDropdownOpen]  = useState(false);
   const [changePwdOpen, setChangePwdOpen] = useState(false);
+  const [pinOpen,       setPinOpen]       = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -361,6 +363,13 @@ export default function AppLayout() {
                     Change Password
                   </button>
                   <button
+                    onClick={() => { setPinOpen(true); setDropdownOpen(false); }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <ShieldCheck className="h-4 w-4 text-gray-400" />
+                    {user?.pinHash ? 'Change Lock PIN' : 'Set Lock PIN'}
+                  </button>
+                  <button
                     onClick={handleLogout}
                     className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
                   >
@@ -420,6 +429,13 @@ export default function AppLayout() {
 
       {/* Change password modal */}
       {changePwdOpen && <ChangePasswordModal onClose={() => setChangePwdOpen(false)} />}
+
+      {/* Set / Change lock PIN */}
+      <PinSetupModal
+        open={pinOpen}
+        onClose={() => setPinOpen(false)}
+        hasPinSet={!!user?.pinHash}
+      />
 
       {/* Forced first-login password reset */}
       {user?.mustResetPassword && <ForcedPasswordReset />}
