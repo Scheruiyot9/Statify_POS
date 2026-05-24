@@ -9,8 +9,8 @@ const { sendMail } = require('../../shared/mailer');
 const signAccess = (payload) =>
   jwt.sign(payload, env.jwt.secret, { expiresIn: env.jwt.expiresIn });
 
-const signRefresh = (payload) =>
-  jwt.sign(payload, env.jwt.refreshSecret, { expiresIn: env.jwt.refreshExpiresIn });
+const signRefresh = (payload, expiresIn = env.jwt.refreshExpiresIn) =>
+  jwt.sign(payload, env.jwt.refreshSecret, { expiresIn });
 
 const hashToken = (token) =>
   crypto.createHash('sha256').update(token).digest('hex');
@@ -51,7 +51,7 @@ const login = async ({ email, password }) => {
     `SELECT u.user_id, u.company_id, u.password_hash, u.is_active,
             u.first_name, u.last_name, u.must_reset_password, u.pin_hash,
             r.role_name,
-            c.subscription_status, c.lock_timeout_minutes
+            c.subscription_status, c.lock_timeout_minutes, c.session_lifetime_days
        FROM users u
        LEFT JOIN user_roles ur ON ur.user_id = u.user_id
        LEFT JOIN roles r        ON r.role_id  = ur.role_id
@@ -76,10 +76,14 @@ const login = async ({ email, password }) => {
 
   const payload      = await buildTokenPayload(user);
   const accessToken  = signAccess(payload);
-  const refreshToken = signRefresh({ userId: user.user_id });
+
+  // Use the company's configured session lifetime; fall back to the server default
+  const sessionDays     = user.session_lifetime_days ?? null;
+  const sessionDuration = sessionDays ? `${sessionDays}d` : env.jwt.refreshExpiresIn;
+  const refreshToken    = signRefresh({ userId: user.user_id }, sessionDuration);
 
   // Store hashed refresh token for server-side revocation
-  const expiresAt = new Date(Date.now() + parseDuration(env.jwt.refreshExpiresIn));
+  const expiresAt = new Date(Date.now() + parseDuration(sessionDuration));
   await query(
     `INSERT INTO user_sessions (user_id, token_hash, expires_at)
      VALUES ($1, $2, $3)`,
@@ -101,6 +105,7 @@ const login = async ({ email, password }) => {
       hasPinSet:           !!user.pin_hash,
       pinHash:             user.pin_hash ?? null,
       lockTimeoutMinutes:  user.lock_timeout_minutes ?? null,
+      sessionLifetimeDays: sessionDays ?? 7,
     },
   };
 };
@@ -327,7 +332,8 @@ const verifyPin = async (userId, { pinHash }) => {
 const getMe = async (userId, companyId) => {
   const { rows } = await query(
     `SELECT u.pin_hash,
-            c.lock_timeout_minutes
+            c.lock_timeout_minutes,
+            c.session_lifetime_days
        FROM users u
        LEFT JOIN companies c ON c.company_id = u.company_id
       WHERE u.user_id = $1`,
@@ -338,6 +344,7 @@ const getMe = async (userId, companyId) => {
     hasPinSet:           !!rows[0].pin_hash,
     pinHash:             rows[0].pin_hash ?? null,
     lockTimeoutMinutes:  rows[0].lock_timeout_minutes ?? null,
+    sessionLifetimeDays: rows[0].session_lifetime_days ?? 7,
   };
 };
 

@@ -301,7 +301,8 @@ async function updateCompany(companyId, data) {
 
 async function getMyCompany(companyId) {
   const { rows } = await query(
-    `SELECT company_id, company_name, logo_url, tax_id, lock_timeout_minutes
+    `SELECT company_id, company_name, logo_url, tax_id,
+            lock_timeout_minutes, session_lifetime_days
        FROM companies WHERE company_id = $1`,
     [companyId]
   );
@@ -309,20 +310,30 @@ async function getMyCompany(companyId) {
   return rows[0];
 }
 
-async function updateMyProfile(companyId, { tax_id, lock_timeout_minutes }) {
-  // lock_timeout_minutes: integer 1-120, or null to disable
+async function updateMyProfile(companyId, { tax_id, lock_timeout_minutes, session_lifetime_days }) {
+  // lock_timeout_minutes: 1-120 minutes, or null to disable
   const timeout = lock_timeout_minutes != null
     ? Math.min(120, Math.max(1, parseInt(lock_timeout_minutes, 10))) || null
     : null;
 
+  // session_lifetime_days: 1-90 days, or null to use server default
+  const ALLOWED_DAYS = [1, 3, 7, 14, 30, 90];
+  const sessionDays = session_lifetime_days != null
+    ? (ALLOWED_DAYS.includes(parseInt(session_lifetime_days, 10))
+        ? parseInt(session_lifetime_days, 10)
+        : 7)
+    : null;
+
   const { rows } = await query(
     `UPDATE companies
-        SET tax_id               = COALESCE($2, tax_id),
-            lock_timeout_minutes = $3,
-            updated_at           = now()
+        SET tax_id                = COALESCE($2, tax_id),
+            lock_timeout_minutes  = $3,
+            session_lifetime_days = COALESCE($4, session_lifetime_days),
+            updated_at            = now()
       WHERE company_id = $1
-      RETURNING company_id, company_name, logo_url, tax_id, lock_timeout_minutes`,
-    [companyId, tax_id ?? null, timeout]
+      RETURNING company_id, company_name, logo_url, tax_id,
+                lock_timeout_minutes, session_lifetime_days`,
+    [companyId, tax_id ?? null, timeout, sessionDays]
   );
   if (!rows.length) throw AppError.notFound('Company');
   return rows[0];

@@ -1637,6 +1637,15 @@ const TIMEOUT_OPTIONS = [
   { label: '1 hour',     value: '60' },
 ];
 
+const SESSION_LIFETIME_OPTIONS = [
+  { label: '1 day  (re-login every day)',   value: '1'  },
+  { label: '3 days',                         value: '3'  },
+  { label: '7 days (default)',               value: '7'  },
+  { label: '14 days',                        value: '14' },
+  { label: '30 days',                        value: '30' },
+  { label: '90 days',                        value: '90' },
+];
+
 function SecurityTab() {
   const qc         = useQueryClient();
   const companyId  = useAuthStore((s) => s.user?.companyId);
@@ -1644,48 +1653,59 @@ function SecurityTab() {
   const pinHash    = useAuthStore((s) => s.pinHash);
   const setLockTimeoutMinutes = useAuthStore((s) => s.setLockTimeoutMinutes);
 
-  // Only company_admin can configure the company-wide timeout.
-  // super_admin operates at platform level and has no company context.
+  // Only company_admin can configure company-wide settings.
+  // super_admin has no company context.
   const isCompanyAdmin = userRole === 'company_admin';
   const hasPinSet      = !!pinHash;
 
-  const [pinOpen,   setPinOpen]  = useState(false);
-  const [timeoutVal, setTimeoutVal] = useState('');
+  const [pinOpen,      setPinOpen]      = useState(false);
+  const [timeoutVal,   setTimeoutVal]   = useState('');
+  const [sessionDays,  setSessionDays]  = useState('7');
 
-  // Fetch current timeout value — React Query v5: no onSuccess, use useEffect instead
+  // Fetch current company settings (React Query v5: use useEffect, not onSuccess)
   const { data: companyData } = useQuery({
     queryKey: ['company-mine', companyId],
     queryFn:  () => api.get('/companies/mine').then((r) => r.data.data),
     enabled:  !!companyId && isCompanyAdmin,
   });
 
-  // Populate the select once data arrives (only on first load, not after user edits)
   useEffect(() => {
     if (companyData) {
       setTimeoutVal(
-        companyData.lock_timeout_minutes
-          ? String(companyData.lock_timeout_minutes)
-          : ''
+        companyData.lock_timeout_minutes ? String(companyData.lock_timeout_minutes) : ''
+      );
+      setSessionDays(
+        companyData.session_lifetime_days ? String(companyData.session_lifetime_days) : '7'
       );
     }
   }, [companyData]);
 
-  const saveMut = useMutation({
+  // Single mutation handles both settings in one PATCH
+  const saveLockMut = useMutation({
     mutationFn: (minutes) =>
-      api.patch('/companies/mine/profile', {
-        lock_timeout_minutes: minutes || null,
-      }).then((r) => r.data.data),
+      api.patch('/companies/mine/profile', { lock_timeout_minutes: minutes || null })
+        .then((r) => r.data.data),
     onSuccess: (data) => {
       setLockTimeoutMinutes(data.lock_timeout_minutes ?? null);
       qc.invalidateQueries({ queryKey: ['company-mine', companyId] });
-      toast.success('Lock timeout saved');
+      toast.success('Auto-lock timeout saved');
+    },
+  });
+
+  const saveSessionMut = useMutation({
+    mutationFn: (days) =>
+      api.patch('/companies/mine/profile', { session_lifetime_days: parseInt(days, 10) })
+        .then((r) => r.data.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['company-mine', companyId] });
+      toast.success('Session lifetime saved — applies to new logins');
     },
   });
 
   return (
     <div className="max-w-lg space-y-8 py-4">
 
-      {/* PIN setup — available to ALL authenticated users */}
+      {/* PIN setup — every user can set their own PIN */}
       <div className="rounded-xl border border-gray-200 p-5 space-y-4">
         <div className="flex items-start gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50">
@@ -1709,43 +1729,82 @@ function SecurityTab() {
         </Button>
       </div>
 
-      {/* Timeout — company_admin only (has company context) */}
+      {/* Company-admin only settings */}
       {isCompanyAdmin && (
-        <div className="rounded-xl border border-gray-200 p-5 space-y-4">
-          <div className="flex items-start gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50">
-              <Clock className="h-5 w-5 text-amber-600" />
+        <>
+          {/* Auto-lock timeout */}
+          <div className="rounded-xl border border-gray-200 p-5 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50">
+                <Clock className="h-5 w-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">Auto-lock Timeout</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Lock all terminals after this period of inactivity. Applies to everyone in your company.
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900">Auto-lock Timeout</p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Lock all terminals after a period of inactivity. Applies to everyone in your company.
+            <div className="flex items-center gap-3">
+              <select
+                value={timeoutVal}
+                onChange={(e) => setTimeoutVal(e.target.value)}
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none"
+              >
+                {TIMEOUT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <Button
+                loading={saveLockMut.isPending}
+                onClick={() => saveLockMut.mutate(timeoutVal ? parseInt(timeoutVal, 10) : null)}
+              >
+                Save
+              </Button>
+            </div>
+            {timeoutVal === '' && (
+              <p className="text-xs text-gray-400">
+                When disabled, terminals stay unlocked until manually signed out.
               </p>
+            )}
+          </div>
+
+          {/* Session lifetime */}
+          <div className="rounded-xl border border-gray-200 p-5 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50">
+                <Clock className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">Session Lifetime</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  How long users stay logged in before being required to sign in again.
+                  Takes effect on the next login — existing sessions are not affected.
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <select
-              value={timeoutVal}
-              onChange={(e) => setTimeoutVal(e.target.value)}
-              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none"
-            >
-              {TIMEOUT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-            <Button
-              loading={saveMut.isPending}
-              onClick={() => saveMut.mutate(timeoutVal ? parseInt(timeoutVal, 10) : null)}
-            >
-              Save
-            </Button>
-          </div>
-          {timeoutVal === '' && (
+            <div className="flex items-center gap-3">
+              <select
+                value={sessionDays}
+                onChange={(e) => setSessionDays(e.target.value)}
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none"
+              >
+                {SESSION_LIFETIME_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <Button
+                loading={saveSessionMut.isPending}
+                onClick={() => saveSessionMut.mutate(sessionDays)}
+              >
+                Save
+              </Button>
+            </div>
             <p className="text-xs text-gray-400">
-              When disabled, terminals stay unlocked until manually signed out.
+              For shift-based operations, 1 day ensures cashiers log in at the start of each shift.
             </p>
-          )}
-        </div>
+          </div>
+        </>
       )}
 
       <PinSetupModal open={pinOpen} onClose={() => setPinOpen(false)} hasPinSet={hasPinSet} />
