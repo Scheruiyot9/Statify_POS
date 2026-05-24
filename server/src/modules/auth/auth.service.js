@@ -49,9 +49,9 @@ const buildTokenPayload = async (user) => {
 const login = async ({ email, password }) => {
   const { rows } = await query(
     `SELECT u.user_id, u.company_id, u.password_hash, u.is_active,
-            u.first_name, u.last_name, u.must_reset_password,
+            u.first_name, u.last_name, u.must_reset_password, u.pin_hash,
             r.role_name,
-            c.subscription_status
+            c.subscription_status, c.lock_timeout_minutes
        FROM users u
        LEFT JOIN user_roles ur ON ur.user_id = u.user_id
        LEFT JOIN roles r        ON r.role_id  = ur.role_id
@@ -90,14 +90,17 @@ const login = async ({ email, password }) => {
     accessToken,
     refreshToken,
     user: {
-      userId:            user.user_id,
-      firstName:         user.first_name,
-      lastName:          user.last_name,
-      role:              user.role_name,
-      companyId:         user.company_id,
-      branchIds:         payload.branchIds,
-      planFeatures:      payload.planFeatures,
-      mustResetPassword: user.must_reset_password ?? false,
+      userId:              user.user_id,
+      firstName:           user.first_name,
+      lastName:            user.last_name,
+      role:                user.role_name,
+      companyId:           user.company_id,
+      branchIds:           payload.branchIds,
+      planFeatures:        payload.planFeatures,
+      mustResetPassword:   user.must_reset_password ?? false,
+      hasPinSet:           !!user.pin_hash,
+      pinHash:             user.pin_hash ?? null,
+      lockTimeoutMinutes:  user.lock_timeout_minutes ?? null,
     },
   };
 };
@@ -294,4 +297,51 @@ function parseDuration(str) {
   return parseInt(m[1], 10) * (units[m[2]] || 86400000);
 }
 
-module.exports = { login, refresh, logout, changePassword, forgotPassword, resetPassword, submitInterest };
+// ── PIN lock ──────────────────────────────────────────────────────────────────
+// The pin_hash is computed client-side as SHA-256(pin:userId) so it also works
+// offline.  The server stores it for persistence and cross-device sync.
+
+const setPin = async (userId, { pinHash }) => {
+  if (typeof pinHash !== 'string' || !/^[0-9a-f]{64}$/.test(pinHash))
+    throw AppError.badRequest('Invalid pin hash');
+  await query(
+    'UPDATE users SET pin_hash = $1, updated_at = now() WHERE user_id = $2',
+    [pinHash, userId]
+  );
+  return { success: true };
+};
+
+const verifyPin = async (userId, { pinHash }) => {
+  if (typeof pinHash !== 'string' || !/^[0-9a-f]{64}$/.test(pinHash))
+    throw AppError.badRequest('Invalid pin hash');
+  const { rows } = await query(
+    'SELECT pin_hash FROM users WHERE user_id = $1',
+    [userId]
+  );
+  if (!rows.length) throw AppError.notFound('User');
+  if (!rows[0].pin_hash) throw AppError.badRequest('PIN not set', 'PIN_NOT_SET');
+  return { valid: rows[0].pin_hash === pinHash };
+};
+
+// Enriched /me — adds live data that isn't in the JWT
+const getMe = async (userId, companyId) => {
+  const { rows } = await query(
+    `SELECT u.pin_hash,
+            c.lock_timeout_minutes
+       FROM users u
+       LEFT JOIN companies c ON c.company_id = u.company_id
+      WHERE u.user_id = $1`,
+    [userId]
+  );
+  if (!rows.length) throw AppError.notFound('User');
+  return {
+    hasPinSet:           !!rows[0].pin_hash,
+    pinHash:             rows[0].pin_hash ?? null,
+    lockTimeoutMinutes:  rows[0].lock_timeout_minutes ?? null,
+  };
+};
+
+module.exports = {
+  login, refresh, logout, changePassword, forgotPassword, resetPassword,
+  submitInterest, setPin, verifyPin, getMe,
+};

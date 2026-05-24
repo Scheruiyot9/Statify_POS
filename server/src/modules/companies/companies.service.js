@@ -301,17 +301,28 @@ async function updateCompany(companyId, data) {
 
 async function getMyCompany(companyId) {
   const { rows } = await query(
-    `SELECT company_id, company_name, logo_url, tax_id FROM companies WHERE company_id = $1`,
+    `SELECT company_id, company_name, logo_url, tax_id, lock_timeout_minutes
+       FROM companies WHERE company_id = $1`,
     [companyId]
   );
   if (!rows.length) throw AppError.notFound('Company');
   return rows[0];
 }
 
-async function updateMyProfile(companyId, { tax_id }) {
+async function updateMyProfile(companyId, { tax_id, lock_timeout_minutes }) {
+  // lock_timeout_minutes: integer 1-120, or null to disable
+  const timeout = lock_timeout_minutes != null
+    ? Math.min(120, Math.max(1, parseInt(lock_timeout_minutes, 10))) || null
+    : null;
+
   const { rows } = await query(
-    `UPDATE companies SET tax_id = $2 WHERE company_id = $1 RETURNING company_id, company_name, logo_url, tax_id`,
-    [companyId, tax_id ?? null]
+    `UPDATE companies
+        SET tax_id               = COALESCE($2, tax_id),
+            lock_timeout_minutes = $3,
+            updated_at           = now()
+      WHERE company_id = $1
+      RETURNING company_id, company_name, logo_url, tax_id, lock_timeout_minutes`,
+    [companyId, tax_id ?? null, timeout]
   );
   if (!rows.length) throw AppError.notFound('Company');
   return rows[0];

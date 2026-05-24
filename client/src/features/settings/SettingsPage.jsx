@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CreditCard, Plus, Pencil, ToggleLeft, ToggleRight, Check,
   Monitor, GitBranch, Package, Users, Star, Percent, Trash2,
-  RotateCcw, Layers, ArrowUpCircle, CheckCircle2, Clock, XCircle, Send,
+  RotateCcw, Layers, ArrowUpCircle, CheckCircle2, Clock, XCircle, Send, ShieldCheck,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -11,6 +11,7 @@ import { useAuthStore } from '@/app/store';
 import Modal  from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
+import PinSetupModal from '@/features/lock/PinSetupModal';
 
 // ── Payment Methods Tab ───────────────────────────────────────────────────────
 
@@ -1625,6 +1626,131 @@ function SubscriptionTab() {
   );
 }
 
+// ── Security Tab ──────────────────────────────────────────────────────────────
+
+const TIMEOUT_OPTIONS = [
+  { label: 'Disabled',   value: '' },
+  { label: '5 minutes',  value: '5' },
+  { label: '10 minutes', value: '10' },
+  { label: '15 minutes', value: '15' },
+  { label: '30 minutes', value: '30' },
+  { label: '1 hour',     value: '60' },
+];
+
+function SecurityTab() {
+  const qc         = useQueryClient();
+  const companyId  = useAuthStore((s) => s.user?.companyId);
+  const userRole   = useAuthStore((s) => s.user?.role);
+  const pinHash    = useAuthStore((s) => s.pinHash);
+  const setLockTimeoutMinutes = useAuthStore((s) => s.setLockTimeoutMinutes);
+
+  const isAdmin    = userRole === 'company_admin' || userRole === 'super_admin';
+  const hasPinSet  = !!pinHash;
+
+  const [pinOpen,    setPinOpen]    = useState(false);
+  const [timeout,    setTimeout_]   = useState('');
+  const [loaded,     setLoaded]     = useState(false);
+
+  // Fetch current setting
+  useQuery({
+    queryKey: ['company-mine', companyId],
+    queryFn:  () => api.get('/companies/mine').then((r) => r.data.data),
+    enabled:  !!companyId && isAdmin,
+    onSuccess: (data) => {
+      if (!loaded) {
+        setTimeout_(data.lock_timeout_minutes ? String(data.lock_timeout_minutes) : '');
+        setLoaded(true);
+      }
+    },
+  });
+
+  const saveMut = useMutation({
+    mutationFn: (minutes) =>
+      api.patch('/companies/mine/profile', {
+        lock_timeout_minutes: minutes || null,
+      }).then((r) => r.data.data),
+    onSuccess: (data) => {
+      const mins = data.lock_timeout_minutes ?? null;
+      setLockTimeoutMinutes(mins);
+      qc.invalidateQueries({ queryKey: ['company-mine', companyId] });
+      toast.success('Lock timeout saved');
+    },
+  });
+
+  return (
+    <div className="max-w-lg space-y-8 py-4">
+      {/* PIN setup */}
+      <div className="rounded-xl border border-gray-200 p-5 space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50">
+            <ShieldCheck className="h-5 w-5 text-primary-600" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-900">Terminal Lock PIN</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {hasPinSet
+                ? 'A 4-digit PIN is set for your account. Use it to unlock the screen after inactivity.'
+                : 'Set a 4-digit PIN to unlock the screen after an inactivity timeout.'}
+            </p>
+          </div>
+        </div>
+        <Button
+          variant={hasPinSet ? 'secondary' : 'primary'}
+          icon={<ShieldCheck className="h-4 w-4" />}
+          onClick={() => setPinOpen(true)}
+        >
+          {hasPinSet ? 'Change PIN' : 'Set PIN'}
+        </Button>
+      </div>
+
+      {/* Timeout setting — admins only */}
+      {isAdmin ? (
+        <div className="rounded-xl border border-gray-200 p-5 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50">
+              <Clock className="h-5 w-5 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">Auto-lock Timeout</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Lock the terminal after a period of inactivity. Applies to all users in your company.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <select
+              value={timeout}
+              onChange={(e) => setTimeout_(e.target.value)}
+              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none"
+            >
+              {TIMEOUT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <Button
+              loading={saveMut.isPending}
+              onClick={() => saveMut.mutate(timeout ? parseInt(timeout, 10) : null)}
+            >
+              Save
+            </Button>
+          </div>
+          {timeout === '' && (
+            <p className="text-xs text-gray-400">
+              When disabled, the terminal stays unlocked until manually signed out.
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="text-xs text-gray-400">
+          Only company admins can configure the auto-lock timeout.
+        </p>
+      )}
+
+      <PinSetupModal open={pinOpen} onClose={() => setPinOpen(false)} hasPinSet={hasPinSet} />
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -1636,6 +1762,7 @@ const TABS = [
   { id: 'pay-modes',      label: 'Payment Methods',    Icon: CreditCard },
   { id: 'terminals',      label: 'Terminals',           Icon: Monitor    },
   { id: 'return-reasons', label: 'Return Reasons',      Icon: RotateCcw  },
+  { id: 'security',       label: 'Security',            Icon: ShieldCheck},
   { id: 'subscription',   label: 'Subscription',        Icon: Layers     },
 ];
 
@@ -1673,6 +1800,7 @@ export default function SettingsPage() {
         {activeTab === 'pay-modes'      && <PayModesTab />}
         {activeTab === 'terminals'      && <TerminalsTab />}
         {activeTab === 'return-reasons' && <ReturnReasonsTab />}
+        {activeTab === 'security'       && <SecurityTab />}
         {activeTab === 'subscription'   && <SubscriptionTab />}
       </div>
     </div>

@@ -62,9 +62,15 @@ router.post('/forgot-password', forgotLimiter,  validate(forgotPasswordSchema), 
 router.post('/reset-password',  forgotLimiter,  validate(resetPasswordSchema),  controller.resetPassword);
 router.post('/interest',                        validate(interestSchema),        controller.submitInterest);
 
+const pinHashSchema = Joi.object({
+  pinHash: Joi.string().length(64).pattern(/^[0-9a-f]+$/).required(),
+});
+
 // Protected
 router.post('/logout',           authenticate, controller.logout);
 router.get('/me',                authenticate, controller.me);
 router.patch('/change-password', authenticate, validate(changePasswordSchema), controller.changePassword);
+router.post('/set-pin',          authenticate, validate(pinHashSchema),          controller.setPin);
+router.post('/verify-pin',       authenticate, validate(pinHashSchema),          controller.verifyPin);
 
 module.exports = router;

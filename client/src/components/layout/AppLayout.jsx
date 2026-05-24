@@ -8,6 +8,7 @@ import BottomNav from './BottomNav';
 import { useAuthStore } from '@/app/store';
 import api from '@/services/api';
 import Button from '@/components/ui/Button';
+import useInactivityLock from '@/hooks/useInactivityLock';
 
 // ── Forced Password Reset (first-login) ───────────────────────────────────────
 function ForcedPasswordReset() {
@@ -198,6 +199,8 @@ const ROUTE_TITLES = {
 
 // ── App Layout ────────────────────────────────────────────────────────────────
 export default function AppLayout() {
+  useInactivityLock(); // starts / stops the inactivity timer for this layout
+
   const user               = useAuthStore((s) => s.user);
   const clearAuth          = useAuthStore((s) => s.clearAuth);
   const activeCompanyId    = useAuthStore((s) => s.activeCompanyId);

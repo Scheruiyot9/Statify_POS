@@ -11,26 +11,47 @@ export const useAuthStore = create(
       activeCompanyId:   null,
       activeCompanyName: null,
 
+      // ── Terminal lock ─────────────────────────────────────────────────────
+      isLocked:            false,  // whether the lock screen is showing
+      pinHash:             null,   // SHA-256(pin:userId) — for offline unlock
+      lockTimeoutMinutes:  null,   // from company settings; null = disabled
+
       setAuth: (user, accessToken) =>
-        set({ user, accessToken }),
+        set({
+          user,
+          accessToken,
+          // Sync PIN data from login / me response whenever available
+          ...(user.pinHash             !== undefined && { pinHash: user.pinHash }),
+          ...(user.lockTimeoutMinutes  !== undefined && { lockTimeoutMinutes: user.lockTimeoutMinutes }),
+        }),
 
       setAccessToken: (accessToken) => set({ accessToken }),
 
       clearAuth: () => set({
         user: null, accessToken: null,
         activeCompanyId: null, activeCompanyName: null,
+        isLocked: false, pinHash: null, lockTimeoutMinutes: null,
       }),
 
       setActiveCompany: (id, name) => set({ activeCompanyId: id, activeCompanyName: name }),
       clearActiveCompany: () => set({ activeCompanyId: null, activeCompanyName: null }),
+
+      // Lock actions
+      lock:   () => set({ isLocked: true }),
+      unlock: () => set({ isLocked: false }),
+      setPinHash:            (hash)    => set({ pinHash: hash }),
+      setLockTimeoutMinutes: (minutes) => set({ lockTimeoutMinutes: minutes }),
     }),
     {
       name: 'statify-auth',
       partialize: (s) => ({
-        user:              s.user,
-        accessToken:       s.accessToken,
-        activeCompanyId:   s.activeCompanyId,
-        activeCompanyName: s.activeCompanyName,
+        user:                s.user,
+        accessToken:         s.accessToken,
+        activeCompanyId:     s.activeCompanyId,
+        activeCompanyName:   s.activeCompanyName,
+        pinHash:             s.pinHash,
+        lockTimeoutMinutes:  s.lockTimeoutMinutes,
+        // isLocked intentionally NOT persisted — always starts unlocked on fresh load
       }),
     }
   )

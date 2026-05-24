@@ -1,8 +1,11 @@
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '@/app/store';
+import useInactivityLock from '@/hooks/useInactivityLock';
 
 export default function PosLayout({ children }) {
+  useInactivityLock(); // starts / stops the inactivity timer for the POS terminal
+
   const user = useAuthStore((s) => s.user);
 
   return (

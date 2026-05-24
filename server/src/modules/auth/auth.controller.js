@@ -31,8 +31,9 @@ const logout = async (req, res) => {
   ok(res, { message: 'Logged out successfully' });
 };
 
-const me = (req, res) => {
-  ok(res, { user: req.user });
+const me = async (req, res) => {
+  const extra = await authService.getMe(req.user.userId, req.user.companyId);
+  ok(res, { user: { ...req.user, ...extra } });
 };
 
 const changePassword = async (req, res) => {
@@ -57,4 +58,17 @@ const submitInterest = async (req, res) => {
   ok(res, { message: 'Thank you! We will be in touch shortly.' });
 };
 
-module.exports = { login, refresh, logout, me, changePassword, forgotPassword, resetPassword, submitInterest };
+const setPin = async (req, res) => {
+  await authService.setPin(req.user.userId, req.body);
+  ok(res, { message: 'PIN saved successfully' });
+};
+
+const verifyPin = async (req, res) => {
+  const result = await authService.verifyPin(req.user.userId, req.body);
+  ok(res, result);
+};
+
+module.exports = {
+  login, refresh, logout, me, changePassword, forgotPassword, resetPassword,
+  submitInterest, setPin, verifyPin,
+};
