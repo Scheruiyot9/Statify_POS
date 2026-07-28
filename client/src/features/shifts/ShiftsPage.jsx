@@ -41,6 +41,18 @@ export function ShiftDetail({ sessionId }) {
     enabled:  !!sessionId,
   });
 
+  // For an open shift, pos_sessions.expected_cash_amount is still NULL (only computed
+  // and stored at close time) — fetch the live summary so managers can see an accurate
+  // running expected-cash figure (including credit repayments/overpayments and cash
+  // transfers, not just sales) before the shift is closed, same as the POS terminal's
+  // own Shift Summary / Close Session views.
+  const { data: liveSummary } = useQuery({
+    queryKey: ['session-summary', sessionId],
+    queryFn:  () => api.get(`/pos/sessions/${sessionId}/summary`).then((r) => r.data.data),
+    enabled:  !!sessionId && data?.status === 'open',
+    refetchInterval: 30_000,
+  });
+
   if (isLoading) return <PageSpinner />;
   if (isError || !data) return (
     <div className="flex flex-col items-center justify-center py-16 text-center gap-2">
@@ -53,7 +65,13 @@ export function ShiftDetail({ sessionId }) {
   const payModeOpen   = data.pay_mode_amounts?.filter((a) => a.count_type === 'opening') ?? [];
   const payModeClose  = data.pay_mode_amounts?.filter((a) => a.count_type === 'closing') ?? [];
   const showOpenCol   = payModeOpen.length > 0 || (data.opening_cash_amount ?? 0) > 0;
-  const showReconCols = data.status !== 'open';
+  const isOpen        = data.status === 'open';
+  // Closing Count / Variance genuinely don't exist yet for an open shift; Expected can
+  // still be shown live (from the summary endpoint) rather than hidden entirely.
+  const showExpectedCol        = true;
+  const showClosingVarianceCols = !isOpen;
+  const liveExpectedCash = isOpen ? liveSummary?.expected_cash_amount : data.expected_cash_amount;
+  const creditTopupCash  = isOpen ? (liveSummary?.credit_topup_cash_total ?? 0) : 0;
 
   // Total variance across every payment mode, not just cash — a non-cash method
   // (e.g. M-Pesa Till) can be short/over just like the drawer, and that shouldn't
@@ -106,7 +124,8 @@ export function ShiftDetail({ sessionId }) {
         </div>
       )}
 
-      {/* Payment breakdown — includes per-method reconciliation when session is closed */}
+      {/* Payment breakdown — Expected is live for an open shift, stored once closed;
+          Closing Count / Variance only exist once the shift has actually been closed */}
       {data.payment_breakdown?.length > 0 && (
         <div>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Payment Breakdown</h3>
@@ -119,9 +138,9 @@ export function ShiftDetail({ sessionId }) {
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Method</th>
                   {showOpenCol     && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Opening</th>}
                   <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Sales</th>
-                  {showReconCols   && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Expected</th>}
-                  {showReconCols   && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Closing Count</th>}
-                  {showReconCols   && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Variance</th>}
+                  {showExpectedCol         && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Expected</th>}
+                  {showClosingVarianceCols && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Closing Count</th>}
+                  {showClosingVarianceCols && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Variance</th>}
                   <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Txns</th>
                 </tr>
               </thead>
@@ -134,18 +153,25 @@ export function ShiftDetail({ sessionId }) {
                   const closingAmt = isCash
                     ? data.closing_cash_counted
                     : payModeClose.find((a) => a.method_name === p.method_name)?.amount ?? null;
-                  const expectedAmt = isCash ? data.expected_cash_amount : null;
+                  const expectedAmt = isCash ? liveExpectedCash : p.total;
                   const pmVar      = isCash
                     ? data.cash_variance
                     : closingAmt !== null ? closingAmt - p.total : null;
                   return (
                     <tr key={p.method_name} className={isCash ? 'bg-amber-50/30' : ''}>
-                      <td className="px-4 py-3 font-medium text-gray-800">{p.method_name}</td>
+                      <td className="px-4 py-3 font-medium text-gray-800">
+                        {p.method_name}
+                        {isCash && creditTopupCash > 0 && (
+                          <span className="ml-1.5 text-xs text-emerald-600 font-normal">
+                            (+{formatCurrency(creditTopupCash)} credit repayments)
+                          </span>
+                        )}
+                      </td>
                       {showOpenCol   && <td className="px-4 py-3 text-right text-gray-500">{open ? formatCurrency(open.amount) : '—'}</td>}
                       <td className="px-4 py-3 text-right text-green-700 font-medium">{formatCurrency(p.total)}</td>
-                      {showReconCols && <td className="px-4 py-3 text-right text-gray-600">{expectedAmt !== null ? formatCurrency(expectedAmt) : '—'}</td>}
-                      {showReconCols && <td className="px-4 py-3 text-right text-gray-700 font-medium">{closingAmt !== null ? formatCurrency(closingAmt) : '—'}</td>}
-                      {showReconCols && (
+                      {showExpectedCol && <td className="px-4 py-3 text-right text-gray-600">{expectedAmt !== null && expectedAmt !== undefined ? formatCurrency(expectedAmt) : '—'}</td>}
+                      {showClosingVarianceCols && <td className="px-4 py-3 text-right text-gray-700 font-medium">{closingAmt !== null ? formatCurrency(closingAmt) : '—'}</td>}
+                      {showClosingVarianceCols && (
                         <td className="px-4 py-3 text-right">
                           {pmVar !== null ? (
                             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -175,22 +201,27 @@ export function ShiftDetail({ sessionId }) {
                 const closingAmt = isCash
                   ? data.closing_cash_counted
                   : payModeClose.find((a) => a.method_name === p.method_name)?.amount ?? null;
-                const expectedAmt = isCash ? data.expected_cash_amount : null;
+                const expectedAmt = isCash ? liveExpectedCash : p.total;
                 const pmVar      = isCash
                   ? data.cash_variance
                   : closingAmt !== null ? closingAmt - p.total : null;
                 return (
                   <div key={p.method_name} className={`p-3 ${isCash ? 'bg-amber-50/30' : ''}`}>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-gray-800 text-sm">{p.method_name}</span>
+                      <span className="font-medium text-gray-800 text-sm">
+                        {p.method_name}
+                        {isCash && creditTopupCash > 0 && (
+                          <span className="ml-1 text-xs text-emerald-600">(+{formatCurrency(creditTopupCash)})</span>
+                        )}
+                      </span>
                       <span className="text-green-700 font-medium text-sm">{formatCurrency(p.total)}</span>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
                       {showOpenCol && <span>Opening: {open ? formatCurrency(open.amount) : '—'}</span>}
-                      {showReconCols && <span>Expected: {expectedAmt !== null ? formatCurrency(expectedAmt) : '—'}</span>}
-                      {showReconCols && <span>Closing: {closingAmt !== null ? formatCurrency(closingAmt) : '—'}</span>}
+                      {showExpectedCol && <span>Expected: {expectedAmt !== null && expectedAmt !== undefined ? formatCurrency(expectedAmt) : '—'}</span>}
+                      {showClosingVarianceCols && <span>Closing: {closingAmt !== null ? formatCurrency(closingAmt) : '—'}</span>}
                       <span>{p.count} txn{p.count !== 1 ? 's' : ''}</span>
-                      {showReconCols && (
+                      {showClosingVarianceCols && (
                         pmVar !== null ? (
                           <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
                             Math.abs(pmVar) < 0.5 ? 'bg-green-100 text-green-700' :

@@ -456,11 +456,16 @@ function ShiftSummaryModal({ session, onClose }) {
     refetchInterval: 30_000,
   });
 
-  const openingFloat = parseFloat(session.opening_cash_amount) || 0;
-  const breakdown    = summary?.payment_breakdown ?? [];
-  const cashMethod   = breakdown.find((p) => p.method_name === 'Cash');
-  const cashSales    = parseFloat(cashMethod?.total) || 0;
-  const expectedCash = openingFloat + cashSales;
+  const openingFloat  = parseFloat(session.opening_cash_amount) || 0;
+  const breakdown     = summary?.payment_breakdown ?? [];
+  const cashMethod    = breakdown.find((p) => p.method_name === 'Cash');
+  const cashSales     = parseFloat(cashMethod?.total) || 0;
+  const creditTopupCash = summary?.credit_topup_cash_total ?? 0;
+  const totalCashOuts   = summary?.total_cash_outs ?? 0;
+  // Server-computed figure — includes credit-balance repayments/overpayments and cash
+  // transfers, same authoritative number Close Session will use (see pos.service.js
+  // computeExpectedCash). Falls back to the naive calc only if the summary hasn't loaded.
+  const expectedCash  = summary?.expected_cash_amount ?? (openingFloat + cashSales);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -516,7 +521,19 @@ function ShiftSummaryModal({ session, onClose }) {
                     <tbody className="divide-y divide-gray-50">
                       {/* Cash row */}
                       <tr className="bg-amber-50/40">
-                        <td className="px-4 py-3 font-medium text-gray-800">Cash</td>
+                        <td className="px-4 py-3 font-medium text-gray-800">
+                          Cash
+                          {creditTopupCash > 0 && (
+                            <span className="ml-1.5 text-xs text-emerald-600 font-normal">
+                              (+{formatCurrency(creditTopupCash)} credit repayments)
+                            </span>
+                          )}
+                          {totalCashOuts > 0 && (
+                            <span className="ml-1.5 text-xs text-red-500 font-normal">
+                              (−{formatCurrency(totalCashOuts)} cash-outs)
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-right text-gray-600">{formatCurrency(openingFloat)}</td>
                         <td className="px-4 py-3 text-right text-green-700 font-medium">{formatCurrency(cashSales)}</td>
                         <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency(expectedCash)}</td>
@@ -537,7 +554,7 @@ function ShiftSummaryModal({ session, onClose }) {
                         <td className="px-4 py-3 font-semibold text-gray-900">Total</td>
                         <td className="px-4 py-3 text-right font-medium text-gray-700">{formatCurrency(openingFloat)}</td>
                         <td className="px-4 py-3 text-right font-semibold text-green-700">{formatCurrency(summary?.total_sales ?? 0)}</td>
-                        <td className="px-4 py-3 text-right font-bold text-gray-900">{formatCurrency(openingFloat + (summary?.total_sales ?? 0))}</td>
+                        <td className="px-4 py-3 text-right font-bold text-gray-900">{formatCurrency(expectedCash + ((summary?.total_sales ?? 0) - cashSales))}</td>
                         <td className="px-4 py-3 text-center font-semibold text-gray-700">{summary?.txn_count ?? 0}</td>
                       </tr>
                     </tbody>
