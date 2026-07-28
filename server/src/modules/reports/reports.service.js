@@ -449,8 +449,15 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
        - COALESCE(SUM(jel.debit)  FILTER (WHERE je.source_type IN ('SALE', 'SESSION_SALE_SUMMARY', 'DAILY_SALE_SUMMARY', 'SALE_VOID')), 0)
         )::numeric AS sale_credit,
         COALESCE(SUM(jel.debit)  FILTER (WHERE je.source_type = 'RETURN'), 0)::numeric AS return_debit,
-        COALESCE(SUM(jel.debit),  0)::numeric AS total_debit,
-        COALESCE(SUM(jel.credit), 0)::numeric AS total_credit
+        -- Exclude generic 'VOID' reversal lines (used by voidJournalEntry for MANUAL,
+        -- AR_SETTLEMENT, CREDIT_PAYMENT and cash-out voids) — that pattern already flips
+        -- the ORIGINAL entry's status to 'void' (excluded above), so counting the reversal
+        -- too double-negates it, e.g. a voided KES 19,000 manual expense entry would
+        -- otherwise show as a phantom -19,000 credit against real, unrelated expenses
+        -- instead of netting to zero. SALE_VOID/PAYMENT_VOID don't hit this (their
+        -- originals stay 'posted' by design and are netted explicitly elsewhere).
+        COALESCE(SUM(jel.debit)  FILTER (WHERE je.source_type != 'VOID'), 0)::numeric AS total_debit,
+        COALESCE(SUM(jel.credit) FILTER (WHERE je.source_type != 'VOID'), 0)::numeric AS total_credit
       FROM ledger_entry_lines jel
       JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
       JOIN accounts a         ON a.account_id        = jel.account_id
@@ -1060,12 +1067,14 @@ async function getAPAging(companyId) {
 
 async function getBalanceSheet(companyId) {
   const [jeBalRes, bankRes, inventoryRes, suppliersRes] = await Promise.all([
-    // Journal net balances for key asset/liability accounts (all-time, no date filter)
+    // Journal net balances for key asset/liability accounts (all-time, no date filter).
+    // Excludes generic 'VOID' reversal lines — their originals are already excluded via
+    // status='void', so counting the reversal too would double-negate it (same fix as P&L).
     query(`
       SELECT
         a.account_code,
-        COALESCE(SUM(jel.debit),  0)::numeric AS total_debit,
-        COALESCE(SUM(jel.credit), 0)::numeric AS total_credit
+        COALESCE(SUM(jel.debit)  FILTER (WHERE je.source_type != 'VOID'), 0)::numeric AS total_debit,
+        COALESCE(SUM(jel.credit) FILTER (WHERE je.source_type != 'VOID'), 0)::numeric AS total_credit
       FROM ledger_entry_lines jel
       JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
       JOIN accounts a         ON a.account_id        = jel.account_id
@@ -1180,7 +1189,11 @@ async function getCashFlowStatement(companyId, { startDate, endDate } = {}) {
   const end   = endDate   || new Date().toISOString().slice(0, 10);
 
   const [movementsRes, openingBalRes] = await Promise.all([
-    // Cash movements in period: debit to 1000/1010 = inflow, credit = outflow
+    // Cash movements in period: debit to 1000/1010 = inflow, credit = outflow.
+    // Excludes generic 'VOID' reversal lines — their originals are already excluded via
+    // status='void', so counting the reversal too double-negates it (same fix as P&L):
+    // the voided original's cash effect never counts, but its reversal would still count,
+    // corrupting the total instead of the two cancelling out to zero net effect.
     query(`
       SELECT
         je.source_type,
@@ -1192,6 +1205,7 @@ async function getCashFlowStatement(companyId, { startDate, endDate } = {}) {
       WHERE ($1::uuid IS NULL OR je.company_id = $1::uuid) AND je.status = 'posted'
         AND je.entry_date BETWEEN $2 AND $3
         AND a.account_code IN ('1000', '1010')
+        AND je.source_type != 'VOID'
       GROUP BY je.source_type
     `, [companyId, start, end]),
 
@@ -1204,6 +1218,7 @@ async function getCashFlowStatement(companyId, { startDate, endDate } = {}) {
       WHERE ($1::uuid IS NULL OR je.company_id = $1::uuid) AND je.status = 'posted'
         AND je.entry_date < $2
         AND a.account_code IN ('1000', '1010')
+        AND je.source_type != 'VOID'
     `, [companyId, start]),
   ]);
 
