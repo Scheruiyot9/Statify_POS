@@ -946,7 +946,10 @@ function CloseSessionModal({ session, onClose, onClosed }) {
   const cashSpecificOuts  = (cashMethod ? (cashOutsByMethod[cashMethod.payment_method_id] || 0) : 0)
                           + (cashOutsByMethod['__cash__'] || 0);
   const cashSales         = parseFloat(cashMethod?.total) || 0;
-  const expectedCash      = openingFloat + cashSales - cashSpecificOuts;
+  const creditTopupCash   = summary?.credit_topup_cash_total ?? 0;
+  // Server-computed figure — same calculation closeSession will store, so this
+  // preview can't drift out of sync with what actually gets recorded on submit.
+  const expectedCash      = summary?.expected_cash_amount ?? (openingFloat + cashSales - cashSpecificOuts);
   const closingCounted    = parseFloat(closingAmount) || 0;
   const variance          = closingAmount !== '' ? closingCounted - expectedCash : null;
 
@@ -1008,6 +1011,11 @@ function CloseSessionModal({ session, onClose, onClosed }) {
                   <tr className="bg-amber-50/30">
                     <td className="px-4 py-3 font-medium text-gray-800">
                       Cash
+                      {creditTopupCash > 0 && (
+                        <span className="ml-1.5 text-xs text-emerald-600 font-normal">
+                          (+{formatCurrency(creditTopupCash)} credit repayments)
+                        </span>
+                      )}
                       {totalCashOuts > 0 && (
                         <span className="ml-1.5 text-xs text-red-500 font-normal">
                           (−{formatCurrency(totalCashOuts)} cash-outs)

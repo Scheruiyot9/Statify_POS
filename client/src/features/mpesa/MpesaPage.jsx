@@ -222,6 +222,7 @@ export default function MpesaPage() {
   const [selected,    setSelected]    = useState(null);
   const [showConfig,  setShowConfig]  = useState(false);
   const [editConfig,  setEditConfig]  = useState(null);   // config row being edited
+  const [exporting,   setExporting]   = useState(false);
 
   const filters = { search, status, paymentMode: mode, startDate, endDate, page, limit: 25 };
 
@@ -263,6 +264,38 @@ export default function MpesaPage() {
   };
   const hasFilters = search || status || mode || startDate || endDate;
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      // /mpesa/transactions caps limit at 100/page server-side, so page through
+      // every result instead of relying on a single oversized limit.
+      const baseParams = { search, status, paymentMode: mode, startDate, endDate, limit: 100 };
+      let all = [];
+      let page = 1;
+      let totalPages = 1;
+      do {
+        const res = await api.get('/mpesa/transactions', { params: { ...baseParams, page } });
+        const d = res.data.data;
+        all = all.concat(d?.transactions ?? []);
+        totalPages = d?.pages ?? 1;
+        page += 1;
+      } while (page <= totalPages);
+
+      if (!all.length) { toast('No records to export'); return; }
+      exportToExcel('mpesa-transactions', all, [
+        'payment_mode','phone_number','amount','mpesa_receipt_number',
+        'account_reference','status','initiated_at','completed_at','branch_name','sale_number',
+      ], [
+        'Mode','Phone','Amount','Receipt #','Account Ref',
+        'Status','Initiated','Completed','Branch','Sale #',
+      ]);
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
 
@@ -283,13 +316,7 @@ export default function MpesaPage() {
                 Add Config
               </Button>
               <Button variant="secondary" size="sm" icon={<Download className="h-4 w-4" />}
-                onClick={() => exportToExcel('mpesa-transactions', transactions, [
-                  'payment_mode','phone_number','amount','mpesa_receipt_number',
-                  'account_reference','status','initiated_at','completed_at','branch_name','sale_number',
-                ], [
-                  'Mode','Phone','Amount','Receipt #','Account Ref',
-                  'Status','Initiated','Completed','Branch','Sale #',
-                ])}>
+                loading={exporting} onClick={handleExport}>
                 Export
               </Button>
             </div>

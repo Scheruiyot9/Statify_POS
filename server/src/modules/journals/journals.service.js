@@ -320,7 +320,7 @@ async function voidJournal(companyId, journalId, userId, reason) {
     );
 
     await _post(client, companyId, {
-      entryDate:   toDateStr(new Date()),
+      entryDate:   toDateStr(j.entry_date),
       description: `Reversal of ${j.journal_number}${reason ? ': ' + reason : ''}`,
       sourceType:  'VOID',
       sourceId:    j.ledger_entry_id,

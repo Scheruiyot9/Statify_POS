@@ -359,6 +359,13 @@ function ReturnStep({ transactionId, onBack, onDone, session }) {
         </div>
       )}
 
+      {returnItems.length > 0 && !firstPayment && (
+        <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+          This transaction has no recorded payment method, so a refund can't be processed automatically. Use "Create Return" from the Returns page instead.
+        </div>
+      )}
+
       {/* Footer */}
       <div className="flex gap-2 pt-1">
         <Button variant="secondary" fullWidth onClick={onBack}>

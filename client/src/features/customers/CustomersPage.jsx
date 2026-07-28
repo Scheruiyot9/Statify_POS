@@ -239,6 +239,7 @@ export default function CustomersPage() {
   const [payMethodId, setPayMethodId]   = useState('');
   const [txnPreviewId, setTxnPreviewId] = useState(null);
   const [outstandingOnly, setOutstandingOnly] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['customers', search, page, outstandingOnly],
@@ -299,8 +300,19 @@ export default function CustomersPage() {
     enabled: creditEnabled,
   });
 
+  // Attribute this payment to the cashier's open shift so it's counted in that
+  // session's cash reconciliation, same as a payment collected in the POS terminal.
+  const { data: activeSession } = useQuery({
+    queryKey: ['active-session-for-credit-payment'],
+    queryFn: () => api.get('/pos/sessions/active').then((r) => r.data.data),
+    enabled: creditEnabled,
+    staleTime: 30_000,
+  });
+
   const creditPayMut = useMutation({
-    mutationFn: ({ id, amount, paymentMethodId }) => api.post(`/customers/${id}/credit-payment`, { amount, paymentMethodId }),
+    mutationFn: ({ id, amount, paymentMethodId }) => api.post(`/customers/${id}/credit-payment`, {
+      amount, paymentMethodId, sessionId: activeSession?.session_id ?? null,
+    }),
     onSuccess: (res) => {
       toast.success(`Payment recorded — balance: ${formatCurrency(res.data.data.credit_balance)}`);
       qc.invalidateQueries(['customers']);
@@ -316,6 +328,24 @@ export default function CustomersPage() {
   const customers = data?.customers ?? [];
   const total     = data?.total     ?? 0;
   const pages     = data?.pages     ?? 1;
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await api.get('/customers', {
+        params: { search, limit: 100000, creditOutstanding: outstandingOnly ? 'true' : undefined },
+      });
+      const all = res.data.data?.customers ?? [];
+      if (!all.length) { toast('No records to export'); return; }
+      exportToExcel('customers', all, [
+        'customer_name','phone','email','loyalty_points_balance','total_spent','credit_balance','created_at',
+      ], ['Name','Phone','Email','Loyalty Points','Total Spent','Balance','Joined']);
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -338,9 +368,7 @@ export default function CustomersPage() {
           Refresh
         </Button>
         <Button variant="secondary" size="sm" icon={<Download className="h-4 w-4" />}
-          onClick={() => exportToExcel('customers', customers, [
-            'customer_name','phone','email','loyalty_points_balance','total_spent','created_at',
-          ], ['Name','Phone','Email','Loyalty Points','Total Spent','Joined'])}>
+          loading={exporting} onClick={handleExport}>
           Export
         </Button>
         {canCreateCustomers && (

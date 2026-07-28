@@ -123,16 +123,10 @@ async function listReturns(companyId, role, branchIds, filters = {}) {
   };
 }
 
-async function getReturn(companyId, returnId, role, branchIds = []) {
-  const params = [companyId, returnId];
-  const conditions = ['r.company_id = $1', 'r.return_id = $2'];
-
-  if (!isCompanyWide(role)) {
-    params.push(branchIds?.length ? branchIds : ['00000000-0000-0000-0000-000000000000']);
-    conditions.push(`r.branch_id = ANY($${params.length})`);
-  }
-
-  const { rows } = await query(`
+// Shared by getReturn (pooled query, permission-scoped) and createReturn
+// (runs on the transaction's client so the just-inserted rows are visible).
+async function fetchReturnDetail(runner, returnId) {
+  const { rows } = await runner(`
     SELECT r.*,
       r.total_refunded::numeric, r.subtotal_refunded::numeric, r.tax_refunded::numeric,
       st.transaction_number AS original_transaction_number,
@@ -145,14 +139,14 @@ async function getReturn(companyId, returnId, role, branchIds = []) {
     JOIN branches b ON b.branch_id = r.branch_id
     JOIN users u ON u.user_id = r.processed_by_user_id
     LEFT JOIN users au ON au.user_id = r.approved_by_user_id
-    WHERE ${conditions.join(' AND ')}
-  `, params);
+    WHERE r.return_id = $1
+  `, [returnId]);
 
   if (!rows.length) throw AppError.notFound('Return');
   const ret = rows[0];
 
   const [itemsRes, refundsRes] = await Promise.all([
-    query(`
+    runner(`
       SELECT ri.*,
         ri.quantity_returned::numeric, ri.unit_price_at_sale::numeric,
         ri.line_refund_amount::numeric,
@@ -163,7 +157,7 @@ async function getReturn(companyId, returnId, role, branchIds = []) {
       LEFT JOIN return_reasons rr ON rr.reason_id = ri.return_reason_id
       WHERE ri.return_id = $1
     `, [returnId]),
-    query(`
+    runner(`
       SELECT rf.refund_id, rf.amount_refunded::numeric, rf.reference_number,
         rf.issued_as_store_credit, rf.created_at, pm.method_name
       FROM return_refunds rf
@@ -173,6 +167,24 @@ async function getReturn(companyId, returnId, role, branchIds = []) {
   ]);
 
   return { ...ret, items: itemsRes.rows, refunds: refundsRes.rows };
+}
+
+async function getReturn(companyId, returnId, role, branchIds = []) {
+  const params = [companyId, returnId];
+  const conditions = ['r.company_id = $1', 'r.return_id = $2'];
+
+  if (!isCompanyWide(role)) {
+    params.push(branchIds?.length ? branchIds : ['00000000-0000-0000-0000-000000000000']);
+    conditions.push(`r.branch_id = ANY($${params.length})`);
+  }
+
+  const { rows: scopeCheck } = await query(
+    `SELECT 1 FROM returns r WHERE ${conditions.join(' AND ')}`,
+    params
+  );
+  if (!scopeCheck.length) throw AppError.notFound('Return');
+
+  return fetchReturnDetail(query, returnId);
 }
 
 async function createReturn(companyId, branchId, userId, data) {
@@ -302,7 +314,7 @@ async function createReturn(companyId, branchId, userId, data) {
       }, items, refunds);
     }
 
-    return { return_id: ret.return_id, return_number: ret.return_number, status: ret.status };
+    return fetchReturnDetail((sql, p) => client.query(sql, p), ret.return_id);
   });
 }
 

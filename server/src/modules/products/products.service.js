@@ -212,8 +212,16 @@ async function updateProduct(companyId, productId, data) {
   // Allow explicitly clearing tax_template_id by passing null
   const hasTaxUpdate = 'tax_template_id' in data;
   const hasReorderUpdate = reorder_level !== undefined && reorder_level !== null && reorder_level !== '';
+  const hasBasePriceUpdate = base_price !== undefined && base_price !== null && base_price !== '';
 
   return transaction(async (client) => {
+    const { rows: existing } = await client.query(
+      `SELECT base_price::numeric FROM products WHERE company_id = $1 AND product_id = $2 AND deleted_at IS NULL`,
+      [companyId, productId]
+    );
+    if (!existing.length) throw AppError.notFound('Product');
+    const oldBasePrice = parseFloat(existing[0].base_price);
+
     const { rows } = await client.query(`
       UPDATE products
       SET product_name    = COALESCE($3, product_name),
@@ -234,6 +242,17 @@ async function updateProduct(companyId, productId, data) {
       image_url ?? null, hasTaxUpdate, tax_template_id ?? null]);
 
     if (!rows.length) throw AppError.notFound('Product');
+
+    // Branch pricing overrides that still mirror the previous company-wide price haven't
+    // been deliberately customized — keep them following the new price. Overrides that
+    // differ from the old base_price were set intentionally and are left untouched.
+    if (hasBasePriceUpdate && parseFloat(base_price) !== oldBasePrice) {
+      await client.query(
+        `UPDATE product_branch_pricing SET selling_price = $2
+         WHERE product_id = $1 AND selling_price = $3`,
+        [productId, parseFloat(base_price), oldBasePrice]
+      );
+    }
 
     // Reorder level lives per-branch — apply the same value across every active branch
     // so it stays a single field on the product edit form.

@@ -316,6 +316,70 @@ async function openSession(companyId, branchId, userId, { terminalId, openingCas
   };
 }
 
+// Shared by getSessionSummary (pre-close preview) and closeSession (actual close),
+// so the number a cashier sees before closing always matches what gets stored.
+async function computeExpectedCash(companyId, sessionId, openingFloat) {
+  const { rows: cashRows } = await query(`
+    SELECT COALESCE(SUM(tp.amount_applied), 0)::numeric AS cash_received
+    FROM transaction_payments tp
+    JOIN payment_methods pm ON pm.payment_method_id = tp.payment_method_id
+    JOIN sales_transactions st ON st.transaction_id = tp.transaction_id
+    WHERE st.pos_session_id = $1 AND pm.method_name = 'Cash' AND st.status = 'completed'
+  `, [sessionId]);
+
+  // Cash received via standalone customer top-ups/overpayments (incl. credit-balance
+  // repayments) during this session. A NULL payment_method_id defaults to Cash, same
+  // as session_cash_outs below — the "default" option in the collect-payment UI omits it.
+  const { rows: topupRows } = await query(`
+    SELECT COALESCE(SUM(ct.amount), 0)::numeric AS cash_received
+    FROM customer_topups ct
+    LEFT JOIN payment_methods pm ON pm.payment_method_id = ct.payment_method_id
+    WHERE ct.session_id = $1 AND (pm.method_name = 'Cash' OR ct.payment_method_id IS NULL)
+  `, [sessionId]);
+
+  const { rows: cashOutRows } = await query(`
+    SELECT payment_method_id, COALESCE(SUM(amount), 0)::numeric AS total
+    FROM session_cash_outs
+    WHERE session_id = $1 AND status <> 'void'
+    GROUP BY payment_method_id
+  `, [sessionId]);
+
+  // Cash-outs with no payment_method_id default to Cash
+  const cashOutByMethod = {};
+  let cashOutsNullTotal = 0;
+  for (const r of cashOutRows) {
+    if (r.payment_method_id) cashOutByMethod[r.payment_method_id] = parseFloat(r.total);
+    else cashOutsNullTotal += parseFloat(r.total);
+  }
+
+  const txnCash        = parseFloat(cashRows[0]?.cash_received || 0);
+  const topupCash      = parseFloat(topupRows[0]?.cash_received || 0);
+  const cashReceived   = txnCash + topupCash;
+  // Cash-specific outs: method-matched to Cash + any legacy null-method outs
+  const cashMethodId   = (await query(
+    `SELECT payment_method_id FROM payment_methods WHERE company_id = $1 AND method_name = 'Cash' LIMIT 1`,
+    [companyId]
+  )).rows[0]?.payment_method_id;
+  const cashOuts       = cashOutsNullTotal + (cashMethodId ? (cashOutByMethod[cashMethodId] || 0) : 0);
+
+  // Transfers in/out of Cash mode affect expected cash balance
+  let transferToCash = 0, transferFromCash = 0;
+  if (cashMethodId) {
+    const { rows: xferRows } = await query(`
+      SELECT
+        COALESCE(SUM(CASE WHEN to_method_id   = $2 THEN amount ELSE 0 END), 0)::numeric AS to_cash,
+        COALESCE(SUM(CASE WHEN from_method_id = $2 THEN amount ELSE 0 END), 0)::numeric AS from_cash
+      FROM session_transfers WHERE session_id = $1 AND status <> 'void'
+    `, [sessionId, cashMethodId]);
+    transferToCash   = parseFloat(xferRows[0]?.to_cash   || 0);
+    transferFromCash = parseFloat(xferRows[0]?.from_cash || 0);
+  }
+
+  const expectedCash = openingFloat + cashReceived - cashOuts + transferToCash - transferFromCash;
+
+  return { expectedCash, txnCash, topupCash, cashOuts, transferToCash, transferFromCash };
+}
+
 async function getSessionSummary(companyId, sessionId) {
   const { rows: sessionRows } = await query(`
     SELECT ps.session_id, ps.session_start, ps.status,
@@ -374,6 +438,9 @@ async function getSessionSummary(companyId, sessionId) {
     cashOutsByMethod[key] = (cashOutsByMethod[key] || 0) + co.amount;
   }
 
+  const openingCashAmount = parseFloat(s.opening_cash_amount);
+  const reconciliation = await computeExpectedCash(companyId, sessionId, openingCashAmount);
+
   return {
     session_id:          s.session_id,
     session_start:       s.session_start,
@@ -381,7 +448,7 @@ async function getSessionSummary(companyId, sessionId) {
     terminal_name:       s.terminal_name,
     terminal_code:       s.terminal_code,
     branch_name:         s.branch_name,
-    opening_cash_amount: parseFloat(s.opening_cash_amount),
+    opening_cash_amount: openingCashAmount,
     txn_count:           summaryRes.rows[0].txn_count,
     total_sales:         parseFloat(summaryRes.rows[0].total_sales),
     total_discounts:     parseFloat(summaryRes.rows[0].total_discounts),
@@ -396,6 +463,13 @@ async function getSessionSummary(companyId, sessionId) {
       count:             r.count,
       total:             parseFloat(r.total),
     })),
+    // Credit-balance repayments and cash-drawer transfers collected outside the
+    // per-transaction payment_breakdown above, but still part of the cash count.
+    credit_topup_cash_total: reconciliation.topupCash,
+    transfer_to_cash:        reconciliation.transferToCash,
+    transfer_from_cash:      reconciliation.transferFromCash,
+    // Authoritative expected-cash figure — mirrors what closeSession will compute/store.
+    expected_cash_amount:    reconciliation.expectedCash,
   };
 }
 
@@ -415,60 +489,8 @@ async function closeSession(companyId, sessionId, userId, { closingCashCounted =
   );
   const postingMode = coRows[0]?.journal_posting_mode || 'per_transaction';
 
-  const { rows: cashRows } = await query(`
-    SELECT COALESCE(SUM(tp.amount_applied), 0)::numeric AS cash_received
-    FROM transaction_payments tp
-    JOIN payment_methods pm ON pm.payment_method_id = tp.payment_method_id
-    JOIN sales_transactions st ON st.transaction_id = tp.transaction_id
-    WHERE st.pos_session_id = $1 AND pm.method_name = 'Cash' AND st.status = 'completed'
-  `, [sessionId]);
-
-  // Cash received via standalone customer top-ups/overpayments during this session
-  const { rows: topupRows } = await query(`
-    SELECT COALESCE(SUM(ct.amount), 0)::numeric AS cash_received
-    FROM customer_topups ct
-    JOIN payment_methods pm ON pm.payment_method_id = ct.payment_method_id
-    WHERE ct.session_id = $1 AND pm.method_name = 'Cash'
-  `, [sessionId]);
-
-  const { rows: cashOutRows } = await query(`
-    SELECT payment_method_id, COALESCE(SUM(amount), 0)::numeric AS total
-    FROM session_cash_outs
-    WHERE session_id = $1 AND status <> 'void'
-    GROUP BY payment_method_id
-  `, [sessionId]);
-
-  // Cash-outs with no payment_method_id default to Cash
-  const cashOutByMethod = {};
-  let cashOutsNullTotal = 0;
-  for (const r of cashOutRows) {
-    if (r.payment_method_id) cashOutByMethod[r.payment_method_id] = parseFloat(r.total);
-    else cashOutsNullTotal += parseFloat(r.total);
-  }
-
   const openingFloat   = parseFloat(sessionRows[0].opening_cash_amount);
-  const cashReceived   = parseFloat(cashRows[0]?.cash_received || 0) + parseFloat(topupRows[0]?.cash_received || 0);
-  // Cash-specific outs: method-matched to Cash + any legacy null-method outs
-  const cashMethodId   = (await query(
-    `SELECT payment_method_id FROM payment_methods WHERE company_id = $1 AND method_name = 'Cash' LIMIT 1`,
-    [companyId]
-  )).rows[0]?.payment_method_id;
-  const cashOuts       = cashOutsNullTotal + (cashMethodId ? (cashOutByMethod[cashMethodId] || 0) : 0);
-
-  // Transfers in/out of Cash mode affect expected cash balance
-  let transferToCash = 0, transferFromCash = 0;
-  if (cashMethodId) {
-    const { rows: xferRows } = await query(`
-      SELECT
-        COALESCE(SUM(CASE WHEN to_method_id   = $2 THEN amount ELSE 0 END), 0)::numeric AS to_cash,
-        COALESCE(SUM(CASE WHEN from_method_id = $2 THEN amount ELSE 0 END), 0)::numeric AS from_cash
-      FROM session_transfers WHERE session_id = $1 AND status <> 'void'
-    `, [sessionId, cashMethodId]);
-    transferToCash   = parseFloat(xferRows[0]?.to_cash   || 0);
-    transferFromCash = parseFloat(xferRows[0]?.from_cash || 0);
-  }
-
-  const expectedCash   = openingFloat + cashReceived - cashOuts + transferToCash - transferFromCash;
+  const { expectedCash } = await computeExpectedCash(companyId, sessionId, openingFloat);
   const closingCounted = parseFloat(closingCashCounted) || 0;
   const variance       = closingCounted - expectedCash;
 

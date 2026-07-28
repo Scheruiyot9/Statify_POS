@@ -912,6 +912,8 @@ export default function JournalPage() {
   const [aeSourceType, setAeSourceType] = useState('!SALE'); // default: hide per-sale entries
   const [aePage,       setAePage]       = useState(1);
   const [aeSelected,   setAeSelected]   = useState(null);
+  const [aeEditingDate, setAeEditingDate] = useState(false);
+  const [aeNewDate,     setAeNewDate]     = useState('');
 
   // ── Post unposted state ──
   const yesterdayLocal = () => {
@@ -1036,6 +1038,22 @@ export default function JournalPage() {
     queryKey: ['journal-entry-detail', aeSelected],
     queryFn: () => api.get(`/journal/entries/${aeSelected}`).then((r) => r.data.data),
     enabled: !!aeSelected,
+  });
+
+  useEffect(() => { setAeEditingDate(false); setAeNewDate(''); }, [aeSelected]);
+
+  const aeDateMut = useMutation({
+    mutationFn: (d) => api.patch(`/accounts/entry/${aeSelected}/date`, { entryDate: d }),
+    onSuccess: () => {
+      toast.success('Date updated');
+      // The patch endpoint returns the accounts-module entry shape, which differs
+      // from /journal/entries/:id's shape this modal renders — refetch instead of
+      // splicing the response directly into the cache.
+      qc.invalidateQueries({ queryKey: ['journal-entry-detail', aeSelected] });
+      qc.invalidateQueries({ queryKey: ['journal-entries'] });
+      setAeEditingDate(false);
+    },
+    onError: (e) => toast.error(e.response?.data?.message ?? 'Failed to update date'),
   });
 
   const journals   = data?.journals ?? [];
@@ -1697,7 +1715,30 @@ export default function JournalPage() {
               <div className="space-y-4">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm bg-gray-50 rounded-lg p-3">
                   <div><span className="text-gray-500 text-xs">Number</span><p className="font-mono font-semibold text-sm">{aeDetail.entry_number}</p></div>
-                  <div><span className="text-gray-500 text-xs">Date</span><p className="font-medium">{String(aeDetail.entry_date).slice(0, 10)}</p></div>
+                  <div>
+                    <span className="text-gray-500 text-xs">Date</span>
+                    {aeEditingDate ? (
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <input type="date" autoFocus
+                          className="border rounded px-1.5 py-0.5 text-xs focus:border-primary-500 focus:outline-none"
+                          value={aeNewDate} onChange={(e) => setAeNewDate(e.target.value)} />
+                        <button onClick={() => aeDateMut.mutate(aeNewDate)} disabled={!aeNewDate || aeDateMut.isPending}
+                          className="px-2 py-0.5 text-xs rounded bg-primary-600 text-white disabled:opacity-40">
+                          {aeDateMut.isPending ? '…' : 'Save'}
+                        </button>
+                        <button onClick={() => setAeEditingDate(false)}
+                          className="px-2 py-0.5 text-xs rounded border text-gray-600 hover:bg-gray-100">✕</button>
+                      </div>
+                    ) : (
+                      <p className="font-medium">
+                        {String(aeDetail.entry_date).slice(0, 10)}
+                        {aeDetail.status !== 'void' && (
+                          <button onClick={() => { setAeNewDate(String(aeDetail.entry_date).slice(0, 10)); setAeEditingDate(true); }}
+                            className="ml-1.5 text-xs text-primary-600 underline hover:text-primary-800">edit</button>
+                        )}
+                      </p>
+                    )}
+                  </div>
                   <div>
                     <span className="text-gray-500 text-xs">Type</span>
                     <p><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${badge.color}`}>{badge.label}</span></p>

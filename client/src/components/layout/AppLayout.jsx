@@ -192,10 +192,22 @@ const ROUTE_TITLES = {
   '/app/accounts':      'Chart of Accounts',
   '/app/bank-accounts': 'Bank Accounts',
   '/app/journal':       'Journal',
-  '/app/reports':       'Sales Reports',
+  '/app/reports':       'Reports',
   '/app/users':         'Users & Roles',
   '/app/settings':      'Settings',
   '/app/admin':         'Admin Panel',
+};
+
+// Reports page keeps one route and switches tabs via a `?tab=` query param,
+// so the title needs to key off the tab, not just the pathname.
+const REPORTS_TAB_TITLES = {
+  sales:          'Sales Reports',
+  stock:          'Stock Value Report',
+  pl:             'Profit & Loss',
+  'cash-flow':    'Cash Flow Statement',
+  'ar-aging':     'AR Aging Report',
+  'ap-aging':     'AP Aging Report',
+  'balance-sheet':'Balance Sheet',
 };
 
 // ── App Layout ────────────────────────────────────────────────────────────────
@@ -210,7 +222,9 @@ export default function AppLayout() {
   const navigate           = useNavigate();
   const location           = useLocation();
 
-  const pageTitle = ROUTE_TITLES[location.pathname] ?? 'Statify POS';
+  const pageTitle = location.pathname === '/app/reports'
+    ? (REPORTS_TAB_TITLES[new URLSearchParams(location.search).get('tab')] ?? 'Sales Reports')
+    : ROUTE_TITLES[location.pathname] ?? 'Statify POS';
 
   const [dropdownOpen,  setDropdownOpen]  = useState(false);
   const [changePwdOpen, setChangePwdOpen] = useState(false);

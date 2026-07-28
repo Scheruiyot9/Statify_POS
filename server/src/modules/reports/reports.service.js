@@ -442,7 +442,12 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
         a.account_code,
         a.account_name,
         a.account_type,
-        COALESCE(SUM(jel.credit) FILTER (WHERE je.source_type IN ('SALE', 'SESSION_SALE_SUMMARY', 'DAILY_SALE_SUMMARY')), 0)::numeric AS sale_credit,
+        -- Net of SALE_VOID reversals — a voided sale is now posted at the original sale's
+        -- own date (see journal.service.js), so it lands in this same period and cancels out
+        -- instead of leaving the voided sale's revenue/VAT permanently in the P&L.
+        (COALESCE(SUM(jel.credit) FILTER (WHERE je.source_type IN ('SALE', 'SESSION_SALE_SUMMARY', 'DAILY_SALE_SUMMARY', 'SALE_VOID')), 0)
+       - COALESCE(SUM(jel.debit)  FILTER (WHERE je.source_type IN ('SALE', 'SESSION_SALE_SUMMARY', 'DAILY_SALE_SUMMARY', 'SALE_VOID')), 0)
+        )::numeric AS sale_credit,
         COALESCE(SUM(jel.debit)  FILTER (WHERE je.source_type = 'RETURN'), 0)::numeric AS return_debit,
         COALESCE(SUM(jel.debit),  0)::numeric AS total_debit,
         COALESCE(SUM(jel.credit), 0)::numeric AS total_credit
@@ -969,34 +974,53 @@ async function getAPAging(companyId) {
       SELECT supplier_id, COALESCE(SUM(grn_amt), 0) AS total_grn
       FROM grn_seq
       GROUP BY supplier_id
+    ),
+    -- Live outstanding balance from the GL — current_balance is a cache that isn't
+    -- decremented on payment, so it drifts stale; the ledger is the source of truth.
+    live_balance AS (
+      SELECT s.supplier_id,
+        -- Scoped to account 2000 (AP) — entity_type='supplier' also tags supplier-linked
+        -- lines on unrelated accounts (e.g. a cash-out debited straight to an expense
+        -- account), which aren't AP owed and would otherwise pollute this balance.
+        COALESCE((
+          SELECT SUM(lel.credit) - SUM(lel.debit)
+          FROM ledger_entry_lines lel
+          JOIN journal_entries je ON je.journal_entry_id = lel.journal_entry_id
+          JOIN accounts ap_acc     ON ap_acc.account_id  = lel.account_id AND ap_acc.account_code = '2000'
+          WHERE je.status = 'posted' AND je.source_type != 'VOID'
+            AND lel.entity_type = 'supplier' AND lel.entity_id = s.supplier_id
+        ), 0)::numeric AS balance
+      FROM suppliers s
+      WHERE ($1::uuid IS NULL OR s.company_id = $1::uuid)
     )
     SELECT
       s.supplier_id, s.supplier_name, s.phone, s.email,
-      s.current_balance::numeric AS balance,
+      lb.balance,
       s.payment_terms,
       -- Oldest GRN not yet fully covered by FIFO payments
       MIN(CASE
-        WHEN gs.prior_amt + gs.grn_amt > (COALESCE(sgt.total_grn, 0) - s.current_balance::numeric)
+        WHEN gs.prior_amt + gs.grn_amt > (COALESCE(sgt.total_grn, 0) - lb.balance)
         THEN gs.received_date
       END)::date AS oldest_invoice_date,
       MAX(gs.received_date)::date AS latest_invoice_date,
       CURRENT_DATE - MIN(CASE
-        WHEN gs.prior_amt + gs.grn_amt > (COALESCE(sgt.total_grn, 0) - s.current_balance::numeric)
+        WHEN gs.prior_amt + gs.grn_amt > (COALESCE(sgt.total_grn, 0) - lb.balance)
         THEN gs.received_date
       END)::date AS days_outstanding,
       COUNT(CASE
-        WHEN gs.prior_amt + gs.grn_amt > (COALESCE(sgt.total_grn, 0) - s.current_balance::numeric)
+        WHEN gs.prior_amt + gs.grn_amt > (COALESCE(sgt.total_grn, 0) - lb.balance)
         THEN 1
       END)::int AS grn_count,
       COALESCE(SUM(CASE
-        WHEN gs.prior_amt + gs.grn_amt > (COALESCE(sgt.total_grn, 0) - s.current_balance::numeric)
+        WHEN gs.prior_amt + gs.grn_amt > (COALESCE(sgt.total_grn, 0) - lb.balance)
         THEN gs.grn_amt
       END), 0)::numeric AS total_invoiced
     FROM suppliers s
+    JOIN live_balance           lb  ON lb.supplier_id  = s.supplier_id
     LEFT JOIN grn_seq           gs  ON gs.supplier_id  = s.supplier_id
     LEFT JOIN supplier_grn_totals sgt ON sgt.supplier_id = s.supplier_id
-    WHERE ($1::uuid IS NULL OR s.company_id = $1::uuid) AND s.current_balance > 0
-    GROUP BY s.supplier_id, s.supplier_name, s.phone, s.email, s.current_balance, s.payment_terms, sgt.total_grn
+    WHERE ($1::uuid IS NULL OR s.company_id = $1::uuid) AND lb.balance > 0
+    GROUP BY s.supplier_id, s.supplier_name, s.phone, s.email, lb.balance, s.payment_terms, sgt.total_grn
     ORDER BY days_outstanding DESC NULLS LAST
   `, [companyId]);
 
@@ -1071,12 +1095,25 @@ async function getBalanceSheet(companyId) {
       WHERE pbi.quantity_available > 0
     `, [companyId]),
 
-    // Supplier balances for AP breakdown
+    // Supplier balances for AP breakdown — computed live from the GL, same as
+    // getAPAging, since suppliers.current_balance is a stale cache never
+    // decremented on payment.
     query(`
-      SELECT supplier_name, current_balance::numeric AS balance
-      FROM suppliers
-      WHERE ($1::uuid IS NULL OR company_id = $1::uuid) AND current_balance > 0
-      ORDER BY current_balance DESC
+      SELECT supplier_name, balance FROM (
+        SELECT s.supplier_name,
+          COALESCE((
+            SELECT SUM(lel.credit) - SUM(lel.debit)
+            FROM ledger_entry_lines lel
+            JOIN journal_entries je ON je.journal_entry_id = lel.journal_entry_id
+            JOIN accounts ap_acc     ON ap_acc.account_id  = lel.account_id AND ap_acc.account_code = '2000'
+            WHERE je.status = 'posted' AND je.source_type != 'VOID'
+              AND lel.entity_type = 'supplier' AND lel.entity_id = s.supplier_id
+          ), 0)::numeric AS balance
+        FROM suppliers s
+        WHERE ($1::uuid IS NULL OR s.company_id = $1::uuid)
+      ) sub
+      WHERE balance > 0
+      ORDER BY balance DESC
     `, [companyId]),
   ]);
 
@@ -1182,7 +1219,15 @@ async function getCashFlowStatement(companyId, { startDate, endDate } = {}) {
     const outflow = parseFloat(r.cash_out);
     const net     = inflow - outflow;
     switch (r.source_type) {
-      case 'SALE':             cf.operating.receiptsFromCustomers += inflow;  break;
+      // Companies on daily_summary/session posting mode book cash sales as one lump
+      // entry per day/session instead of per-transaction — still the same category.
+      case 'SALE':
+      case 'DAILY_SALE_SUMMARY':
+      case 'SESSION_SALE_SUMMARY':
+        cf.operating.receiptsFromCustomers += inflow;  break;
+      // Reversal of a voided sale — nets against receiptsFromCustomers rather than
+      // falling into the catch-all 'other' bucket (same category, opposite direction).
+      case 'SALE_VOID':        cf.operating.receiptsFromCustomers -= outflow; break;
       case 'AR_SETTLEMENT':    cf.operating.arCollections         += inflow;  break;
       case 'CREDIT_PAYMENT':   cf.operating.creditCollections     += inflow;  break;
       case 'RETURN':           cf.operating.refundsToCustomers    -= outflow; break;
@@ -1364,14 +1409,24 @@ async function getPurchasesSummary(companyId, { startDate, endDate } = {}) {
       SELECT s.supplier_name,
              COALESCE(SUM(g.total_amount) FILTER (WHERE g.status='posted'), 0)::numeric AS received_value,
              COALESCE(SUM(sp.amount), 0)::numeric AS paid_value,
-             s.current_balance::numeric AS outstanding
+             -- Live GL balance, not the stale current_balance cache (never decremented on payment).
+             -- Scoped to account 2000 (AP) — entity_type='supplier' also tags supplier-linked
+             -- lines on unrelated accounts, which aren't AP owed.
+             COALESCE((
+               SELECT SUM(lel.credit) - SUM(lel.debit)
+               FROM ledger_entry_lines lel
+               JOIN journal_entries je ON je.journal_entry_id = lel.journal_entry_id
+               JOIN accounts ap_acc     ON ap_acc.account_id  = lel.account_id AND ap_acc.account_code = '2000'
+               WHERE je.status = 'posted' AND je.source_type != 'VOID'
+                 AND lel.entity_type = 'supplier' AND lel.entity_id = s.supplier_id
+             ), 0)::numeric AS outstanding
       FROM suppliers s
       LEFT JOIN grns g ON g.supplier_id = s.supplier_id AND g.company_id = $1
         AND g.received_date BETWEEN $2 AND $3
       LEFT JOIN supplier_payments sp ON sp.supplier_id = s.supplier_id AND sp.company_id = $1
         AND sp.payment_date BETWEEN $2 AND $3 AND sp.is_void = FALSE
       WHERE s.company_id = $1
-      GROUP BY s.supplier_id, s.supplier_name, s.current_balance
+      GROUP BY s.supplier_id, s.supplier_name
       HAVING COALESCE(SUM(g.total_amount), 0) > 0 OR COALESCE(SUM(sp.amount), 0) > 0
       ORDER BY received_value DESC
     `, [companyId, start, end]),

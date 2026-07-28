@@ -544,6 +544,7 @@ export default function ProductsPage() {
   const [ledgerProduct, setLedgerProduct] = useState(null);
   const [sortBy,  setSortBy]  = useState('name');
   const [sortDir, setSortDir] = useState('asc');
+  const [exportingAll, setExportingAll] = useState(false);
 
   const toggleSort = (col) => {
     if (sortBy === col) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
@@ -607,6 +608,24 @@ export default function ProductsPage() {
   const total    = data?.total    ?? 0;
   const pages    = data?.pages    ?? 1;
 
+  const handleExport = async () => {
+    setExportingAll(true);
+    try {
+      const res = await api.get('/products', {
+        params: { search, categoryId: catFilter, isActive: statusFilter, limit: 100000, sortBy, sortDir },
+      });
+      const all = res.data.data?.products ?? [];
+      if (!all.length) { toast.error('No products to export'); return; }
+      exportToExcel('products', all,
+        ['product_name','sku','barcode','category_name','base_price','is_active'],
+        ['Product Name','SKU','Barcode','Category','Price','Active']);
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setExportingAll(false);
+    }
+  };
+
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef(null);
   useEffect(() => {
@@ -657,11 +676,10 @@ export default function ProductsPage() {
           </button>
           {moreOpen && (
             <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-gray-100 bg-white shadow-lg py-1">
-              <button onClick={() => { setMoreOpen(false); exportToExcel('products', products,
-                ['product_name','sku','barcode','category_name','base_price','is_active'],
-                ['Product Name','SKU','Barcode','Category','Price','Active']); }}
-                className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                <Download className="h-4 w-4 text-gray-400" /> Export
+              <button onClick={() => { setMoreOpen(false); handleExport(); }}
+                disabled={exportingAll}
+                className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                <Download className="h-4 w-4 text-gray-400" /> {exportingAll ? 'Exporting…' : 'Export'}
               </button>
               {canManageProducts && (
                 <>

@@ -263,6 +263,22 @@ async function createCompany(data) {
       `, [company.company_id, a.code, a.name, a.type, a.subtype, a.system]);
     }
 
+    // 10. Seed default Return Reasons
+    for (const rr of [
+      { code: 'DEFECTIVE',   name: 'Defective / Damaged Item', restock: false },
+      { code: 'WRONG_ITEM',  name: 'Wrong Item Sold',          restock: true  },
+      { code: 'CHANGED_MIND',name: 'Customer Changed Mind',    restock: true  },
+      { code: 'DUPLICATE',   name: 'Duplicate Purchase',       restock: true  },
+      { code: 'EXPIRED',     name: 'Expired Product',          restock: false },
+      { code: 'OTHER',       name: 'Other',                    restock: true  },
+    ]) {
+      await client.query(`
+        INSERT INTO return_reasons (company_id, reason_code, reason_name, restock_by_default, is_system_reason)
+        VALUES ($1, $2, $3, $4, TRUE)
+        ON CONFLICT (company_id, reason_code) DO NOTHING
+      `, [company.company_id, rr.code, rr.name, rr.restock]);
+    }
+
     return { company, branch, admin_user: adminUser };
   });
 }

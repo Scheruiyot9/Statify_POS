@@ -530,7 +530,7 @@ async function voidTransaction(companyId, transactionId, userId, reason, role, b
   }
 
   const { rows } = await query(
-    `SELECT status, branch_id, transaction_number FROM sales_transactions WHERE ${conditions.join(' AND ')}`,
+    `SELECT status, branch_id, transaction_number, transaction_date FROM sales_transactions WHERE ${conditions.join(' AND ')}`,
     params
   );
   if (!rows.length) throw AppError.notFound('Transaction');
@@ -538,6 +538,7 @@ async function voidTransaction(companyId, transactionId, userId, reason, role, b
 
   const branchId          = rows[0].branch_id;
   const transactionNumber = rows[0].transaction_number;
+  const transactionDate   = rows[0].transaction_date;
 
   return transaction(async (client) => {
     const { rows: [co] } = await client.query(
@@ -596,6 +597,7 @@ async function voidTransaction(companyId, transactionId, userId, reason, role, b
     await jrn.postSaleVoidEntry(client, companyId, {
       transaction_id:      transactionId,
       transaction_number:  transactionNumber,
+      transaction_date:    transactionDate,
       voided_by_user_id:   userId,
     });
   });
@@ -682,9 +684,12 @@ async function editTransaction(companyId, transactionId, userId, data, role, bra
       }
     }
 
-    // 2. Reverse existing journal entry for this sale
+    // 2. Reverse existing journal entry for this sale (at its original date — not
+    // the possibly-just-changed transactionDate, since that reversal is undoing
+    // the entry as it was actually posted).
     await jrn.postSaleEditReversal(client, companyId, {
       transaction_id: transactionId, transaction_number: transactionNumber,
+      transaction_date: rows[0].transaction_date,
       edited_by_user_id: userId,
     });
 

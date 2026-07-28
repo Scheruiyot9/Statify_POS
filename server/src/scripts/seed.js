@@ -368,6 +368,26 @@ async function seed() {
 
     console.log('  ✓ Categories, products, inventory, pricing');
 
+    // ── 11b. Default Return Reasons ─────────────────────────────────────────
+    for (const companyId of [freshmart.company_id, techzone.company_id]) {
+      for (const rr of [
+        { code: 'DEFECTIVE',    name: 'Defective / Damaged Item', restock: false },
+        { code: 'WRONG_ITEM',   name: 'Wrong Item Sold',          restock: true  },
+        { code: 'CHANGED_MIND', name: 'Customer Changed Mind',    restock: true  },
+        { code: 'DUPLICATE',    name: 'Duplicate Purchase',       restock: true  },
+        { code: 'EXPIRED',      name: 'Expired Product',          restock: false },
+        { code: 'OTHER',        name: 'Other',                    restock: true  },
+      ]) {
+        await client.query(`
+          INSERT INTO return_reasons (company_id, reason_code, reason_name, restock_by_default, is_system_reason)
+          VALUES ($1, $2, $3, $4, TRUE)
+          ON CONFLICT (company_id, reason_code) DO NOTHING
+        `, [companyId, rr.code, rr.name, rr.restock]);
+      }
+    }
+
+    console.log('  ✓ Return reasons');
+
     // ── 12. Sample Transactions (30 days history) ───────────────────────────
     const cashierUserId = userMap['cashier@freshmart.com'];
     const pmResult = await client.query(

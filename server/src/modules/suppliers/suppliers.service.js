@@ -4,11 +4,16 @@ const AppError  = require('../../shared/AppError');
 // Always compute live from the ledger — every GRN/payment/manual entry is tagged
 // entity_type='supplier', so credits minus debits gives the outstanding AP balance.
 // Falls back to 0 when no ledger entries exist yet.
+// Scoped to the Accounts Payable account (2000) specifically — entity_type='supplier'
+// is also used to tag supplier-linked lines on OTHER accounts (e.g. a session cash-out
+// debited straight to an expense/inventory account, just noting which supplier it paid),
+// which don't represent AP owed and must not be swept into this balance.
 const LIVE_BALANCE_SQL = `
   COALESCE((
     SELECT (SUM(lel.credit) - SUM(lel.debit))::numeric
     FROM ledger_entry_lines lel
     JOIN journal_entries je ON je.journal_entry_id = lel.journal_entry_id
+    JOIN accounts ap_acc     ON ap_acc.account_id  = lel.account_id AND ap_acc.account_code = '2000'
     WHERE je.status = 'posted' AND je.source_type != 'VOID'
       AND lel.entity_type = 'supplier'
       AND lel.entity_id = s.supplier_id

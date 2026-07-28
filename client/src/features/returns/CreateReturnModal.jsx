@@ -11,6 +11,7 @@ import { useAuthStore } from '@/app/store';
 import ReturnReceiptModal from '@/components/ui/ReturnReceiptModal';
 
 const CONDITIONS = ['resellable', 'damaged', 'expired', 'other'];
+const STORE_CREDIT_VALUE = '__store_credit__';
 
 // ── Step 1 — Find original sale ───────────────────────────────────────────────
 
@@ -270,12 +271,20 @@ function StepRefundMethod({ totalRefund, refunds, setRefunds }) {
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Refund via</label>
                   <select
-                    value={r.paymentMethodId}
-                    onChange={(e) => update(i, 'paymentMethodId', e.target.value)}
+                    value={r.issuedAsStoreCredit ? STORE_CREDIT_VALUE : r.paymentMethodId}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === STORE_CREDIT_VALUE) {
+                        setRefunds((prev) => prev.map((rr, idx) => idx === i ? { ...rr, paymentMethodId: '', issuedAsStoreCredit: true } : rr));
+                      } else {
+                        setRefunds((prev) => prev.map((rr, idx) => idx === i ? { ...rr, paymentMethodId: val, issuedAsStoreCredit: false } : rr));
+                      }
+                    }}
                     className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm bg-white focus:border-primary-500 focus:outline-none"
                   >
+                    <option value="" disabled>Select a method…</option>
                     {methods.map((m) => <option key={m.payment_method_id} value={m.payment_method_id}>{m.method_name}</option>)}
-                    <option value="">Store Credit</option>
+                    <option value={STORE_CREDIT_VALUE}>Store Credit</option>
                   </select>
                 </div>
                 <div>

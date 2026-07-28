@@ -61,6 +61,14 @@ function PaymentModal({ customerId, customerName, balance, selectedIds, selected
   const [amount,     setAmount]     = useState(hasSelection ? String(selectedAmount.toFixed(2)) : '');
   const [methodId,   setMethodId]   = useState('');
 
+  // Attribute this payment to the cashier's open shift so it's counted in that
+  // session's cash reconciliation, same as a payment collected in the POS terminal.
+  const { data: activeSession } = useQuery({
+    queryKey: ['active-session-for-credit-payment'],
+    queryFn: () => api.get('/pos/sessions/active').then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
   const mut = useMutation({
     mutationFn: (body) => api.post(`/customers/${customerId}/credit-payment`, body),
     onSuccess: (res) => {
@@ -76,6 +84,7 @@ function PaymentModal({ customerId, customerName, balance, selectedIds, selected
     const body = {
       amount:          parseFloat(amount),
       paymentMethodId: methodId || null,
+      sessionId:       activeSession?.session_id ?? null,
     };
     if (hasSelection) body.transactionIds = selectedIds;
     mut.mutate(body);

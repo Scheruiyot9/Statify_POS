@@ -249,8 +249,13 @@ async function _buildSaleReversalLines(client, companyId, transactionId, accIds)
 
   const lines = [];
 
-  // CR: cash/bank lines reversed
+  // CR: cash/bank lines reversed. Any shortfall vs the total (a credit sale with no
+  // payment row, or only a partial one) reverses out of Accounts Receivable instead —
+  // mirrors how postDailySummaryEntry/postSessionSummaryEntry book the original sale,
+  // so a credit sale's reversal doesn't leave the entry unbalanced (see payDebitRemaining).
+  let payCreditRemaining = totalAmount;
   for (const pmt of pmtRows) {
+    if (payCreditRemaining <= 0.005) break;
     let accId = pmt.gl_account_id || null;
     if (!accId) {
       const methodName = (pmt.method_name || '').toLowerCase();
@@ -258,8 +263,15 @@ async function _buildSaleReversalLines(client, companyId, transactionId, accIds)
       accId = isBank && accIds['1010'] ? accIds['1010'] : accIds['1000'];
     }
     if (!accId) continue;
-    const amt = parseFloat(pmt.amt);
-    if (amt > 0.005) lines.push({ accountId: accId, debit: 0, credit: +amt.toFixed(4) });
+    const amt = +Math.min(parseFloat(pmt.amt), payCreditRemaining).toFixed(4);
+    if (amt > 0.005) {
+      lines.push({ accountId: accId, debit: 0, credit: amt });
+      payCreditRemaining = +(payCreditRemaining - amt).toFixed(4);
+    }
+  }
+  if (payCreditRemaining > 0.005 && accIds['1100']) {
+    lines.push({ accountId: accIds['1100'], debit: 0, credit: payCreditRemaining });
+    payCreditRemaining = 0;
   }
 
   if (totalCOGS > 0.005 && accIds['5000']) {
@@ -659,7 +671,7 @@ async function postSaleVoidEntry(client, companyId, txn) {
       );
       if (!origLines.length) return;
       await _post(client, companyId, {
-        entryDate:   todayLocal(),
+        entryDate:   toDateStr(txn.transaction_date),
         description: `Void sale — ${txn.transaction_number}`,
         sourceType:  'SALE_VOID',
         sourceId:    txn.transaction_id,
@@ -676,14 +688,14 @@ async function postSaleVoidEntry(client, companyId, txn) {
     const covered = await _isCoveredBySummary(client, companyId, txn.transaction_id);
     if (!covered) return;
 
-    const accIds = await findAccIds(client, companyId, ['1000', '1010', '1200', '2100', '4000', '5000']);
+    const accIds = await findAccIds(client, companyId, ['1000', '1010', '1100', '1200', '2100', '4000', '5000']);
     if (!accIds['4000']) return;
 
     const result = await _buildSaleReversalLines(client, companyId, txn.transaction_id, accIds);
     if (!result || result.lines.length < 2) return;
 
     await _post(client, companyId, {
-      entryDate:   todayLocal(),
+      entryDate:   toDateStr(txn.transaction_date),
       description: `Void sale — ${result.txnNumber}`,
       sourceType:  'SALE_VOID',
       sourceId:    txn.transaction_id,
@@ -717,7 +729,7 @@ async function postSaleEditReversal(client, companyId, txn) {
       );
       if (origLines.length) {
         await _post(client, companyId, {
-          entryDate:   todayLocal(),
+          entryDate:   toDateStr(txn.transaction_date),
           description: `Edit reversal — ${txn.transaction_number}`,
           sourceType:  'SALE_EDIT',
           sourceId:    txn.transaction_id,
@@ -732,12 +744,12 @@ async function postSaleEditReversal(client, companyId, txn) {
       // Case 2: no individual JE — check if a summary covers this transaction
       const covered = await _isCoveredBySummary(client, companyId, txn.transaction_id);
       if (covered) {
-        const accIds = await findAccIds(client, companyId, ['1000', '1010', '1200', '2100', '4000', '5000']);
+        const accIds = await findAccIds(client, companyId, ['1000', '1010', '1100', '1200', '2100', '4000', '5000']);
         if (accIds['4000']) {
           const result = await _buildSaleReversalLines(client, companyId, txn.transaction_id, accIds);
           if (result && result.lines.length >= 2) {
             await _post(client, companyId, {
-              entryDate:   todayLocal(),
+              entryDate:   toDateStr(txn.transaction_date),
               description: `Edit reversal — ${result.txnNumber}`,
               sourceType:  'SALE_EDIT',
               sourceId:    txn.transaction_id,
@@ -865,7 +877,7 @@ async function postVoidPaymentEntry(client, companyId, payment, userId) {
     if (!drAccId) return;
 
     await _post(client, companyId, {
-      entryDate:   toDateStr(new Date()),
+      entryDate:   toDateStr(payment.payment_date),
       description: `Void payment — ${payment.reference_number || payment.payment_id}`,
       sourceType:  'PAYMENT_VOID',
       sourceId:    payment.payment_id,
@@ -951,7 +963,7 @@ async function postVoidDirectExpenseEntry(client, companyId, payment, userId) {
     if (!drAccId) return;
 
     await _post(client, companyId, {
-      entryDate:   toDateStr(new Date()),
+      entryDate:   toDateStr(payment.payment_date),
       description: `Void direct expense — ${lines[0]?.payeeName || payment.reference_number || payment.payment_id}`,
       sourceType:  'PAYMENT_VOID',
       sourceId:    payment.payment_id,
@@ -1228,7 +1240,7 @@ async function voidJournalEntry(companyId, jeId, userId, reason, externalClient 
     }));
 
     return _post(client, companyId, {
-      entryDate:   todayLocal(),
+      entryDate:   toDateStr(je.entry_date),
       description: `Reversal of ${je.entry_number}${reason ? ': ' + reason : ''}`,
       sourceType:  'VOID',
       sourceId:    jeId,
@@ -1540,35 +1552,51 @@ async function voidCreditPayment(companyId, jeId, userId, reason) {
 }
 
 // ── AR Aging ───────────────────────────────────────────────────────────────────
+// Per-invoice remaining balance is computed by FIFO — the same order
+// recordCreditPayment/postArSettlementEntry use when marking invoices paid —
+// against each customer's live customers.credit_balance, rather than trying to
+// reconcile against settlement journal entries directly. Both payment paths
+// (CREDIT_PAYMENT and AR_SETTLEMENT) already keep credit_balance authoritative,
+// so this avoids the mismatch of only one of those source_types being matched.
 async function getArAging(companyId) {
   const { rows } = await query(`
-    WITH ar_settled AS (
-      SELECT je.source_id AS transaction_id,
-             COALESCE(SUM(lel.credit), 0)::numeric AS cr_total
-      FROM journal_entries je
-      JOIN ledger_entry_lines lel ON lel.journal_entry_id = je.journal_entry_id
-      JOIN accounts a              ON a.account_id = lel.account_id AND a.account_code = '1100'
-      WHERE ($1::uuid IS NULL OR je.company_id = $1::uuid)
-        AND je.status = 'posted' AND je.source_type = 'AR_SETTLEMENT'
-      GROUP BY je.source_id
+    WITH txn_seq AS (
+      SELECT st.transaction_id, st.transaction_number, st.transaction_date, st.customer_id,
+             st.total_amount::numeric AS txn_amt,
+             COALESCE(SUM(st.total_amount::numeric) OVER (
+               PARTITION BY st.customer_id
+               ORDER BY st.transaction_date, st.transaction_id
+               ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+             ), 0) AS prior_amt
+      FROM sales_transactions st
+      WHERE ($1::uuid IS NULL OR st.company_id = $1::uuid)
+        AND st.is_credit_sale = TRUE AND st.status = 'completed'
+    ),
+    customer_txn_totals AS (
+      SELECT customer_id, COALESCE(SUM(txn_amt), 0) AS total_credit_sales
+      FROM txn_seq GROUP BY customer_id
     )
-    SELECT
-      st.transaction_id,
-      st.transaction_number,
-      st.transaction_date,
-      COALESCE(c.customer_name, 'Walk-in') AS customer_name,
-      st.total_amount::numeric                                      AS ar_debit,
-      COALESCE(sett.cr_total, 0)                                    AS ar_settled,
-      (st.total_amount::numeric - COALESCE(sett.cr_total, 0))       AS outstanding,
-      (CURRENT_DATE - st.transaction_date::date)                    AS days_outstanding
-    FROM sales_transactions st
-    LEFT JOIN customers c      ON c.customer_id     = st.customer_id
-    LEFT JOIN ar_settled sett  ON sett.transaction_id = st.transaction_id
-    WHERE ($1::uuid IS NULL OR st.company_id = $1::uuid)
-      AND st.is_credit_sale = TRUE AND st.status = 'completed'
-      AND st.payment_status NOT IN ('paid')
-      AND (st.total_amount::numeric - COALESCE(sett.cr_total, 0)) > 0.005
-    ORDER BY st.transaction_date ASC
+    SELECT transaction_id, transaction_number, transaction_date, customer_name,
+           ar_debit, outstanding, (ar_debit - outstanding) AS ar_settled, days_outstanding
+    FROM (
+      SELECT
+        ts.transaction_id, ts.transaction_number, ts.transaction_date,
+        COALESCE(c.customer_name, 'Walk-in') AS customer_name,
+        ts.txn_amt AS ar_debit,
+        -- Remaining unpaid portion of THIS invoice: subtract everything the
+        -- customer has paid off so far (total_credit_sales - live balance),
+        -- FIFO, from this invoice's position in the running total.
+        GREATEST(0, LEAST(ts.txn_amt,
+          (ts.prior_amt + ts.txn_amt) - (ctt.total_credit_sales - c.credit_balance::numeric)
+        ))::numeric AS outstanding,
+        (CURRENT_DATE - ts.transaction_date::date) AS days_outstanding
+      FROM txn_seq ts
+      JOIN customers c              ON c.customer_id = ts.customer_id
+      JOIN customer_txn_totals ctt  ON ctt.customer_id = ts.customer_id
+      WHERE c.credit_balance::numeric > 0.005
+    ) sub
+    WHERE outstanding > 0.005
+    ORDER BY transaction_date ASC
   `, [companyId]);
 
   const bucket = (days) => {

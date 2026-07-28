@@ -159,6 +159,10 @@ async function createPayment(companyId, userId, data) {
 
     if (payment_type === 'supplier') {
       await jrn.postPaymentEntry(client, companyId, payment);
+      await client.query(
+        `UPDATE suppliers SET current_balance = current_balance - $2, updated_at = now() WHERE supplier_id = $1`,
+        [supplier_id, totalAmount]
+      );
     } else {
       await jrn.postDirectExpenseEntry(client, companyId, payment);
     }
@@ -186,6 +190,12 @@ async function voidPayment(companyId, paymentId, userId) {
       await jrn.postVoidDirectExpenseEntry(client, companyId, payment, userId);
     } else {
       await jrn.postVoidPaymentEntry(client, companyId, payment, userId);
+      if (payment.supplier_id) {
+        await client.query(
+          `UPDATE suppliers SET current_balance = current_balance + $2, updated_at = now() WHERE supplier_id = $1`,
+          [payment.supplier_id, parseFloat(payment.amount)]
+        );
+      }
     }
 
     return { payment_id: paymentId, voided: true };

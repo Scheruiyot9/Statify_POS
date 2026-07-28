@@ -1,4 +1,4 @@
-const { query } = require('../../config/database');
+const { query, transaction } = require('../../config/database');
 const AppError  = require('../../shared/AppError');
 
 const TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense'];
