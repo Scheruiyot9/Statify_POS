@@ -320,7 +320,7 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
       );
       if (!custRows.length) throw AppError.badRequest('Customer not found');
 
-      await jrn.postCreditReceiptEntry(client, companyId, {
+      const overpaymentJeId = await jrn.postCreditReceiptEntry(client, companyId, {
         customerId, customerName: custRows[0].customer_name, amount: excess,
         paymentMethodId: overpaymentPaymentMethodId || null,
       });
@@ -328,6 +328,13 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
         `UPDATE customers SET credit_balance = credit_balance - $2, updated_at = now() WHERE customer_id = $1`,
         [customerId, excess]
       );
+      // POS session cash reconciliation feed (see pos.service.js closeSession) — this is
+      // real cash the cashier kept in the drawer instead of handing back as change, so it
+      // must be visible to shift close the same way any other customer_topups row is.
+      await client.query(`
+        INSERT INTO customer_topups (company_id, branch_id, session_id, customer_id, amount, payment_method_id, received_by, journal_entry_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `, [companyId, branchId, sessionId || null, customerId, excess, overpaymentPaymentMethodId || null, cashierUserId, overpaymentJeId || null]);
     }
 
     // Award & deduct loyalty points — atomic WHERE guards against concurrent overdraft

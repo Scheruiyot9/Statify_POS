@@ -1061,6 +1061,15 @@ function ARAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compani
     queryFn:  () => api.get('/pos/payment-methods').then((r) => r.data.data ?? []),
   });
 
+  // Attribute this settlement to the cashier's open shift so it's counted in that
+  // session's cash reconciliation, same as a payment collected in the POS terminal.
+  const { data: activeSession } = useQuery({
+    queryKey: ['active-session-for-ar-settlement'],
+    queryFn:  () => api.get('/pos/sessions/active').then((r) => r.data.data),
+    enabled:  !isSuperAdmin,
+    staleTime: 30_000,
+  });
+
   const { mutate: settle, isPending } = useMutation({
     mutationFn: (body) => api.post('/journal/ar-settlement', body),
     onSuccess: () => {
@@ -1232,7 +1241,12 @@ function ARAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compani
                 Cancel
               </button>
               <button disabled={isPending || !settleAmt || parseFloat(settleAmt) <= 0}
-                onClick={() => settle({ transactionId: settling.transactionId, amount: parseFloat(settleAmt), paymentMethodId: pmId || undefined })}
+                onClick={() => settle({
+                  transactionId: settling.transactionId,
+                  amount: parseFloat(settleAmt),
+                  paymentMethodId: pmId || undefined,
+                  sessionId: activeSession?.session_id ?? null,
+                })}
                 className="flex-1 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50">
                 {isPending ? 'Posting…' : 'Record Payment'}
               </button>

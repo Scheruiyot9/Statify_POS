@@ -1347,7 +1347,7 @@ async function postBulkOpeningBalance(companyId, userId, entries) {
 
 // ── AR Settlement Entry ────────────────────────────────────────────────────────
 // Customer pays their credit balance: DR Cash/Bank, CR AR (1100) — linked to customer
-async function postArSettlementEntry(companyId, userId, { transactionId, amount, paymentMethodId }) {
+async function postArSettlementEntry(companyId, userId, { transactionId, amount, paymentMethodId, sessionId = null }) {
   if (!transactionId) throw AppError.badRequest('transactionId required');
   const amt = parseFloat(amount || 0);
   if (amt <= 0.005) throw AppError.badRequest('Amount must be positive');
@@ -1388,7 +1388,7 @@ async function postArSettlementEntry(companyId, userId, { transactionId, amount,
 
     // Fetch transaction details (customer + number)
     const { rows: [st] } = await client.query(
-      `SELECT transaction_number, customer_id FROM sales_transactions WHERE transaction_id = $1`,
+      `SELECT transaction_number, customer_id, branch_id FROM sales_transactions WHERE transaction_id = $1`,
       [transactionId]
     );
     const customerId = st?.customer_id || null;
@@ -1419,6 +1419,13 @@ async function postArSettlementEntry(companyId, userId, { transactionId, amount,
         `UPDATE customers SET credit_balance = credit_balance - $2, updated_at = now() WHERE customer_id = $1`,
         [customerId, amt]
       );
+      // POS session cash reconciliation feed (see pos.service.js closeSession) — without
+      // this, cash collected via "Settle" on the AR Aging report is invisible to the
+      // cashier's shift close, same bug already fixed for the Customers-page payment flow.
+      await client.query(`
+        INSERT INTO customer_topups (company_id, branch_id, session_id, customer_id, amount, payment_method_id, received_by, journal_entry_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `, [companyId, st?.branch_id || null, sessionId, customerId, amt, paymentMethodId || null, userId, journalEntryId || null]);
     }
     const remaining = +(outstanding - amt).toFixed(2);
     await client.query(
